@@ -6,10 +6,19 @@ export const categorySchema = z.object({
     .string({ required_error: "Category name is required" })
     .min(2, "Name must be at least 2 characters")
     .max(100, "Name must be at most 100 characters"),
+
   status: z.enum(["active", "inactive"]).default("active"),
-  zoneId: z
-    .string({ required_error: "Zone ID is required" })
-    .refine((val) => mongoose.Types.ObjectId.isValid(val), {
-      message: "Invalid Zone ID",
+
+  categoryType: z
+    .enum(["category", "subCategory"], {
+      required_error: "Category type is required",
+    })
+    .default("category"),
+
+  categoryId: z
+    .string()
+    .optional()
+    .refine((val) => !val || mongoose.Types.ObjectId.isValid(val), {
+      message: "Invalid category ID",
     }),
 });

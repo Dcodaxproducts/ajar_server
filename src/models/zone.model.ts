@@ -1,26 +1,16 @@
 import mongoose, { Schema, Document } from "mongoose";
 
-interface ICategoryField {
-  fieldName: string;
-  fieldType: "string" | "number" | "boolean" | "file";
-  required: boolean;
-}
-
-interface IZoneCategorySettings {
-  enabled: boolean;
-  form: mongoose.Types.ObjectId;
-}
-
 interface IZone extends Document {
   name: string;
-  country: string;
+  description: string;
+  subCategories: string[];
   currency: string;
   timeZone: string;
   language: string;
-  status: "active" | "inactive";
   radius: number;
-  latlong: number[];
+  latLng: { lat: number; lng: number }[];
   thumbnail?: string;
+  icon?: string;
   adminNotes?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -29,21 +19,21 @@ interface IZone extends Document {
 const ZoneSchema = new Schema<IZone>(
   {
     name: { type: String, required: true, trim: true },
-    country: { type: String, required: true, trim: true },
+    description: { type: String, required: true, trim: true },
+    subCategories: { type: [String], default: [] },
     currency: { type: String, required: true, trim: true },
     timeZone: { type: String, required: true, trim: true },
     language: { type: String, required: true, trim: true },
     radius: { type: Number, default: 0 },
     thumbnail: { type: String, default: "" },
-    latlong: { type: [Number], default: [] },
-    status: { type: String, enum: ["active", "inactive"], default: "active" },
+    icon: { type: String, default: "" },
+    latLng: { type: [{ lat: Number, lng: Number }], default: [] },
     adminNotes: { type: String, trim: true },
   },
   { timestamps: true }
 );
 
 ZoneSchema.index({ name: 1 });
-ZoneSchema.index({ country: 1 });
 
 const Zone = mongoose.model<IZone>("Zone", ZoneSchema);
 
