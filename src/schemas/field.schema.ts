@@ -9,10 +9,6 @@ export const fieldSchema = z.object({
     .string({ required_error: "Field type is required" })
     .min(1, "Field type must be specified"),
 
-  flutterType: z
-    .string({ required_error: "Flutter type is required" })
-    .min(1, "Flutter type must be specified"),
-
   placeholder: z
     .string({ required_error: "Placeholder is required" })
     .min(1, "Placeholder must be at least 1 character"),

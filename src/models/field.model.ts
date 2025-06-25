@@ -13,13 +13,15 @@ interface IField extends Document {
   visible?: boolean;
   defaultValue?: string | number | boolean;
   readonly?: boolean;
-  dependencies?: Record<string, any>;
   validation?: {
     required: boolean;
     pattern?: string;
     min?: number;
     max?: number;
   };
+     min?: number;
+    max?: number;
+  language: { type: String, default: "en" }, 
 }
 
 const FieldSchema = new Schema<IField>(
@@ -35,13 +37,16 @@ const FieldSchema = new Schema<IField>(
     visible: { type: Boolean, default: true },
     defaultValue: { type: Schema.Types.Mixed }, // mixed because can be string/number/boolean
     readonly: { type: Boolean, default: false },
-    dependencies: { type: Object },
     validation: {
       required: { type: Boolean, default: false },
       pattern: { type: String },
       min: { type: Number },
       max: { type: Number },
     },
+    min: { type: Number },
+    max: { type: Number },
+    language: { type: String, default: "en" }, 
+
   },
   { timestamps: true }
 );

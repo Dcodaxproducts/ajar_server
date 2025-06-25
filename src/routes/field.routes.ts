@@ -23,7 +23,7 @@ router.post(
 router.patch(
   "/:id",
   authMiddleware,
-  validateRequest({ body: fieldSchema }),
+  // validateRequest({ body: fieldSchema }),
   updateField
 );
 router.delete("/:id", authMiddleware, deleteField);

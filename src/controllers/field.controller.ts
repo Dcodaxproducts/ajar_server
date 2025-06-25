@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { Field } from "../models/field.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
+import { getLanguage } from "../utils/getLanguage";
 
 // GET all fields
 export const getAllFields = async (
@@ -11,9 +12,15 @@ export const getAllFields = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    let query: any = {};
-    const { zoneId } = req.query;
+    const query: any = {};
+    const languageHeader = req.headers["language"];
 
+    // Only filter by language if it’s provided in the header
+    if (languageHeader) {
+      query.language = languageHeader.toString();
+    }
+
+    const { zoneId } = req.query;
     if (zoneId && mongoose.Types.ObjectId.isValid(zoneId as string)) {
       query.zoneId = zoneId;
     }
@@ -30,6 +37,7 @@ export const getAllFields = async (
     next(error);
   }
 };
+
 
 // GET field by ID
 export const getFieldDetails = async (
@@ -71,7 +79,7 @@ export const createNewField = async (
 ): Promise<void> => {
   try {
     const fieldData = req.body;
-
+     
     const newField = new Field(fieldData);
     await newField.save();
 
@@ -94,14 +102,22 @@ export const updateField = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const updatedData = req.body;
+    const updates = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid Field ID", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    const updatedField = await Field.findByIdAndUpdate(id, updatedData, {
+    //Ensure only defined fields are updated (ignore undefined values)
+    const sanitizedUpdates: any = {};
+    for (const key in updates) {
+      if (updates[key] !== undefined) {
+        sanitizedUpdates[key] = updates[key];
+      }
+    }
+
+    const updatedField = await Field.findByIdAndUpdate(id, sanitizedUpdates, {
       new: true,
     });
 
@@ -110,16 +126,12 @@ export const updateField = async (
       return;
     }
 
-    sendResponse(
-      res,
-      updatedField,
-      "Field updated successfully",
-      STATUS_CODES.OK
-    );
+    sendResponse(res, updatedField, "Field updated successfully", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
 };
+
 
 // DELETE field
 export const deleteField = async (
