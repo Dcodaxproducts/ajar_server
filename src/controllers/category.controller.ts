@@ -1,26 +1,30 @@
 import { NextFunction, Request, Response } from "express";
 import { STATUS_CODES } from "../config/constants";
-import { Category } from "../models/category.model";
-import { Field } from "../models/field.model";
+import { Category, ICategory, SubCategory } from "../models/category.model";
 import { sendResponse } from "../utils/response";
 import mongoose from "mongoose";
 import path from "path";
 import deleteFile from "../utils/deleteFile";
 
-// Get All Categories
+//Get All Categories with Subcategories
 export const getAllCategories = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    let query: any = {};
-    const { zoneId } = req.query || {};
-    if (zoneId) {
-      query.zoneId = zoneId;
-    }
-    console.log(query, "query");
-    const categories = await Category.find(query).lean();
+    // Get language from header 
+    const language = req.headers["language"]?.toString() || "en";
+
+    const categories = await Category.find({
+      categoryType: "category",
+      language: language,
+    })
+      .populate({
+        path: "subcategories",
+        match: { language }, // filter subcategories by language as well
+      })
+      .lean();
 
     sendResponse(
       res,
@@ -29,72 +33,38 @@ export const getAllCategories = async (
       STATUS_CODES.OK
     );
   } catch (error) {
-    console.log({ error });
     next(error);
   }
 };
 
-// Get Category Details
+
+//Get Category Details
 export const getCategoryDetails = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { id } = req.params || {};
+    const { id } = req.params;
 
-    if (!id) {
-      sendResponse(
-        res,
-        null,
-        "Category id is required",
-        STATUS_CODES.BAD_REQUEST
-      );
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      sendResponse(res, null, "Invalid category ID", STATUS_CODES.BAD_REQUEST);
       return;
     }
-    const categoryId = new mongoose.Types.ObjectId(id);
 
-    // ✅ Step 2: Then run aggregation for form and fields
-    const categoryWithFormAndFields = await Category.aggregate([
-      {
-        $match: { _id: categoryId },
-      },
-      {
-        $lookup: {
-          from: "forms",
-          let: { categoryId: "$_id" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [{ $eq: ["$categoryId", "$$categoryId"] }],
-                },
-              },
-            },
-            {
-              $lookup: {
-                from: "fields",
-                localField: "fields",
-                foreignField: "_id",
-                as: "fields",
-              },
-            },
-          ],
-          as: "form",
-        },
-      },
-      {
-        $unwind: {
-          path: "$form",
-          preserveNullAndEmptyArrays: true, // ✅ allow empty form gracefully
-        },
-      },
-    ]);
+    const category = await Category.findById(id)
+      .populate("subcategories")
+      .lean();
+
+    if (!category) {
+      sendResponse(res, null, "Category not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
 
     sendResponse(
       res,
-      categoryWithFormAndFields[0],
-      "Category details with form and fields fetched successfully",
+      category,
+      "Category details fetched successfully",
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -102,44 +72,59 @@ export const getCategoryDetails = async (
   }
 };
 
+//Create Category / SubCategory (with description, icon, image)
 export const createNewCategory = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { name, zoneId, status } = req.body;
-
-    if (!name || !zoneId) {
-      sendResponse(
-        res,
-        null,
-        "Name and Zone ID are required",
-        STATUS_CODES.BAD_REQUEST
-      );
-      return;
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(zoneId)) {
-      sendResponse(res, null, "Invalid Zone ID", STATUS_CODES.BAD_REQUEST);
-      return;
-    }
-
-    const thumbnail = req.file ? `/uploads/${req.file.filename}` : undefined;
-
-    const category = new Category({
+    const {
       name,
-      zoneId,
-      status,
+      categoryType,
+      categoryId,
+      description,
+      icon,
       thumbnail,
-    });
+       language = "en",
+    } = req.body;
 
-    await category.save();
+    const image = req.file ? `/uploads/${req.file.filename}` : undefined;
+
+    let newCategory;
+
+    // If categoryId is passed, treat it as a SubCategory
+    if (categoryId) {
+      newCategory = new SubCategory({
+        name,
+        categoryId,
+        description,
+        icon,
+        thumbnail,
+        image,
+        language,
+        // categoryType: "subCategory",
+      });
+    } else {
+      newCategory = new Category({
+        name,
+        description,
+        icon,
+        thumbnail,
+        image,
+        language,
+        categoryType: "category",
+      });
+    }
+
+    await newCategory.save();
 
     sendResponse(
       res,
-      category,
-      "Category created successfully",
+      newCategory,
+      categoryId
+        ? "Subcategory created successfully"
+        : "Category created successfully",
       STATUS_CODES.CREATED
     );
   } catch (error) {
@@ -147,6 +132,7 @@ export const createNewCategory = async (
   }
 };
 
+//Update Category / SubCategory
 export const updateCategory = async (
   req: Request,
   res: Response,
@@ -167,26 +153,31 @@ export const updateCategory = async (
       return;
     }
 
-    const { name, status, zoneId } = req.body;
+    const {
+      name,
+      categoryId: parentCategoryId,
+      description,
+      icon,
+      thumbnail,
+    } = req.body;
 
-    if (zoneId && !mongoose.Types.ObjectId.isValid(zoneId)) {
-      sendResponse(res, null, "Invalid Zone ID", STATUS_CODES.BAD_REQUEST);
-      return;
-    }
-
-    let thumbnail = existingCategory.thumbnail;
+    let image = existingCategory.image;
     if (req.file) {
-      if (existingCategory.thumbnail) {
-        const oldPath = path.join(process.cwd(), existingCategory.thumbnail);
+      if (existingCategory.image) {
+        const oldPath = path.join(process.cwd(), existingCategory.image);
         deleteFile(oldPath);
       }
-      thumbnail = `/uploads/${req.file.filename}`;
+      image = `/uploads/${req.file.filename}`;
     }
 
+    //Update fields
     existingCategory.name = name || existingCategory.name;
-    existingCategory.status = status || existingCategory.status;
-    existingCategory.zoneId = zoneId || existingCategory.zoneId;
-    existingCategory.thumbnail = thumbnail;
+    existingCategory.categoryId = parentCategoryId || existingCategory.categoryId;
+    existingCategory.description = description || existingCategory.description;
+    existingCategory.icon = icon || existingCategory.icon;
+    existingCategory.thumbnail = thumbnail || existingCategory.thumbnail;
+
+    existingCategory.image = image;
 
     await existingCategory.save();
 
@@ -202,6 +193,7 @@ export const updateCategory = async (
   }
 };
 
+//Update only image
 export const updateCategoryThumbnail = async (
   req: Request,
   res: Response,
@@ -228,27 +220,24 @@ export const updateCategoryThumbnail = async (
       return;
     }
 
-    if (category.thumbnail) {
-      const oldFilePath = path.join(process.cwd(), category.thumbnail);
+    if (category.image) {
+      const oldFilePath = path.join(process.cwd(), category.image);
       deleteFile(oldFilePath);
     }
 
-    category.thumbnail = `/uploads/${req.file.filename}`;
-
+    category.image = `/uploads/${req.file.filename}`;
     await category.save();
 
-    sendResponse(
-      res,
-      category,
-      "Thumbnail updated successfully",
-      STATUS_CODES.OK
-    );
+    sendResponse(res, category, "Image updated successfully", STATUS_CODES.OK);
   } catch (error) {
     if (req.file) deleteFile(req.file.path);
     next(error);
   }
 };
 
+
+
+//Delete Category or Subcategory
 export const deleteCategory = async (
   req: Request,
   res: Response,
@@ -263,24 +252,31 @@ export const deleteCategory = async (
 
   try {
     const category = await Category.findByIdAndDelete(categoryId);
-
     if (!category) {
       sendResponse(res, null, "Category not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
+    // Delete thumbnail if it exists
     if (category.thumbnail) {
       const filePath = path.join(process.cwd(), category.thumbnail);
       deleteFile(filePath);
     }
 
-    sendResponse(
-      res,
-      category,
-      "Category deleted successfully",
-      STATUS_CODES.OK
-    );
+    // 🔥 Delete subcategories related to this category
+    const subcategories = await SubCategory.find({ categoryId: category._id }) as ICategory[];
+    for (const sub of subcategories) {
+      // Delete each subcategory thumbnail
+      if (sub.thumbnail) {
+        const subFilePath = path.join(process.cwd(), sub.thumbnail);
+        deleteFile(subFilePath);
+      }
+      await sub.deleteOne();
+    }
+
+    sendResponse(res, category, "Category and related subcategories deleted successfully", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
 };
+
