@@ -80,7 +80,7 @@ export const createZone = async (
       timeZone,
       language,
       radius: radiusRaw,
-      latlong: latlongRaw,
+      latLng: latLngRaw,
       adminNotes,
       status,
     } = req.body;
@@ -89,13 +89,13 @@ export const createZone = async (
     const radius =
       typeof radiusRaw === "string" ? Number(radiusRaw) : radiusRaw;
 
-    // latlong should already be array, but if it's a string, parse it
-    let latlong: number[] | undefined = undefined;
-    if (latlongRaw) {
-      if (typeof latlongRaw === "string") {
-        latlong = JSON.parse(latlongRaw);
+    // latLng should already be array, but if it's a string, parse it
+    let latLng: number[] | undefined = undefined;
+    if (latLngRaw) {
+      if (typeof latLngRaw === "string") {
+        latLng = JSON.parse(latLngRaw);
       } else {
-        latlong = latlongRaw;
+        latLng = latLngRaw;
       }
     }
 
@@ -108,7 +108,7 @@ export const createZone = async (
       timeZone,
       language,
       radius,
-      latlong,
+      latLng,
       thumbnail,
       adminNotes,
       status,
@@ -157,16 +157,16 @@ export const updateZone = async (
     const radius = req.body.radius
       ? Number(req.body.radius)
       : existingZone.radius;
-    let latlong;
+    let latLng;
 
-    if (req.body.latlong) {
+    if (req.body.latLng) {
       try {
-        latlong = JSON.parse(req.body.latlong);
+        latLng = JSON.parse(req.body.latLng);
       } catch {
-        latlong = existingZone.latlong;
+        latLng = existingZone.latLng;
       }
     } else {
-      latlong = existingZone.latlong;
+      latLng = existingZone.latLng;
     }
 
     let thumbnail = existingZone.thumbnail;
@@ -182,13 +182,11 @@ export const updateZone = async (
 
     // Update zone
     existingZone.name = name || existingZone.name;
-    existingZone.country = country || existingZone.country;
     existingZone.currency = currency || existingZone.currency;
     existingZone.timeZone = timeZone || existingZone.timeZone;
     existingZone.language = language || existingZone.language;
     existingZone.radius = radius;
-    existingZone.latlong = latlong;
-    existingZone.status = status || existingZone.status;
+    existingZone.latLng = latLng;
     existingZone.adminNotes = adminNotes || existingZone.adminNotes;
     existingZone.thumbnail = thumbnail;
 
