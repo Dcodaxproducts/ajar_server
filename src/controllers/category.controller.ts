@@ -81,7 +81,6 @@ export const createNewCategory = async (
   try {
     const {
       name,
-      status,
       categoryType,
       categoryId,
       description,
@@ -98,7 +97,6 @@ export const createNewCategory = async (
     if (categoryId) {
       newCategory = new SubCategory({
         name,
-        status,
         categoryId,
         description,
         icon,
@@ -110,7 +108,6 @@ export const createNewCategory = async (
     } else {
       newCategory = new Category({
         name,
-        status,
         description,
         icon,
         thumbnail,
@@ -158,7 +155,6 @@ export const updateCategory = async (
 
     const {
       name,
-      status,
       categoryId: parentCategoryId,
       description,
       icon,
@@ -176,7 +172,6 @@ export const updateCategory = async (
 
     //Update fields
     existingCategory.name = name || existingCategory.name;
-    existingCategory.status = status || existingCategory.status;
     existingCategory.categoryId = parentCategoryId || existingCategory.categoryId;
     existingCategory.description = description || existingCategory.description;
     existingCategory.icon = icon || existingCategory.icon;

@@ -9,7 +9,6 @@ interface ICategory extends Document {
   icon?: string;          
   image?: string;         
   thumbnail?: string;     // optional, still supported if you prefer
-  status: "active" | "inactive";
   categoryType: "category" | "subCategory";
   categoryId?: mongoose.Types.ObjectId;
    language?: string;
@@ -22,7 +21,6 @@ const BaseCategorySchema = new Schema<ICategory>(
   {
     name: { type: String, required: true, trim: true },
     slug: { type: String, lowercase: true, trim: true, required: true },
-    status: { type: String, enum: ["active", "inactive"], default: "active" },
     thumbnail: { type: String, trim: true },
     image: { type: String, trim: true },       
     icon: { type: String, trim: true },       
