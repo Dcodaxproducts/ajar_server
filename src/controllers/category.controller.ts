@@ -5,6 +5,7 @@ import { sendResponse } from "../utils/response";
 import mongoose from "mongoose";
 import path from "path";
 import deleteFile from "../utils/deleteFile";
+import { paginateQuery } from "../utils/paginate";
 
 //Get All Categories with Subcategories
 export const getAllCategories = async (
@@ -13,22 +14,31 @@ export const getAllCategories = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    // Get language from header 
     const language = req.headers["language"]?.toString() || "en";
 
-    const categories = await Category.find({
+    const { page = 1, limit = 10 } = req.query;
+
+    const baseQuery = Category.find({
       categoryType: "category",
       language: language,
-    })
-      .populate({
-        path: "subcategories",
-        match: { language }, // filter subcategories by language as well
-      })
-      .lean();
+    }).populate({
+      path: "subcategories",
+      match: { language },
+    });
+
+    const { data, total } = await paginateQuery(baseQuery, {
+      page: Number(page),
+      limit: Number(limit),
+    });
 
     sendResponse(
       res,
-      categories,
+      {
+        categories: data,
+        total,
+        page: Number(page),
+        limit: Number(limit),
+      },
       "All categories fetched successfully",
       STATUS_CODES.OK
     );
@@ -36,7 +46,6 @@ export const getAllCategories = async (
     next(error);
   }
 };
-
 
 //Get Category Details
 export const getCategoryDetails = async (

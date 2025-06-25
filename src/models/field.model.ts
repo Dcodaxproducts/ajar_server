@@ -4,7 +4,6 @@ import { Schema, model, Document } from "mongoose";
 interface IField extends Document {
   name: string;
   type: string;
-  flutterType?: string;
   placeholder?: string;
   label?: string;
   isMultiple?: boolean;
@@ -27,7 +26,6 @@ const FieldSchema = new Schema<IField>(
   {
     name: { type: String, required: true },
     type: { type: String, required: true },
-    flutterType: { type: String, required: true },
     placeholder: { type: String, required: true },
     label: { type: String, required: true },
     isMultiple: { type: Boolean, default: false },
