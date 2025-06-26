@@ -23,9 +23,9 @@ export const zoneSchema = z.object({
     .nonnegative("Radius cannot be negative")
     .optional()
     .default(0),
-  latlong: z
+  latLng: z
     .array(z.number())
-    .length(2, "Latlong must contain exactly 2 coordinates (lat, long)")
+    .length(2, "LatLong must contain exactly 2 coordinates (lat, long)")
     .optional(),
   status: z.enum(["active", "inactive"]).default("active"),
   adminNotes: z.string().optional(),

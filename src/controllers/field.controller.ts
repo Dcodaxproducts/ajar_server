@@ -4,6 +4,7 @@ import { Field } from "../models/field.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { getLanguage } from "../utils/getLanguage";
+import { paginateQuery } from "../utils/paginate";
 
 // GET all fields
 export const getAllFields = async (
@@ -14,22 +15,33 @@ export const getAllFields = async (
   try {
     const query: any = {};
     const languageHeader = req.headers["language"];
+    const language = languageHeader?.toString() || "en";
 
-    // Only filter by language if it’s provided in the header
     if (languageHeader) {
-      query.language = languageHeader.toString();
+      query.language = language;
     }
 
-    const { zoneId } = req.query;
-    if (zoneId && mongoose.Types.ObjectId.isValid(zoneId as string)) {
-      query.zoneId = zoneId;
-    }
+    const { page = 1, limit = 10 } = req.query;
 
-    const fields = await Field.find(query).lean();
+    // if (zoneId && mongoose.Types.ObjectId.isValid(zoneId as string)) {
+    //   query.zoneId = zoneId;
+    // }
+
+    const baseQuery = Field.find(query);
+
+    const { data, total } = await paginateQuery(baseQuery, {
+      page: Number(page),
+      limit: Number(limit),
+    });
 
     sendResponse(
       res,
-      fields,
+      {
+        fields: data,
+        total,
+        page: Number(page),
+        limit: Number(limit),
+      },
       "All fields fetched successfully",
       STATUS_CODES.OK
     );
@@ -37,6 +49,7 @@ export const getAllFields = async (
     next(error);
   }
 };
+
 
 
 // GET field by ID
