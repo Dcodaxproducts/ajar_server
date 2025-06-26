@@ -5,6 +5,7 @@ import { STATUS_CODES } from "../config/constants";
 import mongoose from "mongoose";
 import deleteFile from "../utils/deleteFile";
 import path from "path";
+import { SubCategory } from "../models/category.model";
 
 // Get All Zones
 export const getAllZones = async (
@@ -58,7 +59,7 @@ export const getZoneDetails = async (
 
     sendResponse(
       res,
-      zone[0], // because aggregation returns an array
+      zone[0],
       "Zone details fetched successfully",
       STATUS_CODES.OK
     );
@@ -83,20 +84,52 @@ export const createZone = async (
       latLng: latLngRaw,
       adminNotes,
       status,
+      subCategoriesId: rawSubCategoryIds,
     } = req.body;
 
-    // Convert radius to number if needed
     const radius =
       typeof radiusRaw === "string" ? Number(radiusRaw) : radiusRaw;
 
-    // latLng should already be array, but if it's a string, parse it
-    let latLng: number[] | undefined = undefined;
+    let latLng;
     if (latLngRaw) {
-      if (typeof latLngRaw === "string") {
-        latLng = JSON.parse(latLngRaw);
-      } else {
-        latLng = latLngRaw;
+      latLng = typeof latLngRaw === "string" ? JSON.parse(latLngRaw) : latLngRaw;
+    }
+
+    // Parse and validate subCategoriesId
+    let subCategoriesId: string[] = [];
+    if (rawSubCategoryIds) {
+      const parsedIds = typeof rawSubCategoryIds === "string" ? JSON.parse(rawSubCategoryIds) : rawSubCategoryIds;
+
+      if (!Array.isArray(parsedIds)) {
+        // return sendResponse(res, null, "subCategoriesId must be an array", STATUS_CODES.BAD_REQUEST);
+        sendResponse(res, null, "subCategoriesId must be an array", STATUS_CODES.BAD_REQUEST);
       }
+
+      // Check if all IDs exist and are subCategories
+      const validSubCategories = await SubCategory.find({
+        _id: { $in: parsedIds },
+        categoryType: "subCategory",
+      }).select("_id");
+
+      const validIds = validSubCategories.map((cat) => cat._id.toString());
+      const invalidIds = parsedIds.filter((id: string) => !validIds.includes(id));
+
+      if (invalidIds.length > 0) {
+        sendResponse(
+  res,
+  null,
+  `Invalid subCategoriesId(s): ${invalidIds.join(", ")}`,
+  STATUS_CODES.BAD_REQUEST
+);
+        // return sendResponse(
+        //   res,
+        //   null,
+        //   `Invalid subCategoriesId(s): ${invalidIds.join(", ")}`,
+        //   STATUS_CODES.BAD_REQUEST
+        // );
+      }
+
+      subCategoriesId = validIds;
     }
 
     const thumbnail = req.file ? `/uploads/${req.file.filename}` : undefined;
@@ -112,20 +145,17 @@ export const createZone = async (
       thumbnail,
       adminNotes,
       status,
+      subCategoriesId,
     });
 
     await newZone.save();
 
-    sendResponse(
-      res,
-      newZone,
-      "Zone created successfully",
-      STATUS_CODES.CREATED
-    );
+    sendResponse(res, newZone, "Zone created successfully", STATUS_CODES.CREATED);
   } catch (error) {
     next(error);
   }
 };
+
 
 export const updateZone = async (
   req: Request,
@@ -142,7 +172,6 @@ export const updateZone = async (
   try {
     const existingZone = await Zone.findById(zoneId);
     if (!existingZone) {
-      // Remove uploaded file if any because zone doesn't exist
       if (req.file) {
         deleteFile(req.file.path);
       }
@@ -150,15 +179,24 @@ export const updateZone = async (
       return;
     }
 
-    // Parse and preprocess fields
-    const { name, country, currency, timeZone, language, status, adminNotes } =
-      req.body;
+    // Destructure fields from request body
+    const {
+      name,
+      country,
+      currency,
+      timeZone,
+      language,
+      status,
+      adminNotes,
+    } = req.body;
 
+    // Handle radius
     const radius = req.body.radius
       ? Number(req.body.radius)
       : existingZone.radius;
-    let latLng;
 
+    // Handle latLng
+    let latLng;
     if (req.body.latLng) {
       try {
         latLng = JSON.parse(req.body.latLng);
@@ -169,9 +207,18 @@ export const updateZone = async (
       latLng = existingZone.latLng;
     }
 
-    let thumbnail = existingZone.thumbnail;
+    // Handle subCategoriesId (parse if stringified)
+    let subCategoriesId = req.body.subCategoriesId;
+    if (typeof subCategoriesId === "string") {
+      try {
+        subCategoriesId = JSON.parse(subCategoriesId);
+      } catch {
+        subCategoriesId = existingZone.subCategoriesId;
+      }
+    }
 
-    // If new thumbnail uploaded, delete old file and update
+    // Handle thumbnail
+    let thumbnail = existingZone.thumbnail;
     if (req.file) {
       if (existingZone.thumbnail) {
         const oldFilePath = path.join(process.cwd(), existingZone.thumbnail);
@@ -180,8 +227,9 @@ export const updateZone = async (
       thumbnail = `/uploads/${req.file.filename}`;
     }
 
-    // Update zone
+    // Update fields
     existingZone.name = name || existingZone.name;
+    existingZone.country = country || existingZone.country;
     existingZone.currency = currency || existingZone.currency;
     existingZone.timeZone = timeZone || existingZone.timeZone;
     existingZone.language = language || existingZone.language;
@@ -189,23 +237,19 @@ export const updateZone = async (
     existingZone.latLng = latLng;
     existingZone.adminNotes = adminNotes || existingZone.adminNotes;
     existingZone.thumbnail = thumbnail;
+    existingZone.subCategoriesId = subCategoriesId || existingZone.subCategoriesId;
 
     await existingZone.save();
 
-    sendResponse(
-      res,
-      existingZone,
-      "Zone updated successfully",
-      STATUS_CODES.OK
-    );
+    sendResponse(res, existingZone, "Zone updated successfully", STATUS_CODES.OK);
   } catch (error) {
-    // If error and new file was uploaded, delete it to prevent orphan files
     if (req.file) {
       deleteFile(req.file.path);
     }
     next(error);
   }
 };
+
 
 export const updateZoneThumbnail = async (
   req: Request,
