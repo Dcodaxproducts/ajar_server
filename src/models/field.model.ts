@@ -3,7 +3,7 @@ import { Schema, model, Document } from "mongoose";
 
 interface IField extends Document {
   name: string;
-  type: string;
+  type?: string[]; 
   placeholder?: string;
   label?: string;
   isMultiple?: boolean;
@@ -27,7 +27,7 @@ interface IField extends Document {
 const FieldSchema = new Schema<IField>(
   {
     name: { type: String, required: true },
-    type: { type: String, required: true },
+    type: { type: [String], default: [] },
     placeholder: { type: String, required: true },
     label: { type: String, required: true },
     isMultiple: { type: Boolean, default: false },

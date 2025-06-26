@@ -5,9 +5,7 @@ export const fieldSchema = z.object({
     .string({ required_error: "Field name is required" })
     .min(1, "Field name must be at least 1 character"),
 
-  type: z
-    .string({ required_error: "Field type is required" })
-    .min(1, "Field type must be specified"),
+    type: z.array(z.string()).optional(), 
 
   placeholder: z
     .string({ required_error: "Placeholder is required" })
