@@ -13,36 +13,54 @@ export const getAllFields = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const query: any = {};
-    const languageHeader = req.headers["language"];
-    const language = languageHeader?.toString() || "en";
-
-    if (languageHeader) {
-      query.language = language;
-    }
-
     const { page = 1, limit = 10 } = req.query;
+    const languageHeader = req.headers["language"];
+    const locale = languageHeader?.toString() || null;
 
-    // if (zoneId && mongoose.Types.ObjectId.isValid(zoneId as string)) {
-    //   query.zoneId = zoneId;
-    // }
-
-    const baseQuery = Field.find(query);
-
+    const baseQuery = Field.find();
     const { data, total } = await paginateQuery(baseQuery, {
       page: Number(page),
       limit: Number(limit),
     });
 
+    let filteredData = data;
+
+    if (locale) {
+      filteredData = data
+        .filter((field: any) =>
+          field.languages?.some((lang: any) => lang.locale === locale)
+        )
+        .map((field: any) => {
+          const matchedLang = field.languages.find(
+            (lang: any) => lang.locale === locale
+          );
+
+          const fieldObj = field.toObject();
+
+          // Merge translation values to root level and remove original English
+          if (matchedLang && matchedLang.translations) {
+            fieldObj.name = matchedLang.translations.name || fieldObj.name;
+            fieldObj.label = matchedLang.translations.label || fieldObj.label;
+            fieldObj.placeholder =
+              matchedLang.translations.placeholder || fieldObj.placeholder;
+          }
+
+          // Remove languages array to avoid duplication
+          delete fieldObj.languages;
+
+          return fieldObj;
+        });
+    }
+
     sendResponse(
       res,
       {
-        fields: data,
-        total,
+        fields: filteredData,
+        total: filteredData.length,
         page: Number(page),
         limit: Number(limit),
       },
-      "All fields fetched successfully",
+      `Fields fetched successfully${locale ? ` for locale: ${locale}` : ""}`,
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -60,6 +78,8 @@ export const getFieldDetails = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
+    const languageHeader = req.headers["language"];
+    const locale = languageHeader?.toString() || null;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid Field ID", STATUS_CODES.BAD_REQUEST);
@@ -73,6 +93,42 @@ export const getFieldDetails = async (
       return;
     }
 
+    if (locale) {
+      const matchedLang = field.languages?.find(
+        (lang: any) => lang.locale === locale
+      );
+
+      if (matchedLang) {
+        // Include translations directly in root and remove base values
+        const { translations } = matchedLang;
+
+        const translatedField = {
+          ...field,
+          ...translations, // override name, label, placeholder if they exist in translations
+        };
+
+        delete translatedField.languages; // remove languages array from output
+
+        sendResponse(
+          res,
+          translatedField,
+          `Field details fetched successfully for locale: ${locale}`,
+          STATUS_CODES.OK
+        );
+        return;
+      } else {
+        // Locale provided but not found
+        sendResponse(
+          res,
+          null,
+          `No translations found for locale: ${locale}`,
+          STATUS_CODES.NOT_FOUND
+        );
+        return;
+      }
+    }
+
+    // No locale provided — return base English field
     sendResponse(
       res,
       field,
@@ -83,6 +139,7 @@ export const getFieldDetails = async (
     next(error);
   }
 };
+
 
 // CREATE new field
 export const createNewField = async (
@@ -122,7 +179,7 @@ export const updateField = async (
       return;
     }
 
-    //Ensure only defined fields are updated (ignore undefined values)
+    // Ensure only defined fields are updated
     const sanitizedUpdates: any = {};
     for (const key in updates) {
       if (updates[key] !== undefined) {
@@ -130,9 +187,11 @@ export const updateField = async (
       }
     }
 
-    const updatedField = await Field.findByIdAndUpdate(id, sanitizedUpdates, {
-      new: true,
-    });
+    // Step 1: Update the field
+    await Field.findByIdAndUpdate(id, sanitizedUpdates, { new: true });
+
+    // Step 2: Re-fetch updated field to include middleware changes
+    const updatedField = await Field.findById(id).lean(false);
 
     if (!updatedField) {
       sendResponse(res, null, "Field not found", STATUS_CODES.NOT_FOUND);
@@ -144,6 +203,7 @@ export const updateField = async (
     next(error);
   }
 };
+
 
 
 // DELETE field

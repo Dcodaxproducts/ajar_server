@@ -1,11 +1,12 @@
 import { Request, Response, NextFunction } from "express";
-import { Zone } from "../models/zone.model";
+import { IZone, Zone } from "../models/zone.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import mongoose from "mongoose";
 import deleteFile from "../utils/deleteFile";
 import path from "path";
 import { SubCategory } from "../models/category.model";
+import { paginateQuery } from "../utils/paginate";
 
 // Get All Zones
 export const getAllZones = async (
@@ -14,55 +15,77 @@ export const getAllZones = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const zones = await Zone.aggregate([
+    const { page = 1, limit = 10 } = req.query;
+    const locale = req.headers["locale"]?.toString() || "en";
+
+    const query = Zone.find().lean() as mongoose.Query<IZone[], IZone>;
+
+    const { data, total } = await paginateQuery<IZone>(query, {
+      page: Number(page),
+      limit: Number(limit),
+    });
+
+    const translatedZones = data.map((zone) => {
+      if (locale !== "en" && zone.languages) {
+        const lang = zone.languages.find((l) => l.locale === locale);
+        if (lang) {
+          if (lang.translations.name) zone.name = lang.translations.name;
+          if (lang.translations.adminNotes)
+            zone.adminNotes = lang.translations.adminNotes;
+        }
+      }
+      return zone;
+    });
+
+    sendResponse(
+      res,
       {
-        $lookup: {
-          from: "categories",
-          localField: "_id",
-          foreignField: "zoneId",
-          as: "categories",
-        },
+        data: translatedZones,
+        total,
+        page: Number(page),
+        limit: Number(limit),
       },
-    ]);
-    sendResponse(res, zones, "All zones fetched successfully", STATUS_CODES.OK);
+      "Zones fetched successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
 };
 
-export const getZoneDetails = async (
+
+// GET Zone by ID with Locale-based Translations
+export const getZoneById = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const zoneId = new mongoose.Types.ObjectId(req.params.id);
+    const { id } = req.params;
+    const locale = req.headers["locale"]?.toString() || "en";
 
-    const zone = await Zone.aggregate([
-      {
-        $match: { _id: zoneId },
-      },
-      {
-        $lookup: {
-          from: "categories",
-          localField: "_id",
-          foreignField: "zoneId",
-          as: "categories",
-        },
-      },
-    ]);
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      sendResponse(res, null, "Invalid Zone ID", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
 
-    if (!zone || zone.length === 0) {
+    const zone = await Zone.findById(id).lean();
+
+    if (!zone) {
       sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    sendResponse(
-      res,
-      zone[0],
-      "Zone details fetched successfully",
-      STATUS_CODES.OK
-    );
+    if (locale !== "en" && zone.languages) {
+      const lang = zone.languages.find((l) => l.locale === locale);
+      if (lang) {
+        if (lang.translations.name) zone.name = lang.translations.name;
+        if (lang.translations.adminNotes)
+          zone.adminNotes = lang.translations.adminNotes;
+      }
+    }
+
+    sendResponse(res, zone, "Zone details fetched successfully", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }

@@ -1,9 +1,19 @@
-// models/field.model.ts
+// ✅ CHANGES MADE IN THIS FILE
+// FILE: models/field.model.ts
 import { Schema, model, Document } from "mongoose";
+
+interface ILanguageTranslation {
+  locale: string;
+  translations: {
+    name?: string;
+    label?: string;
+    placeholder?: string;
+  };
+}
 
 interface IField extends Document {
   name: string;
-  type?: string; 
+  type?: string;
   placeholder?: string;
   label?: string;
   isMultiple?: boolean;
@@ -19,9 +29,10 @@ interface IField extends Document {
     min?: number;
     max?: number;
   };
-     min?: number;
-    max?: number;
-  language: { type: String, default: "en" }, 
+  min?: number;
+  max?: number;
+  language?: string;
+  languages?: ILanguageTranslation[];
 }
 
 const FieldSchema = new Schema<IField>(
@@ -35,7 +46,7 @@ const FieldSchema = new Schema<IField>(
     order: { type: Number, default: 0 },
     tooltip: { type: String },
     visible: { type: Boolean, default: true },
-    defaultValue: { type: Schema.Types.Mixed }, // mixed because can be string/number/boolean
+    defaultValue: { type: Schema.Types.Mixed },
     readonly: { type: Boolean, default: false },
     validation: {
       required: { type: Boolean, default: false },
@@ -45,8 +56,17 @@ const FieldSchema = new Schema<IField>(
     },
     min: { type: Number },
     max: { type: Number },
-    language: { type: String, default: "en" }, 
-
+    language: { type: String, default: "en" },
+    languages: [
+      {
+        locale: { type: String, required: true },
+        translations: {
+          name: { type: String },
+          label: { type: String },
+          placeholder: { type: String },
+        },
+      },
+    ],
   },
   { timestamps: true }
 );

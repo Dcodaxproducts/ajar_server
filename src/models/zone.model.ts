@@ -1,5 +1,14 @@
 import mongoose, { Schema, Document } from "mongoose";
 
+interface IZoneLanguage {
+  locale: string;
+  translations: {
+    name?: string;
+    description?: string;
+    adminNotes?: string;
+  };
+}
+
 interface IZone extends Document {
   name: string;
   subCategoriesId: string; 
@@ -7,6 +16,7 @@ interface IZone extends Document {
   country: string; 
   timeZone: string;
   language: string;
+   languages?: IZoneLanguage[];
   radius: number;
   latLng: { lat: number; lng: number }[];
   thumbnail?: string;
@@ -27,6 +37,16 @@ const ZoneSchema = new Schema<IZone>(
     thumbnail: { type: String, default: "" },
     latLng: { type: [{ lat: Number, lng: Number }], default: [] },
     adminNotes: { type: String, trim: true },
+     languages: [
+      {
+        locale: { type: String, required: true },
+        translations: {
+          name: String,
+          description: String,
+          adminNotes: String,
+        },
+      },
+    ],
   },
   { timestamps: true }
 );
