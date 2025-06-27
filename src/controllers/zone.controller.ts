@@ -16,36 +16,50 @@ export const getAllZones = async (
 ): Promise<void> => {
   try {
     const { page = 1, limit = 10 } = req.query;
-    const locale = req.headers["locale"]?.toString() || "en";
+    const languageHeader = req.headers["language"];
+    const locale = languageHeader?.toString() || null;
 
-    const query = Zone.find().lean() as mongoose.Query<IZone[], IZone>;
-
-    const { data, total } = await paginateQuery<IZone>(query, {
+    const baseQuery = Zone.find();
+    const { data, total } = await paginateQuery(baseQuery, {
       page: Number(page),
       limit: Number(limit),
     });
 
-    const translatedZones = data.map((zone) => {
-      if (locale !== "en" && zone.languages) {
-        const lang = zone.languages.find((l) => l.locale === locale);
-        if (lang) {
-          if (lang.translations.name) zone.name = lang.translations.name;
-          if (lang.translations.adminNotes)
-            zone.adminNotes = lang.translations.adminNotes;
-        }
-      }
-      return zone;
-    });
+    let filteredData = data;
+
+    if (locale) {
+      filteredData = data
+        .filter((zone: any) =>
+          zone.languages?.some((lang: any) => lang.locale === locale)
+        )
+        .map((zone: any) => {
+          const matchedLang = zone.languages.find(
+            (lang: any) => lang.locale === locale
+          );
+
+          const zoneObj = zone.toObject();
+
+          if (matchedLang && matchedLang.translations) {
+            zoneObj.name = matchedLang.translations.name || zoneObj.name;
+            zoneObj.adminNotes =
+              matchedLang.translations.adminNotes || zoneObj.adminNotes;
+          }
+
+          delete zoneObj.languages;
+
+          return zoneObj;
+        });
+    }
 
     sendResponse(
       res,
       {
-        data: translatedZones,
-        total,
+        zones: filteredData,
+        total: filteredData.length,
         page: Number(page),
         limit: Number(limit),
       },
-      "Zones fetched successfully",
+      `Zones fetched successfully${locale ? ` for locale: ${locale}` : ""}`,
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -54,15 +68,17 @@ export const getAllZones = async (
 };
 
 
+
 // GET Zone by ID with Locale-based Translations
-export const getZoneById = async (
+export const getZoneDetails = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const locale = req.headers["locale"]?.toString() || "en";
+    const languageHeader = req.headers["language"];
+    const locale = languageHeader?.toString() || null;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid Zone ID", STATUS_CODES.BAD_REQUEST);
@@ -76,12 +92,34 @@ export const getZoneById = async (
       return;
     }
 
-    if (locale !== "en" && zone.languages) {
-      const lang = zone.languages.find((l) => l.locale === locale);
-      if (lang) {
-        if (lang.translations.name) zone.name = lang.translations.name;
-        if (lang.translations.adminNotes)
-          zone.adminNotes = lang.translations.adminNotes;
+    if (locale) {
+      const matchedLang = zone.languages?.find(
+        (lang: any) => lang.locale === locale
+      );
+
+      if (matchedLang) {
+        const translatedZone = {
+          ...zone,
+          ...matchedLang.translations,
+        };
+
+        delete translatedZone.languages;
+
+        sendResponse(
+          res,
+          translatedZone,
+          `Zone details fetched successfully for locale: ${locale}`,
+          STATUS_CODES.OK
+        );
+        return;
+      } else {
+        sendResponse(
+          res,
+          null,
+          `No translations found for locale: ${locale}`,
+          STATUS_CODES.NOT_FOUND
+        );
+        return;
       }
     }
 
@@ -90,6 +128,8 @@ export const getZoneById = async (
     next(error);
   }
 };
+
+
 
 export const createZone = async (
   req: Request,

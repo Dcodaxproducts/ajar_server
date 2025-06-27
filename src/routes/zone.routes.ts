@@ -5,7 +5,7 @@ import {
   createZone,
   deleteZone,
   getAllZones,
-  getZoneById,
+  getZoneDetails,
   updateZone,
   updateZoneThumbnail,
 } from "../controllers/zone.controller";
@@ -17,7 +17,7 @@ import { Zone } from "../models/zone.model";
 const router = express.Router();
 
 router.get("/", getAllZones);
-router.get("/:id", getZoneById);
+router.get("/:id", getZoneDetails);
 router.post(
   "/",
   authMiddleware,
