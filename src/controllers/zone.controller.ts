@@ -19,7 +19,8 @@ export const getAllZones = async (
     const languageHeader = req.headers["language"];
     const locale = languageHeader?.toString() || null;
 
-    const baseQuery = Zone.find();
+    // const baseQuery = Zone.find();
+    const baseQuery = Zone.find().populate("subCategoriesId");
     const { data, total } = await paginateQuery(baseQuery, {
       page: Number(page),
       limit: Number(limit),
@@ -67,8 +68,6 @@ export const getAllZones = async (
   }
 };
 
-
-
 // GET Zone by ID with Locale-based Translations
 export const getZoneDetails = async (
   req: Request,
@@ -85,7 +84,8 @@ export const getZoneDetails = async (
       return;
     }
 
-    const zone = await Zone.findById(id).lean();
+    // const zone = await Zone.findById(id).lean();
+    const zone = await Zone.findById(id).populate("subCategoriesId").lean();
 
     if (!zone) {
       sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
@@ -123,13 +123,16 @@ export const getZoneDetails = async (
       }
     }
 
-    sendResponse(res, zone, "Zone details fetched successfully", STATUS_CODES.OK);
+    sendResponse(
+      res,
+      zone,
+      "Zone details fetched successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
 };
-
-
 
 export const createZone = async (
   req: Request,
@@ -155,17 +158,26 @@ export const createZone = async (
 
     let latLng;
     if (latLngRaw) {
-      latLng = typeof latLngRaw === "string" ? JSON.parse(latLngRaw) : latLngRaw;
+      latLng =
+        typeof latLngRaw === "string" ? JSON.parse(latLngRaw) : latLngRaw;
     }
 
     // Parse and validate subCategoriesId
     let subCategoriesId: string[] = [];
     if (rawSubCategoryIds) {
-      const parsedIds = typeof rawSubCategoryIds === "string" ? JSON.parse(rawSubCategoryIds) : rawSubCategoryIds;
+      const parsedIds =
+        typeof rawSubCategoryIds === "string"
+          ? JSON.parse(rawSubCategoryIds)
+          : rawSubCategoryIds;
 
       if (!Array.isArray(parsedIds)) {
         // return sendResponse(res, null, "subCategoriesId must be an array", STATUS_CODES.BAD_REQUEST);
-        sendResponse(res, null, "subCategoriesId must be an array", STATUS_CODES.BAD_REQUEST);
+        sendResponse(
+          res,
+          null,
+          "subCategoriesId must be an array",
+          STATUS_CODES.BAD_REQUEST
+        );
       }
 
       // Check if all IDs exist and are subCategories
@@ -175,15 +187,17 @@ export const createZone = async (
       }).select("_id");
 
       const validIds = validSubCategories.map((cat) => cat._id.toString());
-      const invalidIds = parsedIds.filter((id: string) => !validIds.includes(id));
+      const invalidIds = parsedIds.filter(
+        (id: string) => !validIds.includes(id)
+      );
 
       if (invalidIds.length > 0) {
         sendResponse(
-  res,
-  null,
-  `Invalid subCategoriesId(s): ${invalidIds.join(", ")}`,
-  STATUS_CODES.BAD_REQUEST
-);
+          res,
+          null,
+          `Invalid subCategoriesId(s): ${invalidIds.join(", ")}`,
+          STATUS_CODES.BAD_REQUEST
+        );
         // return sendResponse(
         //   res,
         //   null,
@@ -213,12 +227,16 @@ export const createZone = async (
 
     await newZone.save();
 
-    sendResponse(res, newZone, "Zone created successfully", STATUS_CODES.CREATED);
+    sendResponse(
+      res,
+      newZone,
+      "Zone created successfully",
+      STATUS_CODES.CREATED
+    );
   } catch (error) {
     next(error);
   }
 };
-
 
 export const updateZone = async (
   req: Request,
@@ -243,15 +261,8 @@ export const updateZone = async (
     }
 
     // Destructure fields from request body
-    const {
-      name,
-      country,
-      currency,
-      timeZone,
-      language,
-      status,
-      adminNotes,
-    } = req.body;
+    const { name, country, currency, timeZone, language, status, adminNotes } =
+      req.body;
 
     // Handle radius
     const radius = req.body.radius
@@ -300,11 +311,17 @@ export const updateZone = async (
     existingZone.latLng = latLng;
     existingZone.adminNotes = adminNotes || existingZone.adminNotes;
     existingZone.thumbnail = thumbnail;
-    existingZone.subCategoriesId = subCategoriesId || existingZone.subCategoriesId;
+    existingZone.subCategoriesId =
+      subCategoriesId || existingZone.subCategoriesId;
 
     await existingZone.save();
 
-    sendResponse(res, existingZone, "Zone updated successfully", STATUS_CODES.OK);
+    sendResponse(
+      res,
+      existingZone,
+      "Zone updated successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     if (req.file) {
       deleteFile(req.file.path);
@@ -312,7 +329,6 @@ export const updateZone = async (
     next(error);
   }
 };
-
 
 export const updateZoneThumbnail = async (
   req: Request,
