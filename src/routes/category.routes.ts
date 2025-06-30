@@ -11,6 +11,8 @@ import {
   updateCategory,
   updateCategoryThumbnail,
 } from "../controllers/category.controller";
+import { Category, SubCategory } from "../models/category.model";
+import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 
 const router = express.Router();
 
@@ -25,13 +27,24 @@ router.post(
   createNewCategory
 );
 
+
+// Utility to wrap async middlewares
+function asyncHandler(fn: any) {
+  return function (req: any, res: any, next: any) {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
+
+// PATCH: Translate specific fields to a locale
 router.patch(
   "/:id",
-  authMiddleware,
-  upload.single("thumbnail"),
-  // validateRequest({ body: categorySchema }),
+   upload.single("thumbnail"),
+  asyncHandler(languageTranslationMiddleware(Category)),
   updateCategory
 );
+
+
 
 router.patch(
   "/:id/thumbnail",

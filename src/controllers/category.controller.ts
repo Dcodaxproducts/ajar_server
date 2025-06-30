@@ -5,6 +5,7 @@ import { sendResponse } from "../utils/response";
 import mongoose from "mongoose";
 import path from "path";
 import deleteFile from "../utils/deleteFile";
+import { paginateQuery } from "../utils/paginate";
 
 //Get All Categories with Subcategories
 export const getAllCategories = async (
@@ -13,30 +14,87 @@ export const getAllCategories = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    // Get language from header 
     const language = req.headers["language"]?.toString() || "en";
+    const { page = 1, limit = 10 } = req.query;
 
-    const categories = await Category.find({
-      categoryType: "category",
-      language: language,
-    })
-      .populate({
-        path: "subcategories",
-        match: { language }, // filter subcategories by language as well
-      })
-      .lean();
+    const baseQuery = Category.find({ categoryType: "category" }).populate({
+      path: "subcategories",
+    });
+
+    const { data, total } = await paginateQuery(baseQuery, {
+      page: Number(page),
+      limit: Number(limit),
+    });
+
+    const translatedCategories = data.map((cat: any) => {
+      const categoryObj = cat.toObject();
+
+      // Find language match for category
+      const catLangMatch = categoryObj.languages?.find(
+        (lang: any) => lang.locale === language
+      );
+
+      // If language match exists, apply translation
+      if (catLangMatch?.translations) {
+        categoryObj.name = catLangMatch.translations.name || categoryObj.name;
+        categoryObj.description =
+          catLangMatch.translations.description || categoryObj.description;
+      }
+
+      // Process subcategories
+      if (Array.isArray(categoryObj.subcategories)) {
+        categoryObj.subcategories = categoryObj.subcategories.map(
+          (sub: any) => {
+            const subObj =
+              typeof sub.toObject === "function"
+                ? sub.toObject()
+                : JSON.parse(JSON.stringify(sub));
+
+            const subLangMatch = subObj.languages?.find(
+              (lang: any) => lang.locale === language
+            );
+
+            // If subcategory has the requested language, translate
+            if (subLangMatch?.translations) {
+              subObj.name = subLangMatch.translations.name || subObj.name;
+              subObj.description =
+                subLangMatch.translations.description || subObj.description;
+            }
+
+            delete subObj.languages;
+            return subObj;
+          }
+        );
+      }
+
+      // Remove category language if it wasn't matched to avoid showing wrong language
+      if (!catLangMatch?.translations) {
+        // Keep original name and description (default language), but remove other langs
+        delete categoryObj.languages;
+      } else {
+        delete categoryObj.languages;
+      }
+
+      return categoryObj;
+    });
 
     sendResponse(
       res,
-      categories,
-      "All categories fetched successfully",
+      {
+        categories: translatedCategories,
+        total,
+        page: Number(page),
+        limit: Number(limit),
+      },
+      `Categories fetched successfully${
+        language ? ` (locale: ${language})` : ""
+      }`,
       STATUS_CODES.OK
     );
   } catch (error) {
     next(error);
   }
 };
-
 
 //Get Category Details
 export const getCategoryDetails = async (
@@ -46,25 +104,62 @@ export const getCategoryDetails = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
+    const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
 
-    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid category ID", STATUS_CODES.BAD_REQUEST);
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      sendResponse(res, null, "Invalid Category ID", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     const category = await Category.findById(id)
-      .populate("subcategories")
-      .lean();
+      .populate<{ categoryId: ICategory }>("categoryId") //Properly typed populate
+      .lean()
+      .exec();
 
     if (!category) {
       sendResponse(res, null, "Category not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
+    const result: any = { ...category };
+
+    // Apply translation to current category
+    if (locale !== "en" && category.languages?.length) {
+      const lang = category.languages.find((l) => l.locale === locale);
+      if (lang?.translations) {
+        result.name = lang.translations.name || result.name;
+        result.description =
+          lang.translations.description || result.description;
+      }
+    }
+
+    delete result.languages;
+
+    // Apply translation to parent category if it exists
+    if (result.categoryId && typeof result.categoryId === "object") {
+      const parent = { ...result.categoryId };
+
+      if (parent.languages?.length) {
+        const parentLang = parent.languages.find(
+          (l: any) => l.locale === locale
+        );
+        if (parentLang?.translations) {
+          parent.name = parentLang.translations.name || parent.name;
+          parent.description =
+            parentLang.translations.description || parent.description;
+        }
+      }
+
+      delete parent.languages;
+      result.categoryId = parent;
+    }
+
     sendResponse(
       res,
-      category,
-      "Category details fetched successfully",
+      result,
+      `Category details fetched successfully${
+        locale !== "en" ? ` (${locale})` : ""
+      }`,
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -72,7 +167,6 @@ export const getCategoryDetails = async (
   }
 };
 
-//Create Category / SubCategory (with description, icon, image)
 export const createNewCategory = async (
   req: Request,
   res: Response,
@@ -86,7 +180,7 @@ export const createNewCategory = async (
       description,
       icon,
       thumbnail,
-       language = "en",
+      language = "en",
     } = req.body;
 
     const image = req.file ? `/uploads/${req.file.filename}` : undefined;
@@ -172,7 +266,8 @@ export const updateCategory = async (
 
     //Update fields
     existingCategory.name = name || existingCategory.name;
-    existingCategory.categoryId = parentCategoryId || existingCategory.categoryId;
+    existingCategory.categoryId =
+      parentCategoryId || existingCategory.categoryId;
     existingCategory.description = description || existingCategory.description;
     existingCategory.icon = icon || existingCategory.icon;
     existingCategory.thumbnail = thumbnail || existingCategory.thumbnail;
@@ -235,8 +330,6 @@ export const updateCategoryThumbnail = async (
   }
 };
 
-
-
 //Delete Category or Subcategory
 export const deleteCategory = async (
   req: Request,
@@ -264,7 +357,9 @@ export const deleteCategory = async (
     }
 
     // 🔥 Delete subcategories related to this category
-    const subcategories = await SubCategory.find({ categoryId: category._id }) as ICategory[];
+    const subcategories = (await SubCategory.find({
+      categoryId: category._id,
+    })) as ICategory[];
     for (const sub of subcategories) {
       // Delete each subcategory thumbnail
       if (sub.thumbnail) {
@@ -274,9 +369,13 @@ export const deleteCategory = async (
       await sub.deleteOne();
     }
 
-    sendResponse(res, category, "Category and related subcategories deleted successfully", STATUS_CODES.OK);
+    sendResponse(
+      res,
+      category,
+      "Category and related subcategories deleted successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
 };
-

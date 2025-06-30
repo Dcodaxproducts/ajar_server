@@ -1,6 +1,16 @@
 import mongoose, { Document, Schema } from "mongoose";
 import slugify from "slugify";
 
+
+interface ILanguageTranslation {
+  locale: string;
+  translations: {
+    name?: string;
+    description?: string;
+  };
+}
+
+
 // Interface updated: added description, icon, image
 interface ICategory extends Document {
   name: string;
@@ -12,6 +22,7 @@ interface ICategory extends Document {
   categoryType: "category" | "subCategory";
   categoryId?: mongoose.Types.ObjectId;
    language?: string;
+    languages?: ILanguageTranslation[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -33,6 +44,15 @@ const BaseCategorySchema = new Schema<ICategory>(
       default: "category",
     },
     categoryId: { type: Schema.Types.ObjectId, ref: "Category" },
+   languages: [
+      {
+        locale: { type: String, required: true },
+        translations: {
+          name: { type: String },
+          description: { type: String },
+        },
+      },
+    ],
   },
   { timestamps: true, discriminatorKey: "categoryType" }
 );
@@ -46,8 +66,8 @@ BaseCategorySchema.pre("validate", function (next) {
 });
 
 // Indexes (unchanged)
-BaseCategorySchema.index({ name: 1 }, { unique: true });
-BaseCategorySchema.index({ slug: 1 }, { unique: true });
+BaseCategorySchema.index({ name: 1 });
+BaseCategorySchema.index({ slug: 1 });
 
 // Virtual for subcategories (unchanged)
 BaseCategorySchema.virtual("subcategories", {
