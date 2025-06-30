@@ -5,6 +5,14 @@ export const zoneSchema = z.object({
     .string({ required_error: "Zone name is required" })
     .min(3, "Name must be at least 3 characters")
     .max(100),
+    subCategoriesId: z
+  .union([z.array(z.string()), z.string()])
+  .optional()
+  .transform((val) => {
+    if (typeof val === "string") return JSON.parse(val);
+    return val;
+  }),
+
   country: z
     .string({ required_error: "Country is required" })
     .min(2, "Country must be at least 2 characters"),
@@ -23,10 +31,15 @@ export const zoneSchema = z.object({
     .nonnegative("Radius cannot be negative")
     .optional()
     .default(0),
-  latlong: z
-    .array(z.number())
-    .length(2, "Latlong must contain exactly 2 coordinates (lat, long)")
-    .optional(),
-  status: z.enum(["active", "inactive"]).default("active"),
+  latLng: z
+  .array(
+    z.object({
+      lat: z.number(),
+      lng: z.number(),
+    })
+  )
+  .min(1)
+  .optional(),
+
   adminNotes: z.string().optional(),
 });

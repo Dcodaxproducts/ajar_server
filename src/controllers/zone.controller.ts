@@ -1,10 +1,12 @@
 import { Request, Response, NextFunction } from "express";
-import { Zone } from "../models/zone.model";
+import { IZone, Zone } from "../models/zone.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import mongoose from "mongoose";
 import deleteFile from "../utils/deleteFile";
 import path from "path";
+import { SubCategory } from "../models/category.model";
+import { paginateQuery } from "../utils/paginate";
 
 // Get All Zones
 export const getAllZones = async (
@@ -13,52 +15,117 @@ export const getAllZones = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const zones = await Zone.aggregate([
+    const { page = 1, limit = 10 } = req.query;
+    const languageHeader = req.headers["language"];
+    const locale = languageHeader?.toString() || null;
+
+    // const baseQuery = Zone.find();
+    const baseQuery = Zone.find().populate("subCategoriesId");
+    const { data, total } = await paginateQuery(baseQuery, {
+      page: Number(page),
+      limit: Number(limit),
+    });
+
+    let filteredData = data;
+
+    if (locale) {
+      filteredData = data
+        .filter((zone: any) =>
+          zone.languages?.some((lang: any) => lang.locale === locale)
+        )
+        .map((zone: any) => {
+          const matchedLang = zone.languages.find(
+            (lang: any) => lang.locale === locale
+          );
+
+          const zoneObj = zone.toObject();
+
+          if (matchedLang && matchedLang.translations) {
+            zoneObj.name = matchedLang.translations.name || zoneObj.name;
+            zoneObj.adminNotes =
+              matchedLang.translations.adminNotes || zoneObj.adminNotes;
+          }
+
+          delete zoneObj.languages;
+
+          return zoneObj;
+        });
+    }
+
+    sendResponse(
+      res,
       {
-        $lookup: {
-          from: "categories",
-          localField: "_id",
-          foreignField: "zoneId",
-          as: "categories",
-        },
+        zones: filteredData,
+        total: filteredData.length,
+        page: Number(page),
+        limit: Number(limit),
       },
-    ]);
-    sendResponse(res, zones, "All zones fetched successfully", STATUS_CODES.OK);
+      `Zones fetched successfully${locale ? ` for locale: ${locale}` : ""}`,
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
 };
 
+// GET Zone by ID with Locale-based Translations
 export const getZoneDetails = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const zoneId = new mongoose.Types.ObjectId(req.params.id);
+    const { id } = req.params;
+    const languageHeader = req.headers["language"];
+    const locale = languageHeader?.toString() || null;
 
-    const zone = await Zone.aggregate([
-      {
-        $match: { _id: zoneId },
-      },
-      {
-        $lookup: {
-          from: "categories",
-          localField: "_id",
-          foreignField: "zoneId",
-          as: "categories",
-        },
-      },
-    ]);
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      sendResponse(res, null, "Invalid Zone ID", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
 
-    if (!zone || zone.length === 0) {
+    // const zone = await Zone.findById(id).lean();
+    const zone = await Zone.findById(id).populate("subCategoriesId").lean();
+
+    if (!zone) {
       sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
+    if (locale) {
+      const matchedLang = zone.languages?.find(
+        (lang: any) => lang.locale === locale
+      );
+
+      if (matchedLang) {
+        const translatedZone = {
+          ...zone,
+          ...matchedLang.translations,
+        };
+
+        delete translatedZone.languages;
+
+        sendResponse(
+          res,
+          translatedZone,
+          `Zone details fetched successfully for locale: ${locale}`,
+          STATUS_CODES.OK
+        );
+        return;
+      } else {
+        sendResponse(
+          res,
+          null,
+          `No translations found for locale: ${locale}`,
+          STATUS_CODES.NOT_FOUND
+        );
+        return;
+      }
+    }
+
     sendResponse(
       res,
-      zone[0], // because aggregation returns an array
+      zone,
       "Zone details fetched successfully",
       STATUS_CODES.OK
     );
@@ -83,20 +150,63 @@ export const createZone = async (
       latLng: latLngRaw,
       adminNotes,
       status,
+      subCategoriesId: rawSubCategoryIds,
     } = req.body;
 
-    // Convert radius to number if needed
     const radius =
       typeof radiusRaw === "string" ? Number(radiusRaw) : radiusRaw;
 
-    // latLng should already be array, but if it's a string, parse it
-    let latLng: number[] | undefined = undefined;
+    let latLng;
     if (latLngRaw) {
-      if (typeof latLngRaw === "string") {
-        latLng = JSON.parse(latLngRaw);
-      } else {
-        latLng = latLngRaw;
+      latLng =
+        typeof latLngRaw === "string" ? JSON.parse(latLngRaw) : latLngRaw;
+    }
+
+    // Parse and validate subCategoriesId
+    let subCategoriesId: string[] = [];
+    if (rawSubCategoryIds) {
+      const parsedIds =
+        typeof rawSubCategoryIds === "string"
+          ? JSON.parse(rawSubCategoryIds)
+          : rawSubCategoryIds;
+
+      if (!Array.isArray(parsedIds)) {
+        // return sendResponse(res, null, "subCategoriesId must be an array", STATUS_CODES.BAD_REQUEST);
+        sendResponse(
+          res,
+          null,
+          "subCategoriesId must be an array",
+          STATUS_CODES.BAD_REQUEST
+        );
       }
+
+      // Check if all IDs exist and are subCategories
+      const validSubCategories = await SubCategory.find({
+        _id: { $in: parsedIds },
+        categoryType: "subCategory",
+      }).select("_id");
+
+      const validIds = validSubCategories.map((cat) => cat._id.toString());
+      const invalidIds = parsedIds.filter(
+        (id: string) => !validIds.includes(id)
+      );
+
+      if (invalidIds.length > 0) {
+        sendResponse(
+          res,
+          null,
+          `Invalid subCategoriesId(s): ${invalidIds.join(", ")}`,
+          STATUS_CODES.BAD_REQUEST
+        );
+        // return sendResponse(
+        //   res,
+        //   null,
+        //   `Invalid subCategoriesId(s): ${invalidIds.join(", ")}`,
+        //   STATUS_CODES.BAD_REQUEST
+        // );
+      }
+
+      subCategoriesId = validIds;
     }
 
     const thumbnail = req.file ? `/uploads/${req.file.filename}` : undefined;
@@ -112,6 +222,7 @@ export const createZone = async (
       thumbnail,
       adminNotes,
       status,
+      subCategoriesId,
     });
 
     await newZone.save();
@@ -142,7 +253,6 @@ export const updateZone = async (
   try {
     const existingZone = await Zone.findById(zoneId);
     if (!existingZone) {
-      // Remove uploaded file if any because zone doesn't exist
       if (req.file) {
         deleteFile(req.file.path);
       }
@@ -150,15 +260,17 @@ export const updateZone = async (
       return;
     }
 
-    // Parse and preprocess fields
+    // Destructure fields from request body
     const { name, country, currency, timeZone, language, status, adminNotes } =
       req.body;
 
+    // Handle radius
     const radius = req.body.radius
       ? Number(req.body.radius)
       : existingZone.radius;
-    let latLng;
 
+    // Handle latLng
+    let latLng;
     if (req.body.latLng) {
       try {
         latLng = JSON.parse(req.body.latLng);
@@ -169,9 +281,18 @@ export const updateZone = async (
       latLng = existingZone.latLng;
     }
 
-    let thumbnail = existingZone.thumbnail;
+    // Handle subCategoriesId (parse if stringified)
+    let subCategoriesId = req.body.subCategoriesId;
+    if (typeof subCategoriesId === "string") {
+      try {
+        subCategoriesId = JSON.parse(subCategoriesId);
+      } catch {
+        subCategoriesId = existingZone.subCategoriesId;
+      }
+    }
 
-    // If new thumbnail uploaded, delete old file and update
+    // Handle thumbnail
+    let thumbnail = existingZone.thumbnail;
     if (req.file) {
       if (existingZone.thumbnail) {
         const oldFilePath = path.join(process.cwd(), existingZone.thumbnail);
@@ -180,8 +301,9 @@ export const updateZone = async (
       thumbnail = `/uploads/${req.file.filename}`;
     }
 
-    // Update zone
+    // Update fields
     existingZone.name = name || existingZone.name;
+    existingZone.country = country || existingZone.country;
     existingZone.currency = currency || existingZone.currency;
     existingZone.timeZone = timeZone || existingZone.timeZone;
     existingZone.language = language || existingZone.language;
@@ -189,6 +311,8 @@ export const updateZone = async (
     existingZone.latLng = latLng;
     existingZone.adminNotes = adminNotes || existingZone.adminNotes;
     existingZone.thumbnail = thumbnail;
+    existingZone.subCategoriesId =
+      subCategoriesId || existingZone.subCategoriesId;
 
     await existingZone.save();
 
@@ -199,7 +323,6 @@ export const updateZone = async (
       STATUS_CODES.OK
     );
   } catch (error) {
-    // If error and new file was uploaded, delete it to prevent orphan files
     if (req.file) {
       deleteFile(req.file.path);
     }

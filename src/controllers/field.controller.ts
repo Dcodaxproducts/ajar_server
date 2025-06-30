@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import { Field } from "../models/field.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
+import { getLanguage } from "../utils/getLanguage";
+import { paginateQuery } from "../utils/paginate";
 
 // GET all fields
 export const getAllFields = async (
@@ -11,25 +13,62 @@ export const getAllFields = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    let query: any = {};
-    const { zoneId } = req.query;
+    const { page = 1, limit = 10 } = req.query;
+    const languageHeader = req.headers["language"];
+    const locale = languageHeader?.toString() || null;
 
-    if (zoneId && mongoose.Types.ObjectId.isValid(zoneId as string)) {
-      query.zoneId = zoneId;
+    const baseQuery = Field.find();
+    const { data, total } = await paginateQuery(baseQuery, {
+      page: Number(page),
+      limit: Number(limit),
+    });
+
+    let filteredData = data;
+
+    if (locale) {
+      filteredData = data
+        .filter((field: any) =>
+          field.languages?.some((lang: any) => lang.locale === locale)
+        )
+        .map((field: any) => {
+          const matchedLang = field.languages.find(
+            (lang: any) => lang.locale === locale
+          );
+
+          const fieldObj = field.toObject();
+
+          // Merge translation values to root level and remove original English
+          if (matchedLang && matchedLang.translations) {
+            fieldObj.name = matchedLang.translations.name || fieldObj.name;
+            fieldObj.label = matchedLang.translations.label || fieldObj.label;
+            fieldObj.placeholder =
+              matchedLang.translations.placeholder || fieldObj.placeholder;
+          }
+
+          // Remove languages array to avoid duplication
+          delete fieldObj.languages;
+
+          return fieldObj;
+        });
     }
-
-    const fields = await Field.find(query).lean();
 
     sendResponse(
       res,
-      fields,
-      "All fields fetched successfully",
+      {
+        fields: filteredData,
+        total: filteredData.length,
+        page: Number(page),
+        limit: Number(limit),
+      },
+      `Fields fetched successfully${locale ? ` for locale: ${locale}` : ""}`,
       STATUS_CODES.OK
     );
   } catch (error) {
     next(error);
   }
 };
+
+
 
 // GET field by ID
 export const getFieldDetails = async (
@@ -39,6 +78,8 @@ export const getFieldDetails = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
+    const languageHeader = req.headers["language"];
+    const locale = languageHeader?.toString() || null;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid Field ID", STATUS_CODES.BAD_REQUEST);
@@ -52,6 +93,42 @@ export const getFieldDetails = async (
       return;
     }
 
+    if (locale) {
+      const matchedLang = field.languages?.find(
+        (lang: any) => lang.locale === locale
+      );
+
+      if (matchedLang) {
+        // Include translations directly in root and remove base values
+        const { translations } = matchedLang;
+
+        const translatedField = {
+          ...field,
+          ...translations, // override name, label, placeholder if they exist in translations
+        };
+
+        delete translatedField.languages; // remove languages array from output
+
+        sendResponse(
+          res,
+          translatedField,
+          `Field details fetched successfully for locale: ${locale}`,
+          STATUS_CODES.OK
+        );
+        return;
+      } else {
+        // Locale provided but not found
+        sendResponse(
+          res,
+          null,
+          `No translations found for locale: ${locale}`,
+          STATUS_CODES.NOT_FOUND
+        );
+        return;
+      }
+    }
+
+    // No locale provided — return base English field
     sendResponse(
       res,
       field,
@@ -63,6 +140,7 @@ export const getFieldDetails = async (
   }
 };
 
+
 // CREATE new field
 export const createNewField = async (
   req: Request,
@@ -71,7 +149,7 @@ export const createNewField = async (
 ): Promise<void> => {
   try {
     const fieldData = req.body;
-
+     
     const newField = new Field(fieldData);
     await newField.save();
 
@@ -94,32 +172,39 @@ export const updateField = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const updatedData = req.body;
+    const updates = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid Field ID", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    const updatedField = await Field.findByIdAndUpdate(id, updatedData, {
-      new: true,
-    });
+    // Ensure only defined fields are updated
+    const sanitizedUpdates: any = {};
+    for (const key in updates) {
+      if (updates[key] !== undefined) {
+        sanitizedUpdates[key] = updates[key];
+      }
+    }
+
+    // Step 1: Update the field
+    await Field.findByIdAndUpdate(id, sanitizedUpdates, { new: true });
+
+    // Step 2: Re-fetch updated field to include middleware changes
+    const updatedField = await Field.findById(id).lean(false);
 
     if (!updatedField) {
       sendResponse(res, null, "Field not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    sendResponse(
-      res,
-      updatedField,
-      "Field updated successfully",
-      STATUS_CODES.OK
-    );
+    sendResponse(res, updatedField, "Field updated successfully", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
 };
+
+
 
 // DELETE field
 export const deleteField = async (

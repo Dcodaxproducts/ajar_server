@@ -3,7 +3,7 @@ import { config } from "./env";
 
 export const connectDB = async () => {
   try {
-    const connection = await mongoose.connect(config.MONGO_URI);
+    const connection = await mongoose.connect(config.MONGO_URI!);
     console.log(
       "✅ MongoDB Connected to ...",
       connection.connection.host,

@@ -1,10 +1,19 @@
-// models/field.model.ts
+// ✅ CHANGES MADE IN THIS FILE
+// FILE: models/field.model.ts
 import { Schema, model, Document } from "mongoose";
+
+interface ILanguageTranslation {
+  locale: string;
+  translations: {
+    name?: string;
+    label?: string;
+    placeholder?: string;
+  };
+}
 
 interface IField extends Document {
   name: string;
-  type: string;
-  flutterType?: string;
+  type?: string;
   placeholder?: string;
   label?: string;
   isMultiple?: boolean;
@@ -14,20 +23,22 @@ interface IField extends Document {
   visible?: boolean;
   defaultValue?: string | number | boolean;
   readonly?: boolean;
-  dependencies?: Record<string, any>;
   validation?: {
     required: boolean;
     pattern?: string;
     min?: number;
     max?: number;
   };
+  min?: number;
+  max?: number;
+  language?: string;
+  languages?: ILanguageTranslation[];
 }
 
 const FieldSchema = new Schema<IField>(
   {
     name: { type: String, required: true },
     type: { type: String, required: true },
-    flutterType: { type: String, required: true },
     placeholder: { type: String, required: true },
     label: { type: String, required: true },
     isMultiple: { type: Boolean, default: false },
@@ -35,15 +46,27 @@ const FieldSchema = new Schema<IField>(
     order: { type: Number, default: 0 },
     tooltip: { type: String },
     visible: { type: Boolean, default: true },
-    defaultValue: { type: Schema.Types.Mixed }, // mixed because can be string/number/boolean
+    defaultValue: { type: Schema.Types.Mixed },
     readonly: { type: Boolean, default: false },
-    dependencies: { type: Object },
     validation: {
       required: { type: Boolean, default: false },
       pattern: { type: String },
       min: { type: Number },
       max: { type: Number },
     },
+    min: { type: Number },
+    max: { type: Number },
+    language: { type: String, default: "en" },
+    languages: [
+      {
+        locale: { type: String, required: true },
+        translations: {
+          name: { type: String },
+          label: { type: String },
+          placeholder: { type: String },
+        },
+      },
+    ],
   },
   { timestamps: true }
 );
