@@ -183,7 +183,7 @@ export const createZone = async (
       // Check if all IDs exist and are subCategories
       const validSubCategories = await SubCategory.find({
         _id: { $in: parsedIds },
-        categoryType: "subCategory",
+        type: "subCategory",
       }).select("_id");
 
       const validIds = validSubCategories.map((cat) => cat._id.toString());
