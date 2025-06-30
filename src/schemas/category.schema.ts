@@ -9,7 +9,7 @@ export const categorySchema = z.object({
 
   status: z.enum(["active", "inactive"]).default("active"),
 
-  categoryType: z
+  type: z
     .enum(["category", "subCategory"], {
       required_error: "Category type is required",
     })
