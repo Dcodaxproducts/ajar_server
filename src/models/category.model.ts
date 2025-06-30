@@ -19,7 +19,7 @@ interface ICategory extends Document {
   icon?: string;          
   image?: string;         
   thumbnail?: string;     // optional, still supported if you prefer
-  categoryType: "category" | "subCategory";
+  type: "category" | "subCategory";
   categoryId?: mongoose.Types.ObjectId;
    language?: string;
     languages?: ILanguageTranslation[];
@@ -37,7 +37,7 @@ const BaseCategorySchema = new Schema<ICategory>(
     icon: { type: String, trim: true },       
     description: { type: String, trim: true },  
      language: { type: String, default: "en" },
-    categoryType: {
+    type: {
       type: String,
       required: true,
       enum: ["category", "subCategory"],
@@ -54,7 +54,7 @@ const BaseCategorySchema = new Schema<ICategory>(
       },
     ],
   },
-  { timestamps: true, discriminatorKey: "categoryType" }
+  { timestamps: true, discriminatorKey: "type" }
 );
 
 // Slug generator (unchanged)
