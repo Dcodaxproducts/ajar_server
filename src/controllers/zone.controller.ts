@@ -142,27 +142,20 @@ export const createZone = async (
   try {
     const {
       name,
-      country,
       currency,
       timeZone,
       language,
-      radius: radiusRaw,
-      latLng: latLngRaw,
-      adminNotes,
-      status,
+      polygons: rawPolygons,
+      languages,
       subCategoriesId: rawSubCategoryIds,
     } = req.body;
 
-    const radius =
-      typeof radiusRaw === "string" ? Number(radiusRaw) : radiusRaw;
-
-    let latLng;
-    if (latLngRaw) {
-      latLng =
-        typeof latLngRaw === "string" ? JSON.parse(latLngRaw) : latLngRaw;
+    let polygons;
+    if (rawPolygons) {
+      polygons =
+        typeof rawPolygons === "string" ? JSON.parse(rawPolygons) : rawPolygons;
     }
 
-    // Parse and validate subCategoriesId
     let subCategoriesId: string[] = [];
     if (rawSubCategoryIds) {
       const parsedIds =
@@ -171,19 +164,18 @@ export const createZone = async (
           : rawSubCategoryIds;
 
       if (!Array.isArray(parsedIds)) {
-        // return sendResponse(res, null, "subCategoriesId must be an array", STATUS_CODES.BAD_REQUEST);
         sendResponse(
           res,
           null,
           "subCategoriesId must be an array",
           STATUS_CODES.BAD_REQUEST
         );
+        return;
       }
 
-      // Check if all IDs exist and are subCategories
       const validSubCategories = await SubCategory.find({
         _id: { $in: parsedIds },
-        categoryType: "subCategory",
+        type: "subCategory",
       }).select("_id");
 
       const validIds = validSubCategories.map((cat) => cat._id.toString());
@@ -198,45 +190,30 @@ export const createZone = async (
           `Invalid subCategoriesId(s): ${invalidIds.join(", ")}`,
           STATUS_CODES.BAD_REQUEST
         );
-        // return sendResponse(
-        //   res,
-        //   null,
-        //   `Invalid subCategoriesId(s): ${invalidIds.join(", ")}`,
-        //   STATUS_CODES.BAD_REQUEST
-        // );
+        return;
       }
 
       subCategoriesId = validIds;
     }
 
-    const thumbnail = req.file ? `/uploads/${req.file.filename}` : undefined;
-
     const newZone = new Zone({
       name,
-      country,
       currency,
       timeZone,
       language,
-      radius,
-      latLng,
-      thumbnail,
-      adminNotes,
-      status,
+      polygons,
+      languages,
       subCategoriesId,
     });
 
     await newZone.save();
 
-    sendResponse(
-      res,
-      newZone,
-      "Zone created successfully",
-      STATUS_CODES.CREATED
-    );
+    sendResponse(res, newZone, "Zone created successfully", STATUS_CODES.CREATED);
   } catch (error) {
     next(error);
   }
 };
+
 
 export const updateZone = async (
   req: Request,
@@ -253,125 +230,81 @@ export const updateZone = async (
   try {
     const existingZone = await Zone.findById(zoneId);
     if (!existingZone) {
-      if (req.file) {
-        deleteFile(req.file.path);
-      }
       sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    // Destructure fields from request body
-    const { name, country, currency, timeZone, language, status, adminNotes } =
-      req.body;
+    const {
+      name,
+      currency,
+      language,
+      polygons: rawPolygons,
+      languages,
+      subCategoriesId: rawSubCategoryIds,
+    } = req.body;
 
-    // Handle radius
-    const radius = req.body.radius
-      ? Number(req.body.radius)
-      : existingZone.radius;
-
-    // Handle latLng
-    let latLng;
-    if (req.body.latLng) {
+    let polygons = existingZone.polygons;
+    if (rawPolygons) {
       try {
-        latLng = JSON.parse(req.body.latLng);
+        polygons =
+          typeof rawPolygons === "string"
+            ? JSON.parse(rawPolygons)
+            : rawPolygons;
       } catch {
-        latLng = existingZone.latLng;
+        polygons = existingZone.polygons;
       }
-    } else {
-      latLng = existingZone.latLng;
     }
 
-    // Handle subCategoriesId (parse if stringified)
-    let subCategoriesId = req.body.subCategoriesId;
-    if (typeof subCategoriesId === "string") {
+    let subCategoriesId = existingZone.subCategoriesId;
+    if (rawSubCategoryIds) {
       try {
-        subCategoriesId = JSON.parse(subCategoriesId);
+        const parsedIds =
+          typeof rawSubCategoryIds === "string"
+            ? JSON.parse(rawSubCategoryIds)
+            : rawSubCategoryIds;
+
+        const validSubCategories = await SubCategory.find({
+          _id: { $in: parsedIds },
+          type: "subCategory",
+        }).select("_id");
+
+        const validIds = validSubCategories.map((cat) => cat._id.toString());
+        const invalidIds = parsedIds.filter(
+          (id: string) => !validIds.includes(id)
+        );
+
+        if (invalidIds.length > 0) {
+          sendResponse(
+            res,
+            null,
+            `Invalid subCategoriesId(s): ${invalidIds.join(", ")}`,
+            STATUS_CODES.BAD_REQUEST
+          );
+          return;
+        }
+
+        subCategoriesId = validIds;
       } catch {
         subCategoriesId = existingZone.subCategoriesId;
       }
     }
 
-    // Handle thumbnail
-    let thumbnail = existingZone.thumbnail;
-    if (req.file) {
-      if (existingZone.thumbnail) {
-        const oldFilePath = path.join(process.cwd(), existingZone.thumbnail);
-        deleteFile(oldFilePath);
-      }
-      thumbnail = `/uploads/${req.file.filename}`;
-    }
-
-    // Update fields
     existingZone.name = name || existingZone.name;
-    existingZone.country = country || existingZone.country;
     existingZone.currency = currency || existingZone.currency;
-    existingZone.timeZone = timeZone || existingZone.timeZone;
     existingZone.language = language || existingZone.language;
-    existingZone.radius = radius;
-    existingZone.latLng = latLng;
-    existingZone.adminNotes = adminNotes || existingZone.adminNotes;
-    existingZone.thumbnail = thumbnail;
-    existingZone.subCategoriesId =
-      subCategoriesId || existingZone.subCategoriesId;
+    existingZone.polygons = polygons;
+    existingZone.languages = languages || existingZone.languages;
+    existingZone.subCategoriesId = subCategoriesId;
 
     await existingZone.save();
 
-    sendResponse(
-      res,
-      existingZone,
-      "Zone updated successfully",
-      STATUS_CODES.OK
-    );
+    sendResponse(res, existingZone, "Zone updated successfully", STATUS_CODES.OK);
   } catch (error) {
-    if (req.file) {
-      deleteFile(req.file.path);
-    }
     next(error);
   }
 };
 
-export const updateZoneThumbnail = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  const zoneId = req.params.id;
 
-  if (!mongoose.Types.ObjectId.isValid(zoneId)) {
-    if (req.file) deleteFile(req.file.path);
-    sendResponse(res, null, "Invalid Zone ID", STATUS_CODES.BAD_REQUEST);
-    return;
-  }
-
-  try {
-    const zone = await Zone.findById(zoneId);
-    if (!zone) {
-      if (req.file) deleteFile(req.file.path);
-      sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
-      return;
-    }
-
-    if (!req.file) {
-      sendResponse(res, null, "No file uploaded", STATUS_CODES.BAD_REQUEST);
-      return;
-    }
-
-    // Delete old thumbnail file if exists
-    if (zone.thumbnail) {
-      const oldFilePath = path.join(process.cwd(), zone.thumbnail);
-      deleteFile(oldFilePath);
-    }
-
-    zone.thumbnail = `/uploads/${req.file.filename}`;
-
-    await zone.save();
-
-    sendResponse(res, zone, "Thumbnail updated successfully", STATUS_CODES.OK);
-  } catch (error) {
-    if (req.file) deleteFile(req.file.path);
-    next(error);
-  }
-};
 
 export const deleteZone = async (
   req: Request,
@@ -393,10 +326,10 @@ export const deleteZone = async (
     }
 
     // Delete thumbnail file if exists
-    if (zone.thumbnail) {
-      const oldFilePath = path.join(process.cwd(), zone.thumbnail);
-      deleteFile(oldFilePath);
-    }
+    // if (zone.thumbnail) {
+    //   const oldFilePath = path.join(process.cwd(), zone.thumbnail);
+    //   deleteFile(oldFilePath);
+    // }
 
     sendResponse(res, zone, "Zone deleted successfully", STATUS_CODES.OK);
   } catch (error) {

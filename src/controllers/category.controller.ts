@@ -17,7 +17,7 @@ export const getAllCategories = async (
     const language = req.headers["language"]?.toString() || "en";
     const { page = 1, limit = 10 } = req.query;
 
-    const baseQuery = Category.find({ categoryType: "category" }).populate({
+    const baseQuery = Category.find({ type: "category" }).populate({
       path: "subcategories",
     });
 
@@ -175,7 +175,7 @@ export const createNewCategory = async (
   try {
     const {
       name,
-      categoryType,
+      type,
       categoryId,
       description,
       icon,
@@ -197,7 +197,7 @@ export const createNewCategory = async (
         thumbnail,
         image,
         language,
-        // categoryType: "subCategory",
+        // type: "subCategory",
       });
     } else {
       newCategory = new Category({
@@ -207,7 +207,7 @@ export const createNewCategory = async (
         thumbnail,
         image,
         language,
-        categoryType: "category",
+        type: "category",
       });
     }
 
