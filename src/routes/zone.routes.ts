@@ -7,7 +7,6 @@ import {
   getAllZones,
   getZoneDetails,
   updateZone,
-  updateZoneThumbnail,
 } from "../controllers/zone.controller";
 import { zoneSchema } from "../schemas/zone.schema";
 import upload from "../utils/multer";
@@ -48,15 +47,6 @@ router.patch(
   updateZone
 );
 
-
-
-
-router.patch(
-  "/:id/thumbnail",
-  authMiddleware,
-  upload.single("thumbnail"),
-  updateZoneThumbnail
-);
 
 router.delete("/:id", deleteZone);
 export default router;
