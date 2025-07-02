@@ -16,7 +16,7 @@ interface IZone extends Document {
   country: string; 
   timeZone: string;
   language: string;
-   languages?: IZoneLanguage[];
+  languages?: IZoneLanguage[];
   radius: number;
   latLng: { lat: number; lng: number }[];
   thumbnail?: string;
@@ -32,7 +32,7 @@ const ZoneSchema = new Schema<IZone>(
     currency: { type: String, required: true, trim: true },
     country: { type: String, required: true, trim: true },
     timeZone: { type: String, required: true, trim: true },
-     language: { type: String, default: "en" }, 
+    language: { type: String, default: "en" }, 
     radius: { type: Number, default: 0 },
     thumbnail: { type: String, default: "" },
     latLng: { type: [{ lat: Number, lng: Number }], default: [] },

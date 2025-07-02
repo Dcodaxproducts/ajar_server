@@ -4,6 +4,10 @@ import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { Field } from "../models/field.model";
 import mongoose from "mongoose";
+import { SubCategory } from "../models/category.model";
+import { IZone } from "../models/zone.model";
+import { ICategory } from "../models/category.model";
+
 
 export const createNewForm = async (
   req: Request,
@@ -11,52 +15,46 @@ export const createNewForm = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { title, for: forEntity, reference, fields } = req.body;
+    const { subCategoryId, zoneId, name, description, fieldsIds, language } = req.body;
 
-    console.log({ first: req.body });
-
-    const modelName = forEntity; // Assuming 'forEntity' is the intended model name
-    if (!mongoose.models[capitalize(modelName)]) {
-      sendResponse(
-        res,
-        null,
-        "Invalid model reference",
-        STATUS_CODES.BAD_REQUEST
-      );
+    // Validate ObjectIds
+    if (
+      !mongoose.Types.ObjectId.isValid(subCategoryId) ||
+      !mongoose.Types.ObjectId.isValid(zoneId) ||
+      !Array.isArray(fieldsIds) ||
+      !fieldsIds.every((id) => mongoose.Types.ObjectId.isValid(id))
+    ) {
+      sendResponse(res, null, "Invalid subCategoryId, zoneId or fieldsIds", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    const Model = mongoose.model(capitalize(modelName));
-    const exists = await Model.exists({ _id: reference });
-
-    if (!exists) {
-      sendResponse(res, null, `${modelName} not found`, STATUS_CODES.NOT_FOUND);
+    // Check SubCategory exists
+    const subCatExists = await SubCategory.findById(subCategoryId);
+    if (!subCatExists) {
+      sendResponse(res, null, "SubCategory not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    const refDetails = await Model.findById(reference);
-
-    if (!refDetails) {
-      sendResponse(res, null, `${modelName} not found`, STATUS_CODES.NOT_FOUND);
+    // Optional: Validate that all fieldIds actually exist
+    const validFields = await Field.find({ _id: { $in: fieldsIds } });
+    if (validFields.length !== fieldsIds.length) {
+      sendResponse(res, null, "One or more fieldIds are invalid", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    // insert multiple fields into database and get their ids
-    const insertedFields = await Field.insertMany(fields);
-    const fieldIds = insertedFields.map((field) => field._id);
-
-    const form = new Form({
-      title,
-      for: modelName,
-      reference,
-      fields: fieldIds,
+    const newForm = await Form.create({
+      subCategoryId,
+      zoneId,
+      name,
+      description,
+      language: language || "en",
+      fieldsIds,
     });
 
-    refDetails.form = form._id;
-    await refDetails.save();
+    const populatedForm = await Form.findById(newForm._id).populate("fieldsIds").populate("zoneId")
+  .populate("subCategoryId");
 
-    await form.save();
-    sendResponse(res, form, "Form created successfully", STATUS_CODES.CREATED);
+    sendResponse(res, populatedForm, "Form created successfully", STATUS_CODES.CREATED);
   } catch (error) {
     next(error);
   }
@@ -68,8 +66,67 @@ export const getAllForms = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const forms = await Form.find().lean();
-    sendResponse(res, forms, "All forms fetched successfully", STATUS_CODES.OK);
+    const lang = (req.query.language || "en").toString().toLowerCase();
+
+    const forms = await Form.find({
+      "languages.locale": lang
+    })
+      .populate("fieldsIds")
+      .populate("zoneId")
+      .populate("subCategoryId")
+      .lean();
+
+    const localizedForms = forms.map((form) => {
+      const formTranslation = form.languages?.find(
+        (entry) => entry.locale?.toLowerCase() === lang
+      );
+
+      const zone = form.zoneId as any;
+      const zoneTranslation = zone?.languages?.find(
+        (entry: any) => entry.locale?.toLowerCase() === lang
+      );
+      const localizedZone = zone
+        ? {
+            ...zone,
+            name: zoneTranslation?.translations?.name || zone.name,
+          }
+        : null;
+
+      const subCat = form.subCategoryId as any;
+      const subCatTranslation = subCat?.languages?.find(
+        (entry: any) => entry.locale?.toLowerCase() === lang
+      );
+      const localizedSubCategory = subCat
+        ? {
+            ...subCat,
+            name: subCatTranslation?.translations?.name || subCat.name,
+          }
+        : null;
+
+      const localizedFields = (form.fieldsIds as any[]).map((field) => {
+        const fieldTranslation = field?.languages?.find(
+          (entry: any) => entry.locale?.toLowerCase() === lang
+        );
+        return {
+          ...field,
+          name: fieldTranslation?.translations?.name || field.name,
+          label: fieldTranslation?.translations?.label || field.label,
+          placeholder: fieldTranslation?.translations?.placeholder || field.placeholder,
+        };
+      });
+
+      return {
+        _id: form._id,
+        name: formTranslation?.translations?.name || form.name,
+        description: formTranslation?.translations?.description || form.description,
+        fieldsIds: localizedFields,
+        zoneId: localizedZone,
+        subCategoryId: localizedSubCategory,
+        language: lang,
+      };
+    });
+
+    sendResponse(res, localizedForms, `Forms found for language: ${lang}`, STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -81,21 +138,112 @@ export const getFormDetails = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const form = await Form.findById(req.params.id).lean();
+    const lang = (req.headers["language"] || "en").toString().toLowerCase();
+
+    const form = await Form.findById(req.params.id)
+      .populate("fieldsIds")
+      .populate("zoneId")
+      .populate("subCategoryId")
+      .lean();
+
     if (!form) {
       sendResponse(res, null, "Form not found", STATUS_CODES.NOT_FOUND);
       return;
     }
+
+    const formTranslation = form.languages?.find(
+      (entry: any) => entry.locale?.toLowerCase() === lang
+    );
+
+    const translatedForm: any = {
+      ...form,
+      name: formTranslation?.translations?.name || form.name,
+      description: formTranslation?.translations?.description || form.description,
+    };
+
+    translatedForm.fieldsIds = (form.fieldsIds as any[]).map((field: any) => {
+      const fieldTranslation = field.languages?.find(
+        (entry: any) => entry.locale?.toLowerCase() === lang
+      );
+      return {
+        ...field,
+        name: fieldTranslation?.translations?.name || field.name,
+        label: fieldTranslation?.translations?.label || field.label,
+        placeholder: fieldTranslation?.translations?.placeholder || field.placeholder,
+      };
+    });
+
+    // 🛠 Zone safe-check
+    const zone = form.zoneId as any;
+    const zoneTranslation = zone?.languages?.find(
+      (entry: any) => entry.locale?.toLowerCase() === lang
+    );
+    translatedForm.zoneId = zone
+      ? {
+          ...zone,
+          name: zoneTranslation?.translations?.name || zone?.name || "",
+        }
+      : null;
+
+    // 🛠 SubCategory safe-check
+    const subCat = form.subCategoryId as any;
+    const subCatTranslation = subCat?.languages?.find(
+      (entry: any) => entry.locale?.toLowerCase() === lang
+    );
+    translatedForm.subCategoryId = subCat
+      ? {
+          ...subCat,
+          name: subCatTranslation?.translations?.name || subCat?.name || "",
+        }
+      : null;
+
     sendResponse(
       res,
-      form,
-      "Form details fetched successfully",
+      translatedForm,
+      `Form details fetched successfully for locale: ${lang}`,
       STATUS_CODES.OK
     );
   } catch (error) {
     next(error);
   }
 };
+
+
+// export const getFormDetails = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const lang = (req.headers["language"] || "en").toString().toLowerCase();
+
+//     const form = await Form.findById(req.params.id)
+//       .populate("fieldsIds")
+//       .populate("zoneId")
+//       .populate("subCategoryId")
+//       .lean();
+
+//     if (!form) {
+//       sendResponse(res, null, "Form not found", STATUS_CODES.NOT_FOUND);
+//       return;
+//     }
+
+//     const translation = form.languages?.find(
+//       (entry) => entry.locale.toLowerCase() === lang
+//     );
+
+//     const response = {
+//       ...form,
+//       name: translation?.translations.name || form.name,
+//       description: translation?.translations.description || form.description,
+//     };
+
+//     sendResponse(res, response, "Form details fetched successfully", STATUS_CODES.OK);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 
 export const deleteForm = async (
   req: Request,
