@@ -20,7 +20,7 @@ export const getAllZones = async (
     const locale = languageHeader?.toString() || null;
 
     // const baseQuery = Zone.find();
-    const baseQuery = Zone.find().populate("subCategoriesId");
+    const baseQuery = Zone.find().populate("subCategories");
     const { data, total } = await paginateQuery(baseQuery, {
       page: Number(page),
       limit: Number(limit),
@@ -85,7 +85,7 @@ export const getZoneDetails = async (
     }
 
     // const zone = await Zone.findById(id).lean();
-    const zone = await Zone.findById(id).populate("subCategoriesId").lean();
+    const zone = await Zone.findById(id).populate("subCategories").lean();
 
     if (!zone) {
       sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
@@ -134,6 +134,7 @@ export const getZoneDetails = async (
   }
 };
 
+//create zone
 export const createZone = async (
   req: Request,
   res: Response,
@@ -147,7 +148,7 @@ export const createZone = async (
       language,
       polygons: rawPolygons,
       languages,
-      subCategoriesId: rawSubCategoryIds,
+      subCategories: rawSubCategoryIds,
     } = req.body;
 
     let polygons;
@@ -156,7 +157,7 @@ export const createZone = async (
         typeof rawPolygons === "string" ? JSON.parse(rawPolygons) : rawPolygons;
     }
 
-    let subCategoriesId: string[] = [];
+    let subCategories: string[] = [];
     if (rawSubCategoryIds) {
       const parsedIds =
         typeof rawSubCategoryIds === "string"
@@ -167,7 +168,7 @@ export const createZone = async (
         sendResponse(
           res,
           null,
-          "subCategoriesId must be an array",
+          "subCategories must be an array",
           STATUS_CODES.BAD_REQUEST
         );
         return;
@@ -187,13 +188,13 @@ export const createZone = async (
         sendResponse(
           res,
           null,
-          `Invalid subCategoriesId(s): ${invalidIds.join(", ")}`,
+          `Invalid subCategories: ${invalidIds.join(", ")}`,
           STATUS_CODES.BAD_REQUEST
         );
         return;
       }
 
-      subCategoriesId = validIds;
+      subCategories = validIds;
     }
 
     const newZone = new Zone({
@@ -203,7 +204,7 @@ export const createZone = async (
       language,
       polygons,
       languages,
-      subCategoriesId,
+      subCategories,
     });
 
     await newZone.save();
@@ -214,7 +215,7 @@ export const createZone = async (
   }
 };
 
-
+//update zone
 export const updateZone = async (
   req: Request,
   res: Response,
@@ -240,7 +241,7 @@ export const updateZone = async (
       language,
       polygons: rawPolygons,
       languages,
-      subCategoriesId: rawSubCategoryIds,
+      subCategories: rawSubCategoryIds,
     } = req.body;
 
     let polygons = existingZone.polygons;
@@ -255,7 +256,7 @@ export const updateZone = async (
       }
     }
 
-    let subCategoriesId = existingZone.subCategoriesId;
+    let subCategories = existingZone.subCategories.map((id) => id.toString());
     if (rawSubCategoryIds) {
       try {
         const parsedIds =
@@ -283,9 +284,10 @@ export const updateZone = async (
           return;
         }
 
-        subCategoriesId = validIds;
+        subCategories = validIds;
       } catch {
-        subCategoriesId = existingZone.subCategoriesId;
+        // subCategories = existingZone.subCategories;
+        subCategories = existingZone.subCategories.map((id) => id.toString());
       }
     }
 
@@ -294,7 +296,7 @@ export const updateZone = async (
     existingZone.language = language || existingZone.language;
     existingZone.polygons = polygons;
     existingZone.languages = languages || existingZone.languages;
-    existingZone.subCategoriesId = subCategoriesId;
+    existingZone.subCategories = subCategories;
 
     await existingZone.save();
 
@@ -304,8 +306,7 @@ export const updateZone = async (
   }
 };
 
-
-
+//delete zone
 export const deleteZone = async (
   req: Request,
   res: Response,
@@ -324,12 +325,6 @@ export const deleteZone = async (
       sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
       return;
     }
-
-    // Delete thumbnail file if exists
-    // if (zone.thumbnail) {
-    //   const oldFilePath = path.join(process.cwd(), zone.thumbnail);
-    //   deleteFile(oldFilePath);
-    // }
 
     sendResponse(res, zone, "Zone deleted successfully", STATUS_CODES.OK);
   } catch (error) {

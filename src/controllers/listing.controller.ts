@@ -128,15 +128,6 @@ export const getAllListings = async (
       .populate("fields.field")
       .select("-__v -requiredDocs -formId -categoryId");
 
-    //   .populate({
-    //     path: "formId",
-    //     populate: {
-    //       path: "fields",
-    //       model: "Field",
-    //     },
-    //   });
-
-    // map and only show location and featurs fields , and make an array of all checkbox fields
 
     function getPrice(listing: any) {
       const {
