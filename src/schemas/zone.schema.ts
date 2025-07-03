@@ -6,7 +6,7 @@ export const zoneSchema = z.object({
     .min(3, "Name must be at least 3 characters")
     .max(100, "Name must not exceed 100 characters"),
 
-  subCategoriesId: z
+  subCategories: z
     .union([z.array(z.string()), z.string()])
     .optional()
     .transform((val) => {

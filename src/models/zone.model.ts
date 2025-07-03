@@ -9,7 +9,7 @@ interface IZoneLanguage {
 
 interface IZone extends Document {
   name: string;
-  subCategoriesId: string[]; 
+  subCategories: string[]; 
   currency: string; 
   language: string;
   languages?: IZoneLanguage[];
@@ -21,7 +21,7 @@ interface IZone extends Document {
 const ZoneSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
-    subCategoriesId: [{ type: mongoose.Schema.Types.ObjectId, ref: "SubCategory" }],
+    subCategories: [{ type: mongoose.Schema.Types.ObjectId, ref: "SubCategory" }],
     currency: { type: String, required: true, trim: true },
     language: { type: String, default: "en" }, 
     polygons: [{ type: [{ lat: Number, lng: Number }], default: [] }],
@@ -42,3 +42,4 @@ ZoneSchema.index({ name: 1 });
 const Zone = mongoose.model<IZone>("Zone", ZoneSchema);
 
 export { Zone, IZone };
+

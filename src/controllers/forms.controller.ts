@@ -15,44 +15,44 @@ export const createNewForm = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { subCategoryId, zoneId, name, description, fieldsIds, language } = req.body;
+    const { subCategory, zone, name, description, fields, language } = req.body;
 
     // Validate ObjectIds
     if (
-      !mongoose.Types.ObjectId.isValid(subCategoryId) ||
-      !mongoose.Types.ObjectId.isValid(zoneId) ||
-      !Array.isArray(fieldsIds) ||
-      !fieldsIds.every((id) => mongoose.Types.ObjectId.isValid(id))
+      !mongoose.Types.ObjectId.isValid(subCategory) ||
+      !mongoose.Types.ObjectId.isValid(zone) ||
+      !Array.isArray(fields) ||
+      !fields.every((id) => mongoose.Types.ObjectId.isValid(id))
     ) {
       sendResponse(res, null, "Invalid subCategoryId, zoneId or fieldsIds", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     // Check SubCategory exists
-    const subCatExists = await SubCategory.findById(subCategoryId);
+    const subCatExists = await SubCategory.findById(subCategory);
     if (!subCatExists) {
       sendResponse(res, null, "SubCategory not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
     // Optional: Validate that all fieldIds actually exist
-    const validFields = await Field.find({ _id: { $in: fieldsIds } });
-    if (validFields.length !== fieldsIds.length) {
+    const validFields = await Field.find({ _id: { $in: fields } });
+    if (validFields.length !== fields.length) {
       sendResponse(res, null, "One or more fieldIds are invalid", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     const newForm = await Form.create({
-      subCategoryId,
-      zoneId,
+      subCategory,
+      zone,
       name,
       description,
       language: language || "en",
-      fieldsIds,
+      fields,
     });
 
-    const populatedForm = await Form.findById(newForm._id).populate("fieldsIds").populate("zoneId")
-  .populate("subCategoryId");
+    const populatedForm = await Form.findById(newForm._id).populate("fields").populate("zone")
+  .populate("subCategory");
 
     sendResponse(res, populatedForm, "Form created successfully", STATUS_CODES.CREATED);
   } catch (error) {
@@ -68,12 +68,15 @@ export const getAllForms = async (
   try {
     const lang = (req.query.language || "en").toString().toLowerCase();
 
-    const forms = await Form.find({
-      "languages.locale": lang
-    })
-      .populate("fieldsIds")
-      .populate("zoneId")
-      .populate("subCategoryId")
+    const query =
+      lang === "en"
+        ? {} 
+        : { "languages.locale": lang }; 
+
+    const forms = await Form.find(query)
+      .populate("fields")
+      .populate("zone")
+      .populate("subCategory")
       .lean();
 
     const localizedForms = forms.map((form) => {
@@ -81,7 +84,7 @@ export const getAllForms = async (
         (entry) => entry.locale?.toLowerCase() === lang
       );
 
-      const zone = form.zoneId as any;
+      const zone = form.zone as any;
       const zoneTranslation = zone?.languages?.find(
         (entry: any) => entry.locale?.toLowerCase() === lang
       );
@@ -92,7 +95,7 @@ export const getAllForms = async (
           }
         : null;
 
-      const subCat = form.subCategoryId as any;
+      const subCat = form.subCategory as any;
       const subCatTranslation = subCat?.languages?.find(
         (entry: any) => entry.locale?.toLowerCase() === lang
       );
@@ -103,7 +106,7 @@ export const getAllForms = async (
           }
         : null;
 
-      const localizedFields = (form.fieldsIds as any[]).map((field) => {
+      const localizedFields = (form.fields as any[]).map((field) => {
         const fieldTranslation = field?.languages?.find(
           (entry: any) => entry.locale?.toLowerCase() === lang
         );
@@ -119,9 +122,9 @@ export const getAllForms = async (
         _id: form._id,
         name: formTranslation?.translations?.name || form.name,
         description: formTranslation?.translations?.description || form.description,
-        fieldsIds: localizedFields,
-        zoneId: localizedZone,
-        subCategoryId: localizedSubCategory,
+        fields: localizedFields,
+        zone: localizedZone,
+        subCategory: localizedSubCategory,
         language: lang,
       };
     });
@@ -131,7 +134,6 @@ export const getAllForms = async (
     next(error);
   }
 };
-
 export const getFormDetails = async (
   req: Request,
   res: Response,
@@ -141,9 +143,9 @@ export const getFormDetails = async (
     const lang = (req.headers["language"] || "en").toString().toLowerCase();
 
     const form = await Form.findById(req.params.id)
-      .populate("fieldsIds")
-      .populate("zoneId")
-      .populate("subCategoryId")
+      .populate("fields")
+      .populate("zone")
+      .populate("subCategory")
       .lean();
 
     if (!form) {
@@ -161,7 +163,7 @@ export const getFormDetails = async (
       description: formTranslation?.translations?.description || form.description,
     };
 
-    translatedForm.fieldsIds = (form.fieldsIds as any[]).map((field: any) => {
+    translatedForm.fields = (form.fields as any[]).map((field: any) => {
       const fieldTranslation = field.languages?.find(
         (entry: any) => entry.locale?.toLowerCase() === lang
       );
@@ -174,11 +176,11 @@ export const getFormDetails = async (
     });
 
     // 🛠 Zone safe-check
-    const zone = form.zoneId as any;
+    const zone = form.zone as any;
     const zoneTranslation = zone?.languages?.find(
       (entry: any) => entry.locale?.toLowerCase() === lang
     );
-    translatedForm.zoneId = zone
+    translatedForm.zone = zone
       ? {
           ...zone,
           name: zoneTranslation?.translations?.name || zone?.name || "",
@@ -186,11 +188,11 @@ export const getFormDetails = async (
       : null;
 
     // 🛠 SubCategory safe-check
-    const subCat = form.subCategoryId as any;
+    const subCat = form.subCategory as any;
     const subCatTranslation = subCat?.languages?.find(
       (entry: any) => entry.locale?.toLowerCase() === lang
     );
-    translatedForm.subCategoryId = subCat
+    translatedForm.subCategory = subCat
       ? {
           ...subCat,
           name: subCatTranslation?.translations?.name || subCat?.name || "",
@@ -215,29 +217,29 @@ export const getFormByZoneAndSubCategory = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { zoneId, subCategoryId } = req.query;
+    const { zone, subCategory } = req.query; // ✅ changed
     const lang = (req.query.language || "en").toString().toLowerCase();
 
-    if (!zoneId || !subCategoryId) {
-      sendResponse(res, null, "zoneId and subCategoryId are required", STATUS_CODES.BAD_REQUEST);
+    if (!zone || !subCategory) {
+      sendResponse(res, null, "zone and subCategory are required", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     if (
-      !mongoose.Types.ObjectId.isValid(zoneId.toString()) ||
-      !mongoose.Types.ObjectId.isValid(subCategoryId.toString())
+      !mongoose.Types.ObjectId.isValid(zone.toString()) ||
+      !mongoose.Types.ObjectId.isValid(subCategory.toString())
     ) {
-      sendResponse(res, null, "Invalid zoneId or subCategoryId", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, "Invalid zone or subCategory", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     const form = await Form.findOne({
-      zoneId,
-      subCategoryId,
+      zone,
+      subCategory,
     })
-      .populate("fieldsIds")
-      .populate("zoneId")
-      .populate("subCategoryId")
+      .populate("fields") // ✅ changed
+      .populate("zone")   // ✅ changed
+      .populate("subCategory") // ✅ changed
       .lean();
 
     if (!form) {
@@ -246,13 +248,13 @@ export const getFormByZoneAndSubCategory = async (
     }
 
     const formTranslation = form.languages?.find((entry: any) => entry.locale?.toLowerCase() === lang);
-    const zone = form.zoneId as any;
-    const zoneTranslation = zone?.languages?.find((entry: any) => entry.locale?.toLowerCase() === lang);
+    const zoneObj = form.zone as any;
+    const zoneTranslation = zoneObj?.languages?.find((entry: any) => entry.locale?.toLowerCase() === lang);
 
-    const subCat = form.subCategoryId as any;
+    const subCat = form.subCategory as any;
     const subCatTranslation = subCat?.languages?.find((entry: any) => entry.locale?.toLowerCase() === lang);
 
-    const localizedFields = (form.fieldsIds as any[]).map((field) => {
+    const localizedFields = (form.fields as any[]).map((field) => {
       const fieldTranslation = field?.languages?.find(
         (entry: any) => entry.locale?.toLowerCase() === lang
       );
@@ -269,12 +271,12 @@ export const getFormByZoneAndSubCategory = async (
       ...form,
       name: formTranslation?.translations?.name || form.name,
       description: formTranslation?.translations?.description || form.description,
-      fieldsIds: localizedFields,
-      zoneId: {
-        ...zone,
-        name: zoneTranslation?.translations?.name || zone.name,
+      fields: localizedFields, // ✅ changed
+      zone: {
+        ...zoneObj,
+        name: zoneTranslation?.translations?.name || zoneObj.name,
       },
-      subCategoryId: {
+      subCategory: {
         ...subCat,
         name: subCatTranslation?.translations?.name || subCat.name,
       },
@@ -286,8 +288,6 @@ export const getFormByZoneAndSubCategory = async (
     next(error);
   }
 };
-
-
 
 export const deleteForm = async (
   req: Request,
@@ -305,6 +305,7 @@ export const deleteForm = async (
     next(error);
   }
 };
+
 
 function capitalize(modelName: string): string {
   if (!modelName || typeof modelName !== "string") {
