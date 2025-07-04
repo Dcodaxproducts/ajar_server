@@ -41,11 +41,12 @@ export const languageTranslationMiddleware = (model: Model<any>) => {
 
       await doc.save();
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         message: `${model.modelName} translation saved`,
         data: doc,
       });
+      return;
     } catch (error) {
       next(error);
     }

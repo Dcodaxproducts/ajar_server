@@ -18,7 +18,7 @@ router.use("/payments", paymentRoutes);
 router.use("/zones", zoneRoutes);
 router.use("/categories", categoryRoutes);
 router.use("/forms", formRoutes);
-router.use("/listings", listingRoutes);
+router.use("/marketplace-listings", listingRoutes);
 router.use("/rent-service", routAService);
 router.use("/fields", fieldRoutes);
 router.use("/dropdowns", dropdownRoutes);
