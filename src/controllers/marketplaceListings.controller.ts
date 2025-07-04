@@ -21,15 +21,19 @@ export const createMarketplaceListing = async (
       price,
       language = "en",
       languages,
+     
     } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(form)) {
-      return sendResponse(res, null, "Invalid Form ID", STATUS_CODES.BAD_REQUEST);
+    // Don't parse fields, it's already an object
+    if (!Array.isArray(fields)) {
+      sendResponse(res, null, "`fields` must be an array", 400);
+      return;
     }
 
-    if (!Array.isArray(fields) || fields.length === 0) {
-      return sendResponse(res, null, "`fields` must be a non-empty array", STATUS_CODES.BAD_REQUEST);
-    }
+    // if (!Array.isArray(requiredDocuments)) {
+    //   sendResponse(res, null, "`requiredDocuments` must be an array", 400);
+    //   return;
+    // }
 
     const newListing = new MarketplaceListing({
       form,
@@ -40,15 +44,19 @@ export const createMarketplaceListing = async (
       price,
       language,
       languages,
+      // requiredDocuments
     });
 
     const saved = await newListing.save();
-    sendResponse(res, saved, "Marketplace listing created", STATUS_CODES.CREATED);
+
+    sendResponse(res, saved, "Marketplace listing created successfully", 201);
   } catch (err: any) {
-    console.error("create error:", err);
-    sendResponse(res, null, err.message || "Internal server error", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    console.error("Error creating listing:", err);
+    sendResponse(res, null, err.message || "Internal server error", 500);
   }
 };
+
+
 
 // READ LIST
 export const getAllMarketplaceListings = async (
@@ -102,12 +110,14 @@ export const getMarketplaceListingById = async (
     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
+      return;
     }
 
     const doc = await MarketplaceListing.findById(id).lean();
     if (!doc) {
-      return sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      return;
     }
 
     if (Array.isArray(doc.languages)) {
@@ -137,7 +147,8 @@ export const updateMarketplaceListing = async (
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
+      return;
     }
 
     const updated = await MarketplaceListing.findByIdAndUpdate(id, req.body, {
@@ -145,7 +156,8 @@ export const updateMarketplaceListing = async (
     });
 
     if (!updated) {
-      return sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      return;
     }
 
     sendResponse(res, updated, "Listing updated", STATUS_CODES.OK);
@@ -163,12 +175,14 @@ export const deleteMarketplaceListing = async (
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
+      return;
     }
 
     const deleted = await MarketplaceListing.findByIdAndDelete(id);
     if (!deleted) {
-      return sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      return;
     }
 
     sendResponse(res, deleted, "Listing deleted", STATUS_CODES.OK);

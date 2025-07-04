@@ -6,6 +6,9 @@ import { createMarketplaceListing, getAllMarketplaceListings,
   getMarketplaceListingById,
   updateMarketplaceListing,
   deleteMarketplaceListing,} from "../controllers/marketplaceListings.controller";
+import { MarketplaceListing } from "../models/marketplaceListings.Model";
+import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
+import upload from "../utils/multer";
 
 const router = express.Router();
 
@@ -19,10 +22,19 @@ router.post(
   createMarketplaceListing
 );
 
+
+// Utility to wrap async middlewares
+function asyncHandler(fn: any) {
+  return function (req: any, res: any, next: any) {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
+
 router.patch(
   "/:id",
-  authMiddleware,
-  validateRequest({ body: marketplaceListingSchema }),
+  upload.single("thumbnail"),
+   asyncHandler(languageTranslationMiddleware(MarketplaceListing)),
   updateMarketplaceListing
 );
 
