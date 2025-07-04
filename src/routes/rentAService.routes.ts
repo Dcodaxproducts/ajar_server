@@ -4,11 +4,11 @@ import { authMiddleware } from "../middlewares/auth.middleware";
 
 import upload from "../utils/multer";
 
-import {
-  createNewListing,
-  getAllListings,
-  getListingDetails,
-} from "../controllers/listing.controller";
+// import {
+//   createNewListing,
+//   getAllListings,
+//   getListingDetails,
+// } from "../controllers/listing.controller";
 import {
   createRentRequest,
   getAllRentRequests,
@@ -23,6 +23,6 @@ router.post(
   //   validateRequest({ body: categorySchema }),
   createRentRequest
 );
-router.get("/:id", getListingDetails);
+// router.get("/:id", getListingDetails);
 
 export default router;
