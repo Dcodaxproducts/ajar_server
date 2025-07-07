@@ -30,11 +30,6 @@ export const createMarketplaceListing = async (
       return;
     }
 
-    // if (!Array.isArray(requiredDocuments)) {
-    //   sendResponse(res, null, "`requiredDocuments` must be an array", 400);
-    //   return;
-    // }
-
     const newListing = new MarketplaceListing({
       form,
       fields,
@@ -44,7 +39,6 @@ export const createMarketplaceListing = async (
       price,
       language,
       languages,
-      // requiredDocuments
     });
 
     const saved = await newListing.save();
@@ -57,8 +51,7 @@ export const createMarketplaceListing = async (
 };
 
 
-
-// READ LIST
+//READ LIST (GET ALL)
 export const getAllMarketplaceListings = async (
   req: Request,
   res: Response,
@@ -68,7 +61,8 @@ export const getAllMarketplaceListings = async (
     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
     const { page = 1, limit = 10 } = req.query;
 
-    const baseQuery = MarketplaceListing.find();
+    const baseQuery = MarketplaceListing.find().populate("form");
+
     const { data, total } = await paginateQuery(baseQuery, {
       page: +page,
       limit: +limit,
@@ -76,15 +70,31 @@ export const getAllMarketplaceListings = async (
 
     const final = data.map((doc: any) => {
       const obj = doc.toObject();
-      const match = obj.languages?.find((l: any) => l.locale === locale);
-      if (match?.translations) {
-        obj.description = match.translations.description || obj.description;
+
+      // Translate listing content
+      const listingLang = obj.languages?.find((l: any) => l.locale === locale);
+      if (listingLang?.translations) {
+        obj.description = listingLang.translations.description || obj.description;
         obj.fields = obj.fields.map((f: any) => ({
           ...f,
-          name: match.translations.name || f.name,
+          name: listingLang.translations.name || f.name,
         }));
       }
       delete obj.languages;
+
+      // Convert form to any (cast to expected populated form object)
+      const formObj = obj.form as any;
+
+      // Translate form content
+      if (formObj && Array.isArray(formObj.languages)) {
+        const match = formObj.languages.find((l: any) => l.locale === locale);
+        if (match?.translations) {
+          formObj.name = match.translations.name || formObj.name;
+          formObj.description = match.translations.description || formObj.description;
+        }
+        delete formObj.languages;
+      }
+
       return obj;
     });
 
@@ -99,7 +109,8 @@ export const getAllMarketplaceListings = async (
   }
 };
 
-// READ ONE
+
+//READ ONE (GET BY ID)
 export const getMarketplaceListingById = async (
   req: Request,
   res: Response,
@@ -114,12 +125,16 @@ export const getMarketplaceListingById = async (
       return;
     }
 
-    const doc = await MarketplaceListing.findById(id).lean();
+    const doc = await MarketplaceListing.findById(id)
+      .populate("form")
+      .lean(); // lean returns plain object
+
     if (!doc) {
       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
+    // Translate listing content
     if (Array.isArray(doc.languages)) {
       const match = doc.languages.find((l: any) => l.locale === locale);
       if (match?.translations) {
@@ -130,13 +145,25 @@ export const getMarketplaceListingById = async (
         }));
       }
     }
-
     delete (doc as any).languages;
+
+    // Translate form content
+    const formObj = doc.form as any;
+    if (formObj && Array.isArray(formObj.languages)) {
+      const match = formObj.languages.find((l: any) => l.locale === locale);
+      if (match?.translations) {
+        formObj.name = match.translations.name || formObj.name;
+        formObj.description = match.translations.description || formObj.description;
+      }
+      delete formObj.languages;
+    }
+
     sendResponse(res, doc, "Listing fetched", STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }
 };
+
 
 // UPDATE
 export const updateMarketplaceListing = async (
