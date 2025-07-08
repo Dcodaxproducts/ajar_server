@@ -1,5 +1,5 @@
 import express from "express";
-import {  getAllBookings, getBookingById, deleteBooking, updateBooking, createBooking, getBookingsByUser, } from "../controllers/booking.controller";
+import {  getAllBookings, getBookingById, deleteBooking, updateBooking, createBooking, getBookingsByUser, getBookingsByUserIdForAdmin, } from "../controllers/booking.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { Booking } from "../models/booking.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
@@ -17,6 +17,7 @@ router.post("/", authMiddleware, asyncHandler(createBooking));
 router.get("/", asyncHandler(getAllBookings));
 router.get("/:id", getBookingById);
 
+router.get("/admin/user/:userId", authMiddleware, asyncHandler(getBookingsByUserIdForAdmin));
 
 router.get("/user/bookings", authMiddleware, asyncHandler(getBookingsByUser));
 
