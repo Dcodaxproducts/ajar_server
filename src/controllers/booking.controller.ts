@@ -48,7 +48,7 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
 };
 
 
-// GET ALL BOOKINGS (Admin)
+// GET ALL BOOKINGS (Admin) 
 export const getAllBookings = async (
   req: Request,
   res: Response,
@@ -75,6 +75,45 @@ export const getAllBookings = async (
         limit,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+// GET BOOKINGS BY USER ID (Admin)
+export const getBookingsByUserIdForAdmin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { userId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return sendResponse(res, null, "Invalid user ID", STATUS_CODES.BAD_REQUEST);
+    }
+
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+
+    const baseQuery = Booking.find({ userId })
+      .populate("marketplaceListingId")
+      .lean() as any;
+
+    const { data, total } = await paginateQuery(baseQuery, { page, limit });
+
+    return sendResponse(
+      res,
+      {
+        bookings: data,
+        total,
+        page,
+        limit,
+      },
+      "User bookings retrieved successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
