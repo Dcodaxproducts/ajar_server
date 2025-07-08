@@ -80,35 +80,6 @@ export const getAllBookings = async (
   }
 };
 
-// export const getAllBookings = async (req: Request, res: Response, next: NextFunction) => {
-//   try {
-//     const languageHeader = req.headers["language"];
-//     const locale =
-//       typeof languageHeader === "string"
-//         ? languageHeader.toLowerCase()
-//         : Array.isArray(languageHeader) && languageHeader.length > 0
-//         ? languageHeader[0].toLowerCase()
-//         : "en";
-
-//     const bookings = await Booking.find().populate("marketplaceListingId").lean();
-
-//     const translatedBookings = bookings.map((booking: any) => {
-//       if (Array.isArray(booking.languages)) {
-//         const match = booking.languages.find((l: any) => l.locale === locale);
-//         if (match?.translations) {
-//           booking.roomType = match.translations.roomType || booking.roomType;
-//           (booking as any).bookingNote = match.translations.bookingNote || (booking as any).bookingNote;
-//         }
-//       }
-//       delete booking.languages;
-//       return booking;
-//     });
-
-//     sendResponse(res, translatedBookings, `Fetched all bookings (locale: ${locale})`, STATUS_CODES.OK);
-//   } catch (err) {
-//     next(err);
-//   }
-// };
 
 // GET ONE
 export const getBookingById = async (req: Request, res: Response, next: NextFunction) => {
@@ -156,7 +127,7 @@ export const getBookingsByUser = async (
   next: NextFunction
 ) => {
   try {
-    const user = (req as any).user; // assumes authentication middleware sets this
+    const user = (req as any).user;
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
@@ -181,36 +152,6 @@ export const getBookingsByUser = async (
     next(error);
   }
 };
-
-// export const getBookingsByUser = async (req: Request, res: Response, next: NextFunction) => {
-//   try {
-//     const user = (req as any).user;
-//     const languageHeader = req.headers["language"];
-//     const locale =
-//       typeof languageHeader === "string"
-//         ? languageHeader.toLowerCase()
-//         : Array.isArray(languageHeader) && languageHeader.length > 0
-//         ? languageHeader[0].toLowerCase()
-//         : "en";
-
-//     const bookings = await Booking.find({ userId: user.id }).populate("marketplaceListingId").lean();
-
-//     const translatedBookings = bookings.map((booking) => {
-//       const b: any = booking;
-//       const match = b.languages?.find((l: any) => l.locale === locale);
-//       if (match?.translations) {
-//         b.roomType = match.translations.roomType || b.roomType;
-//         b.bookingNote = match.translations.bookingNote || b.bookingNote;
-//       }
-//       delete b.languages;
-//       return b;
-//     });
-
-//     sendResponse(res, translatedBookings, `Bookings for user ${user.id}`, STATUS_CODES.OK);
-//   } catch (err) {
-//     next(err);
-//   }
-// };
 
 // UPDATE
 export const updateBooking = async (req: Request, res: Response, next: NextFunction) => {
