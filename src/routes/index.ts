@@ -9,6 +9,7 @@ import routAService from "./rentAService.routes";
 import fieldRoutes from "./field.routes";
 import dropdownRoutes from "./dropdown.routes";
 import paymentRoutes from "./payment.routes";
+import bookingRoutes from "./booking.routes";
 
 const router = express.Router();
 
@@ -22,5 +23,6 @@ router.use("/marketplace-listings", marketplacelistingRoutes);
 router.use("/rent-service", routAService);
 router.use("/fields", fieldRoutes);
 router.use("/dropdowns", dropdownRoutes);
+router.use("/bookings", bookingRoutes);
 
 export default router;
