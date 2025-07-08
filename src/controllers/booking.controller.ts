@@ -47,7 +47,6 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
   }
 };
 
-
 // GET ALL BOOKINGS (Admin) 
 export const getAllBookings = async (
   req: Request,
@@ -79,7 +78,6 @@ export const getAllBookings = async (
     next(error);
   }
 };
-
 
 // GET BOOKINGS BY USER ID (Admin)
 export const getBookingsByUserIdForAdmin = async (
