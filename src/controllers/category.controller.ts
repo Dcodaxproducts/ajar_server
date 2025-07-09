@@ -26,6 +26,9 @@ export const getAllCategories = async (
       limit: Number(limit),
     });
 
+    const totalCategoriesOnly = await Category.countDocuments({ type: "category" });
+
+
     const translatedCategories = data.map((cat: any) => {
       const categoryObj = cat.toObject();
 
@@ -83,6 +86,7 @@ export const getAllCategories = async (
       {
         categories: translatedCategories,
         total,
+        totalCategories: totalCategoriesOnly,
         page: Number(page),
         limit: Number(limit),
       },
