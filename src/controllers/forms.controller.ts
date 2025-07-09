@@ -42,6 +42,8 @@ export const createNewForm = async (
       return;
     }
 
+    const { setting } = req.body
+
     const newForm = await Form.create({
       subCategory,
       zone,
@@ -49,6 +51,7 @@ export const createNewForm = async (
       description,
       language: language || "en",
       fields,
+      setting,
     });
 
     const populatedForm = await Form.findById(newForm._id).populate("fields").populate("zone")
@@ -217,7 +220,7 @@ export const getFormByZoneAndSubCategory = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { zone, subCategory } = req.query; // ✅ changed
+    const { zone, subCategory } = req.query; 
     const lang = (req.query.language || "en").toString().toLowerCase();
 
     if (!zone || !subCategory) {
@@ -237,9 +240,9 @@ export const getFormByZoneAndSubCategory = async (
       zone,
       subCategory,
     })
-      .populate("fields") // ✅ changed
-      .populate("zone")   // ✅ changed
-      .populate("subCategory") // ✅ changed
+      .populate("fields") 
+      .populate("zone")   
+      .populate("subCategory") 
       .lean();
 
     if (!form) {
@@ -271,7 +274,7 @@ export const getFormByZoneAndSubCategory = async (
       ...form,
       name: formTranslation?.translations?.name || form.name,
       description: formTranslation?.translations?.description || form.description,
-      fields: localizedFields, // ✅ changed
+      fields: localizedFields, 
       zone: {
         ...zoneObj,
         name: zoneTranslation?.translations?.name || zoneObj.name,
