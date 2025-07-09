@@ -3,7 +3,7 @@ import {
   addForm,
   createUser,
   forgotPassword,
-  getAllUsers,
+  getAllUsersWithStats,
   getUserDetails,
   loginUser,
   refreshToken,
@@ -62,6 +62,8 @@ router.post(
 );
 
 router.get("/details", authMiddleware, getUserDetails);
+
+router.get("/all", authMiddleware, getAllUsersWithStats);
 
 router.post("/form", addForm);
 

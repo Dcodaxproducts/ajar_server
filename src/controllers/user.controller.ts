@@ -362,10 +362,10 @@ export const resetPassword = async (
     next(error);
   }
 };
-
-// get all users
-
-export const getAllUsers = async (
+/**
+ * Get all users and user statistics in a single API.
+ */
+export const getAllUsersWithStats = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
@@ -378,7 +378,27 @@ export const getAllUsers = async (
     }
 
     const users = await User.find(filter).lean().select("email name role");
-    sendResponse(res, users, "Users fetched successfully", STATUS_CODES.OK);
+
+    // User statistics
+    const totalUsers = await User.countDocuments();
+    const totalAdmins = await User.countDocuments({ role: "admin" });
+    const totalNormalUsers = await User.countDocuments({ role: "user" });
+    const total = totalAdmins + totalNormalUsers;
+
+    sendResponse(
+      res,
+      {
+        users,
+        stats: {
+          totalUsers,
+          totalAdmins,
+          totalNormalUsers,
+          total,
+        },
+      },
+      "Users and statistics fetched successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
