@@ -39,6 +39,7 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
       language,
       languages,
       bookingNote,
+       status: "pending",
     });
 
     sendResponse(res, newBooking, "Booking created successfully", STATUS_CODES.CREATED);
@@ -57,8 +58,15 @@ export const getAllBookings = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
+     const status = req.query.status as "pending" | "accepted" | "rejected" | undefined;
+
+    const filter: any = {};
+    if (status && ["pending", "accepted", "rejected"].includes(status)) {
+      filter.status = status;
+    }
+
     // FIX: Remove `.lean()` from baseQuery
-    const baseQuery = Booking.find().populate("marketplaceListingId");
+    const baseQuery = Booking.find(filter).populate("marketplaceListingId");
 
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
 
@@ -77,7 +85,7 @@ export const getAllBookings = async (
       createdAt: { $gte: oneYearAgo, $lte: now },
     });
 
-    const allBookings = await Booking.find().lean(); 
+    const allBookings = await Booking.find(filter).lean(); 
 
     const totalEarning = allBookings.reduce((acc, booking) => {
       const price = booking.priceDetails?.totalPrice || 0;
@@ -87,7 +95,6 @@ export const getAllBookings = async (
 
     return sendResponse(res, {
       statusCode: STATUS_CODES.OK,
-      success: true,
       message: "Bookings retrieved successfully",
       data: {
         bookings: data,
@@ -336,6 +343,33 @@ export const deleteBooking = async (req: Request, res: Response, next: NextFunct
       return;
     }
     sendResponse(res, deleted, "Booking deleted", STATUS_CODES.OK);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateBookingStatus = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!["accepted", "rejected"].includes(status)) {
+      return sendResponse(res, null, "Invalid status", STATUS_CODES.BAD_REQUEST);
+    }
+
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+    }
+
+    booking.status = status as "accepted" | "rejected";
+    await booking.save();
+
+    sendResponse(res, booking, `Booking ${status} successfully`, STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }
