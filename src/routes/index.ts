@@ -4,11 +4,12 @@ import chatRoutes from "./chat.routes";
 import zoneRoutes from "./zone.routes";
 import categoryRoutes from "./category.routes";
 import formRoutes from "./forms.routes";
-import listingRoutes from "./listing.routes";
+import marketplacelistingRoutes from "./marketplaceListings.routes";
 import routAService from "./rentAService.routes";
 import fieldRoutes from "./field.routes";
 import dropdownRoutes from "./dropdown.routes";
 import paymentRoutes from "./payment.routes";
+import bookingRoutes from "./booking.routes";
 
 const router = express.Router();
 
@@ -18,9 +19,10 @@ router.use("/payments", paymentRoutes);
 router.use("/zones", zoneRoutes);
 router.use("/categories", categoryRoutes);
 router.use("/forms", formRoutes);
-router.use("/listings", listingRoutes);
+router.use("/marketplace-listings", marketplacelistingRoutes);
 router.use("/rent-service", routAService);
 router.use("/fields", fieldRoutes);
 router.use("/dropdowns", dropdownRoutes);
+router.use("/bookings", bookingRoutes);
 
 export default router;

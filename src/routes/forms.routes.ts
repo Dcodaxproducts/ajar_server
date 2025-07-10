@@ -1,11 +1,8 @@
 import express from "express";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
-import {
-  getAllCategories,
-  getCategoryDetails,
-} from "../controllers/category.controller";
-import { createNewForm, getAllForms, getFormDetails } from "../controllers/forms.controller";
+
+import { createNewForm, getAllForms, getFormDetails,getFormByZoneAndSubCategory,deleteForm } from "../controllers/forms.controller";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 import { Form } from "../models/form.model";
 
@@ -15,8 +12,12 @@ const router = express.Router();
 // Get all forms
 router.get("/", getAllForms);
 
+// routes/form.routes.ts
+router.get("/form", getFormByZoneAndSubCategory);
+
 // Get form by ID
 router.get("/:id", getFormDetails);
+
 
 // Create form
 router.post("/", authMiddleware, createNewForm);
@@ -32,7 +33,7 @@ function asyncHandler(fn: any) {
 router.patch("/:id", asyncHandler(languageTranslationMiddleware(Form)));
 
 // Delete form
-// router.delete("/:id", authMiddleware, deleteForm);
+router.delete("/:id", authMiddleware, deleteForm);
 
 
 export default router;

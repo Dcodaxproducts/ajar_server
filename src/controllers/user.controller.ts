@@ -15,6 +15,9 @@ import { createCustomer } from "../helpers/stripe-functions";
 import { redis } from "../utils/redis.client";
 import { generateZodSchema } from "../utils/generate-zod-schema";
 import { UserDocument } from "../models/userDocs.mode";
+import { Category } from "../models/category.model";
+import { Booking } from "../models/booking.model";
+import { MarketplaceListing } from "../models/marketplaceListings.Model";
 
 export const createUser = async (
   req: Request,
@@ -363,9 +366,9 @@ export const resetPassword = async (
   }
 };
 
-// get all users
-
-export const getAllUsers = async (
+// Get all users and user statistics in a single API.
+ 
+export const getAllUsersWithStats = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
@@ -378,7 +381,27 @@ export const getAllUsers = async (
     }
 
     const users = await User.find(filter).lean().select("email name role");
-    sendResponse(res, users, "Users fetched successfully", STATUS_CODES.OK);
+
+    // User statistics
+    const totalUsers = await User.countDocuments();
+    const totalAdmins = await User.countDocuments({ role: "admin" });
+    const totalNormalUsers = await User.countDocuments({ role: "user" });
+    const total = totalAdmins + totalNormalUsers;
+
+    sendResponse(
+      res,
+      {
+        users,
+        stats: {
+          totalUsers,
+          totalAdmins,
+          totalNormalUsers,
+          total,
+        },
+      },
+      "Users and statistics fetched successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
@@ -437,12 +460,75 @@ export const addForm = async (
 
     await form.save();
 
-    // const form = await Form.findById("67d7f95824a727c9f53263ec");
+  } catch (error) {
+    next(error);
+  }
+};
 
-    // if (!form) {
-    //   sendResponse(res, null, "Form not found", STATUS_CODES.NOT_FOUND);
-    //   return;
-    // }
+
+
+// GET DASHBOARD STATS (Admin)
+export const getDashboardStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const now = new Date();
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+    // --- User Stats ---
+    const [totalUsers, totalAdmins, totalNormalUsers] = await Promise.all([
+      User.countDocuments(),
+      User.countDocuments({ role: "admin" }),
+      User.countDocuments({ role: "user" }),
+    ]);
+
+    // --- Listing Stats ---
+    const [totalMarketplaceListings, uniqueUserIds] = await Promise.all([
+      MarketplaceListing.countDocuments(),
+      MarketplaceListing.distinct("user"),
+    ]);
+    const totalLeasers = uniqueUserIds.length;
+
+    // --- Category Stats ---
+    const totalCategories = await Category.countDocuments({ type: "category" });
+
+    // --- Booking Stats ---
+    const [monthlyBookings, yearlyBookings, allBookings] = await Promise.all([
+      Booking.countDocuments({ createdAt: { $gte: oneMonthAgo, $lte: now } }),
+      Booking.countDocuments({ createdAt: { $gte: oneYearAgo, $lte: now } }),
+      Booking.find().lean(),
+    ]);
+
+    const totalEarning = allBookings.reduce((acc, booking) => {
+      const price = booking.priceDetails?.totalPrice || 0;
+      const extension = booking.extensionCharges?.totalPrice || 0;
+      return acc + price + extension;
+    }, 0);
+
+    sendResponse(
+      res,
+      {
+        stats: {
+          totalUsers,
+          totalAdmins,
+          totalNormalUsers,
+          totalLeasers,
+          totalMarketplaceListings,
+          totalCategories,
+          monthlyBookings,
+          yearlyBookings,
+          totalEarning, 
+        },
+      },
+      "Dashboard statistics fetched successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }

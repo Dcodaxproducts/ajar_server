@@ -20,7 +20,7 @@ interface ICategory extends Document {
   image?: string;         
   thumbnail?: string;     // optional, still supported if you prefer
   type: "category" | "subCategory";
-  categoryId?: mongoose.Types.ObjectId;
+  category?: mongoose.Types.ObjectId;
    language?: string;
     languages?: ILanguageTranslation[];
   createdAt: Date;
@@ -43,7 +43,7 @@ const BaseCategorySchema = new Schema<ICategory>(
       enum: ["category", "subCategory"],
       default: "category",
     },
-    categoryId: { type: Schema.Types.ObjectId, ref: "Category" },
+    category: { type: Schema.Types.ObjectId, ref: "Category" },
    languages: [
       {
         locale: { type: String, required: true },
@@ -73,7 +73,7 @@ BaseCategorySchema.index({ slug: 1 });
 BaseCategorySchema.virtual("subcategories", {
   ref: "SubCategory",
   localField: "_id",
-  foreignField: "categoryId",
+  foreignField: "category",
 });
 
 BaseCategorySchema.set("toJSON", { virtuals: true });
