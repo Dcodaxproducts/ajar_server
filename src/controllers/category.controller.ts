@@ -26,6 +26,9 @@ export const getAllCategories = async (
       limit: Number(limit),
     });
 
+    const totalCategoriesOnly = await Category.countDocuments({ type: "category" });
+
+
     const translatedCategories = data.map((cat: any) => {
       const categoryObj = cat.toObject();
 
@@ -83,6 +86,7 @@ export const getAllCategories = async (
       {
         categories: translatedCategories,
         total,
+        totalCategories: totalCategoriesOnly,
         page: Number(page),
         limit: Number(limit),
       },
@@ -112,7 +116,7 @@ export const getCategoryDetails = async (
     }
 
     const category = await Category.findById(id)
-      .populate<{ categoryId: ICategory }>("categoryId") //Properly typed populate
+      .populate<{ category: ICategory }>("category") //Properly typed populate
       .lean()
       .exec();
 
@@ -136,8 +140,8 @@ export const getCategoryDetails = async (
     delete result.languages;
 
     // Apply translation to parent category if it exists
-    if (result.categoryId && typeof result.categoryId === "object") {
-      const parent = { ...result.categoryId };
+    if (result.category && typeof result.category === "object") {
+      const parent = { ...result.category };
 
       if (parent.languages?.length) {
         const parentLang = parent.languages.find(
@@ -151,7 +155,7 @@ export const getCategoryDetails = async (
       }
 
       delete parent.languages;
-      result.categoryId = parent;
+      result.category = parent;
     }
 
     sendResponse(
@@ -176,7 +180,7 @@ export const createNewCategory = async (
     const {
       name,
       type,
-      categoryId,
+      category,
       description,
       icon,
       thumbnail,
@@ -188,10 +192,10 @@ export const createNewCategory = async (
     let newCategory;
 
     // If categoryId is passed, treat it as a SubCategory
-    if (categoryId) {
+    if (category) {
       newCategory = new SubCategory({
         name,
-        categoryId,
+        category,
         description,
         icon,
         thumbnail,
@@ -216,7 +220,7 @@ export const createNewCategory = async (
     sendResponse(
       res,
       newCategory,
-      categoryId
+      category
         ? "Subcategory created successfully"
         : "Category created successfully",
       STATUS_CODES.CREATED
@@ -249,7 +253,7 @@ export const updateCategory = async (
 
     const {
       name,
-      categoryId: parentCategoryId,
+      category: parentCategoryId,
       description,
       icon,
       thumbnail,
@@ -266,8 +270,7 @@ export const updateCategory = async (
 
     //Update fields
     existingCategory.name = name || existingCategory.name;
-    existingCategory.categoryId =
-      parentCategoryId || existingCategory.categoryId;
+    existingCategory.category = parentCategoryId || existingCategory.category;
     existingCategory.description = description || existingCategory.description;
     existingCategory.icon = icon || existingCategory.icon;
     existingCategory.thumbnail = thumbnail || existingCategory.thumbnail;
@@ -356,9 +359,9 @@ export const deleteCategory = async (
       deleteFile(filePath);
     }
 
-    // 🔥 Delete subcategories related to this category
+    //Delete subcategories related to this category
     const subcategories = (await SubCategory.find({
-      categoryId: category._id,
+      category: category._id,
     })) as ICategory[];
     for (const sub of subcategories) {
       // Delete each subcategory thumbnail

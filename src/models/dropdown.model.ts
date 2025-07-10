@@ -3,12 +3,11 @@ import mongoose, { Document, Schema } from "mongoose";
 interface IDropdownValue {
   name: string;
   value: string;
-  // category?: string; // optional for now
 }
 
 interface IDropdown extends Document {
-  name: string; // Dropdown key name (ex: professions, inputTypes etc.)
-  values: IDropdownValue[]; // Array of value-name pairs
+  name: string; 
+  values: IDropdownValue[]; 
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,10 +16,9 @@ const DropdownValueSchema = new Schema<IDropdownValue>(
   {
     name: { type: String, required: true },
     value: { type: String, required: true },
-    // category: { type: String, default: null },
   },
   { _id: false }
-); // ⚠ important: disable _id for subdocuments to avoid unnecessary id creation
+); 
 
 const DropdownSchema = new Schema<IDropdown>(
   {
@@ -40,7 +38,6 @@ const DropdownSchema = new Schema<IDropdown>(
   { timestamps: true }
 );
 
-// delete models.Dropdown;
 
 const Dropdown = mongoose.model<IDropdown>("Dropdown", DropdownSchema);
 export { Dropdown, IDropdown };

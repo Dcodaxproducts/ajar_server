@@ -15,7 +15,7 @@ export const categorySchema = z.object({
     })
     .default("category"),
 
-  categoryId: z
+  category: z
     .string()
     .optional()
     .refine((val) => !val || mongoose.Types.ObjectId.isValid(val), {

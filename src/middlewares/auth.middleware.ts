@@ -3,7 +3,7 @@ import { STATUS_CODES } from "../config/constants";
 import { sendResponse } from "../utils/response";
 import { verifyAccessToken } from "../utils/jwt.utils";
 
-interface AuthRequest extends Request {
+export interface AuthRequest extends Request {
   user?: { id: string };
 }
 

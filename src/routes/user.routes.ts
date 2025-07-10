@@ -3,7 +3,8 @@ import {
   addForm,
   createUser,
   forgotPassword,
-  getAllUsers,
+  getAllUsersWithStats,
+  getDashboardStats,
   getUserDetails,
   loginUser,
   refreshToken,
@@ -63,6 +64,8 @@ router.post(
 
 router.get("/details", authMiddleware, getUserDetails);
 
+router.get("/all", authMiddleware, getAllUsersWithStats);
+
 router.post("/form", addForm);
 
 router.put(
@@ -72,5 +75,8 @@ router.put(
   validateRequest({ body: updateUserSchema }),
   updateUserProfile
 );
+
+router.get("/stats", authMiddleware, getDashboardStats);
+
 
 export default router;
