@@ -4,6 +4,7 @@ import {
   createUser,
   forgotPassword,
   getAllUsersWithStats,
+  getDashboardStats,
   getUserDetails,
   loginUser,
   refreshToken,
@@ -74,5 +75,8 @@ router.put(
   validateRequest({ body: updateUserSchema }),
   updateUserProfile
 );
+
+router.get("/stats", authMiddleware, getDashboardStats);
+
 
 export default router;
