@@ -57,29 +57,33 @@ export const getAllBookings = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-    const baseQuery = Booking.find()
-      .populate("marketplaceListingId")
-      .lean() as any;
+    // FIX: Remove `.lean()` from baseQuery
+    const baseQuery = Booking.find().populate("marketplaceListingId");
 
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
 
-    // --------- Calculate Monthly and Yearly Ranges ----------
     const now = new Date();
-    const oneMonthAgo = new Date(now);
-    oneMonthAgo.setMonth(now.getMonth() - 1);
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
-    const oneYearAgo = new Date(now);
-    oneYearAgo.setFullYear(now.getFullYear() - 1);
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-    // Monthly booking count
-    const monthlyTotal = await Booking.countDocuments({
+    const monthlyCount = await Booking.countDocuments({
       createdAt: { $gte: oneMonthAgo, $lte: now },
     });
 
-    // Yearly booking count
-    const yearlyTotal = await Booking.countDocuments({
+    const yearlyCount = await Booking.countDocuments({
       createdAt: { $gte: oneYearAgo, $lte: now },
     });
+
+    const allBookings = await Booking.find().lean(); 
+
+    const totalEarning = allBookings.reduce((acc, booking) => {
+      const price = booking.priceDetails?.totalPrice || 0;
+      const extension = booking.extensionCharges?.totalPrice || 0;
+      return acc + price + extension;
+    }, 0);
 
     return sendResponse(res, {
       statusCode: STATUS_CODES.OK,
@@ -87,17 +91,72 @@ export const getAllBookings = async (
       message: "Bookings retrieved successfully",
       data: {
         bookings: data,
-        total, // paginated total
+        total,
         page,
         limit,
-        monthlyTotal,
-        yearlyTotal,
+        monthlyRequest: monthlyCount,
+        yearlyRequest: yearlyCount,
+        totalEarning,
       },
     });
   } catch (error) {
     next(error);
   }
 };
+
+// export const getAllBookings = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     const page = Number(req.query.page) || 1;
+//     const limit = Number(req.query.limit) || 10;
+
+//     const baseQuery = Booking.find()
+//       .populate("marketplaceListingId")
+//       .lean() as any;
+
+//     const { data, total } = await paginateQuery(baseQuery, { page, limit });
+
+//     // --------- Calculate Monthly and Yearly Ranges ----------
+//     const now = new Date();
+//     const oneMonthAgo = new Date(now);
+//     oneMonthAgo.setMonth(now.getMonth() - 1);
+
+//     const oneYearAgo = new Date(now);
+//     oneYearAgo.setFullYear(now.getFullYear() - 1);
+
+//     const monthlyTotal = await Booking.countDocuments({
+//       createdAt: { $gte: oneMonthAgo, $lte: now },
+//     });
+
+//     const yearlyTotal = await Booking.countDocuments({
+//       createdAt: { $gte: oneYearAgo, $lte: now },
+//     });
+
+//     // --------- Calculate User Stats ----------
+//     const allBookings = await Booking.find({}, "userId").lean();
+//     const totalUsers = allBookings.length;
+//     const uniqueUserIds = new Set(allBookings.map((b) => String(b.userId)));
+//     const uniqueUsers = uniqueUserIds.size;
+
+//     // ✅ Send clean response — no nested success/message
+//     return sendResponse(res, {
+//       bookings: data,
+//       total, // paginated total
+//       page,
+//       limit,
+//       monthlyTotal,
+//       yearlyTotal,
+//       totalUsers,
+//       uniqueUsers,
+//     });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 
 // export const getAllBookings = async (
 //   req: Request,

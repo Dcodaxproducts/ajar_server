@@ -1,4 +1,3 @@
-// models/form.model.ts
 import { Schema, model, Document, Types, models } from "mongoose";
 import slugify from "slugify";
 
