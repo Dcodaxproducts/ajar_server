@@ -63,21 +63,72 @@ export const getAllBookings = async (
 
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
 
+    // --------- Calculate Monthly and Yearly Ranges ----------
+    const now = new Date();
+    const oneMonthAgo = new Date(now);
+    oneMonthAgo.setMonth(now.getMonth() - 1);
+
+    const oneYearAgo = new Date(now);
+    oneYearAgo.setFullYear(now.getFullYear() - 1);
+
+    // Monthly booking count
+    const monthlyTotal = await Booking.countDocuments({
+      createdAt: { $gte: oneMonthAgo, $lte: now },
+    });
+
+    // Yearly booking count
+    const yearlyTotal = await Booking.countDocuments({
+      createdAt: { $gte: oneYearAgo, $lte: now },
+    });
+
     return sendResponse(res, {
       statusCode: STATUS_CODES.OK,
       success: true,
       message: "Bookings retrieved successfully",
       data: {
         bookings: data,
-        total,
+        total, // paginated total
         page,
         limit,
+        monthlyTotal,
+        yearlyTotal,
       },
     });
   } catch (error) {
     next(error);
   }
 };
+
+// export const getAllBookings = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     const page = Number(req.query.page) || 1;
+//     const limit = Number(req.query.limit) || 10;
+
+//     const baseQuery = Booking.find()
+//       .populate("marketplaceListingId")
+//       .lean() as any;
+
+//     const { data, total } = await paginateQuery(baseQuery, { page, limit });
+
+//     return sendResponse(res, {
+//       statusCode: STATUS_CODES.OK,
+//       success: true,
+//       message: "Bookings retrieved successfully",
+//       data: {
+//         bookings: data,
+//         total,
+//         page,
+//         limit,
+//       },
+//     });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 // GET BOOKINGS BY USER ID (Admin)
 export const getBookingsByUserIdForAdmin = async (

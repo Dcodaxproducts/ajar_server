@@ -22,6 +22,7 @@ interface MarketplaceListingField {
 }
   
 export interface IMarketplaceListing extends Document {
+  user: mongoose.Schema.Types.ObjectId,
   form: mongoose.Types.ObjectId;
   fields: MarketplaceListingField[];
   ratings: {
@@ -53,6 +54,12 @@ const MarketplaceListingFieldSchema = new Schema<MarketplaceListingField>(
 
 const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
   {
+    user: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "User",
+  required: true,
+},
+
     form: {
       type: Schema.Types.ObjectId,
       ref: "Form",

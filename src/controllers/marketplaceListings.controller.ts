@@ -4,10 +4,11 @@ import { STATUS_CODES } from "../config/constants";
 import { sendResponse } from "../utils/response";
 import { paginateQuery } from "../utils/paginate";
 import { MarketplaceListing } from "../models/marketplaceListings.Model";
+import { AuthRequest } from "../middlewares/auth.middleware";
 
 // CREATE
 export const createMarketplaceListing = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
@@ -21,16 +22,15 @@ export const createMarketplaceListing = async (
       price,
       language = "en",
       languages,
-     
     } = req.body;
 
-    // Don't parse fields, it's already an object
     if (!Array.isArray(fields)) {
       sendResponse(res, null, "`fields` must be an array", 400);
       return;
     }
 
     const newListing = new MarketplaceListing({
+      user: req.user?.id, 
       form,
       fields,
       ratings,
@@ -49,7 +49,6 @@ export const createMarketplaceListing = async (
     sendResponse(res, null, err.message || "Internal server error", 500);
   }
 };
-
 
 //READ LIST (GET ALL)
 export const getAllMarketplaceListings = async (
@@ -98,17 +97,23 @@ export const getAllMarketplaceListings = async (
       return obj;
     });
 
+    
+    //New logic to calculate total unique users and total listings
+    const uniqueUserIds = await MarketplaceListing.distinct("user");
+    const totalUsersWithListings = uniqueUserIds.length;
+
+    const totalMarketplaceListings = await MarketplaceListing.countDocuments();
+
     sendResponse(
       res,
-      { listings: final, total, page: +page, limit: +limit },
+      { listings: final, total, page: +page, limit: +limit, totalUsersWithListings, totalMarketplaceListings },
       `Fetched listings${locale !== "en" ? ` (locale: ${locale})` : ""}`,
       STATUS_CODES.OK
     );
   } catch (err) {
     next(err);
   }
-};
-
+};  
 
 //READ ONE (GET BY ID)
 export const getMarketplaceListingById = async (
@@ -163,7 +168,6 @@ export const getMarketplaceListingById = async (
     next(err);
   }
 };
-
 
 // UPDATE
 export const updateMarketplaceListing = async (
