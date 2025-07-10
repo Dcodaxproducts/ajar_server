@@ -21,6 +21,8 @@ interface ILanguageTranslation {
 }
 
 export interface IBooking extends Document {
+    status: "pending" | "accepted" | "rejected"; 
+
             userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
@@ -42,6 +44,12 @@ export interface IBooking extends Document {
 
 const BookingSchema = new Schema<IBooking>(
   {
+     status: {
+      type: String,
+      enum: ["pending", "accepted", "rejected"],
+      default: "pending",
+    },
+    
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
