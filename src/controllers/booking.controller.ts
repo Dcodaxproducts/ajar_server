@@ -4,6 +4,8 @@ import { sendResponse } from "../utils/response";
 import mongoose from "mongoose";
 import { STATUS_CODES } from "../config/constants";
 import { paginateQuery } from "../utils/paginate";
+import { sendEmail } from "../helpers/node-mailer"; 
+import { User } from "../models/user.model"; 
 
 // CREATE
 export const createBooking = async (req: Request, res: Response, next: NextFunction) => {
@@ -111,91 +113,6 @@ export const getAllBookings = async (
   }
 };
 
-// export const getAllBookings = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction
-// ) => {
-//   try {
-//     const page = Number(req.query.page) || 1;
-//     const limit = Number(req.query.limit) || 10;
-
-//     const baseQuery = Booking.find()
-//       .populate("marketplaceListingId")
-//       .lean() as any;
-
-//     const { data, total } = await paginateQuery(baseQuery, { page, limit });
-
-//     // --------- Calculate Monthly and Yearly Ranges ----------
-//     const now = new Date();
-//     const oneMonthAgo = new Date(now);
-//     oneMonthAgo.setMonth(now.getMonth() - 1);
-
-//     const oneYearAgo = new Date(now);
-//     oneYearAgo.setFullYear(now.getFullYear() - 1);
-
-//     const monthlyTotal = await Booking.countDocuments({
-//       createdAt: { $gte: oneMonthAgo, $lte: now },
-//     });
-
-//     const yearlyTotal = await Booking.countDocuments({
-//       createdAt: { $gte: oneYearAgo, $lte: now },
-//     });
-
-//     // --------- Calculate User Stats ----------
-//     const allBookings = await Booking.find({}, "userId").lean();
-//     const totalUsers = allBookings.length;
-//     const uniqueUserIds = new Set(allBookings.map((b) => String(b.userId)));
-//     const uniqueUsers = uniqueUserIds.size;
-
-//     // ✅ Send clean response — no nested success/message
-//     return sendResponse(res, {
-//       bookings: data,
-//       total, // paginated total
-//       page,
-//       limit,
-//       monthlyTotal,
-//       yearlyTotal,
-//       totalUsers,
-//       uniqueUsers,
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
-
-// export const getAllBookings = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction
-// ) => {
-//   try {
-//     const page = Number(req.query.page) || 1;
-//     const limit = Number(req.query.limit) || 10;
-
-//     const baseQuery = Booking.find()
-//       .populate("marketplaceListingId")
-//       .lean() as any;
-
-//     const { data, total } = await paginateQuery(baseQuery, { page, limit });
-
-//     return sendResponse(res, {
-//       statusCode: STATUS_CODES.OK,
-//       success: true,
-//       message: "Bookings retrieved successfully",
-//       data: {
-//         bookings: data,
-//         total,
-//         page,
-//         limit,
-//       },
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
 // GET BOOKINGS BY USER ID (Admin)
 export const getBookingsByUserIdForAdmin = async (
   req: Request,
@@ -233,7 +150,6 @@ export const getBookingsByUserIdForAdmin = async (
     next(error);
   }
 };
-
 
 // GET ONE
 export const getBookingById = async (req: Request, res: Response, next: NextFunction) => {
@@ -348,6 +264,7 @@ export const deleteBooking = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+
 export const updateBookingStatus = async (
   req: Request,
   res: Response,
@@ -361,12 +278,26 @@ export const updateBookingStatus = async (
       return sendResponse(res, null, "Invalid status", STATUS_CODES.BAD_REQUEST);
     }
 
-    const booking = await Booking.findById(id);
+    const booking = await Booking.findById(id).populate("userId", "email name");
     if (!booking) {
       return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
     }
 
     booking.status = status as "accepted" | "rejected";
+
+    if (status === "accepted") {
+      const pin = Math.floor(1000 + Math.random() * 9000).toString();
+      booking.otp = pin;
+
+      const user = booking.userId as any; 
+      await sendEmail({
+        to: user.email,
+        name: user.name,
+        subject: "Your Booking Confirmation PIN",
+        content: `Dear ${user.name},\n\nYour booking has been accepted. Your confirmation PIN is: ${pin}`,
+      });
+    }
+
     await booking.save();
 
     sendResponse(res, booking, `Booking ${status} successfully`, STATUS_CODES.OK);
@@ -374,3 +305,4 @@ export const updateBookingStatus = async (
     next(err);
   }
 };
+

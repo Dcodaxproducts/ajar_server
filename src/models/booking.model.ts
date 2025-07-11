@@ -40,6 +40,7 @@ export interface IBooking extends Document {
     extensionCharges?: IExtensionCharges;
     language?: string;
     languages?: ILanguageTranslation[];
+     otp?: string;
 }
 
 const BookingSchema = new Schema<IBooking>(
@@ -49,7 +50,7 @@ const BookingSchema = new Schema<IBooking>(
       enum: ["pending", "accepted", "rejected"],
       default: "pending",
     },
-    
+
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -87,6 +88,10 @@ const BookingSchema = new Schema<IBooking>(
         },
       },
     ],
+       otp: {
+      type: String,
+      default: "",
+    },
   },
   { timestamps: true }
 );
