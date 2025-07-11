@@ -264,7 +264,7 @@ export const deleteBooking = async (req: Request, res: Response, next: NextFunct
   }
 };
 
-
+// update booking status accepted/rejected  
 export const updateBookingStatus = async (
   req: Request,
   res: Response,
@@ -274,7 +274,7 @@ export const updateBookingStatus = async (
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!["accepted", "rejected"].includes(status)) {
+    if (!["accepted", "rejected", "completed"].includes(status)) {
       return sendResponse(res, null, "Invalid status", STATUS_CODES.BAD_REQUEST);
     }
 
@@ -283,7 +283,7 @@ export const updateBookingStatus = async (
       return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
     }
 
-    booking.status = status as "accepted" | "rejected";
+    booking.status = status as "accepted" | "rejected" | "completed";
 
     if (status === "accepted") {
       const pin = Math.floor(1000 + Math.random() * 9000).toString();
@@ -306,3 +306,34 @@ export const updateBookingStatus = async (
   }
 };
 
+//submit booking pin 
+export const submitBookingPin = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { otp } = req.body;
+
+    if (!otp) {
+      return sendResponse(res, null, "PIN is required", STATUS_CODES.BAD_REQUEST);
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+    }
+
+    const booking = await Booking.findById(id).populate("userId", "email name");
+    if (!booking) {
+      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+    }
+
+    if (booking.otp !== otp) {
+      return sendResponse(res, null, "Invalid or Expire PIN", STATUS_CODES.UNAUTHORIZED);
+    }
+
+    booking.otp = "";
+    await booking.save();
+
+    sendResponse(res, booking, "PIN verified successfully", STATUS_CODES.OK);
+  } catch (err) {
+    next(err);
+  }
+};
