@@ -1,5 +1,5 @@
 import express from "express";
-import {  getAllBookings, getBookingById, deleteBooking, updateBooking, createBooking, getBookingsByUser, getBookingsByUserIdForAdmin, updateBookingStatus, } from "../controllers/booking.controller";
+import {  getAllBookings, getBookingById, deleteBooking, updateBooking, createBooking, getBookingsByUser, getBookingsByUserIdForAdmin, updateBookingStatus, submitBookingPin, } from "../controllers/booking.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { Booking } from "../models/booking.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
@@ -33,5 +33,9 @@ router.patch("/:id/status", authMiddleware, asyncHandler(updateBookingStatus));
 
 
 router.delete("/:id", authMiddleware, deleteBooking);
+
+router.post("/:id/submit-pin", authMiddleware, asyncHandler(submitBookingPin));
+
+
 
 export default router;
