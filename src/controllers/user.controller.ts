@@ -17,7 +17,7 @@ import { generateZodSchema } from "../utils/generate-zod-schema";
 import { UserDocument } from "../models/userDocs.mode";
 import { Category } from "../models/category.model";
 import { Booking } from "../models/booking.model";
-import { MarketplaceListing } from "../models/marketplaceListings.Model";
+import { MarketplaceListing } from "../models/marketplaceListings.model";
 
 export const createUser = async (
   req: Request,

@@ -23,8 +23,10 @@ interface MarketplaceListingField {
   
 export interface IMarketplaceListing extends Document {
   user: mongoose.Schema.Types.ObjectId,
-  form: mongoose.Types.ObjectId;
-  fields: MarketplaceListingField[];
+  subCategory: mongoose.Types.ObjectId;
+  zone: mongoose.Types.ObjectId;
+  fields: mongoose.Types.ObjectId[];
+
   ratings: {
     count: number;
     average: number;
@@ -36,21 +38,7 @@ export interface IMarketplaceListing extends Document {
   languages?: ILanguageTranslation[];
 }
 
-const MarketplaceListingFieldSchema = new Schema<MarketplaceListingField>(
- {
-    name: { type: String, required: true },
-    description: { type: String, required: true },
-    image: { type: String, required: true },
-    price: { type: Number, required: true },
-    company: { type: String, required: true },
-    link: { type: String },
-    model: { type: String },
-    color: { type: String },
-    size: { type: String },
-    rent: { type: Number }
-  },
-  { _id: false } 
-);
+
 
 const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
   {
@@ -60,15 +48,24 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
   required: true,
 },
 
-    form: {
-      type: Schema.Types.ObjectId,
-      ref: "Form",
-      required: true,
-    },
-    fields: {
-      type: [MarketplaceListingFieldSchema],
-      required: true,
-    },
+    subCategory: {
+  type: Schema.Types.ObjectId,
+  ref: "SubCategory",
+  required: true,
+},
+zone: {
+  type: Schema.Types.ObjectId,
+  ref: "Zone",
+  required: true,
+},
+fields: [
+  {
+    type: Schema.Types.ObjectId,
+    ref: "Field",
+    required: true,
+  },
+],
+
     ratings: {
       count: { type: Number, default: 0 },
       average: { type: Number, default: 0 },

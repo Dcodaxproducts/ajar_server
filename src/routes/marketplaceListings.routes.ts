@@ -6,7 +6,7 @@ import { createMarketplaceListing, getAllMarketplaceListings,
   getMarketplaceListingById,
   updateMarketplaceListing,
   deleteMarketplaceListing,} from "../controllers/marketplaceListings.controller";
-import { MarketplaceListing } from "../models/marketplaceListings.Model";
+import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 import upload from "../utils/multer";
 

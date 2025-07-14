@@ -3,8 +3,10 @@ import mongoose from "mongoose";
 import { STATUS_CODES } from "../config/constants";
 import { sendResponse } from "../utils/response";
 import { paginateQuery } from "../utils/paginate";
-import { MarketplaceListing } from "../models/marketplaceListings.Model";
+import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
+import { Zone } from "../models/zone.model";
+import { SubCategory } from "../models/category.model";
 
 // CREATE
 export const createMarketplaceListing = async (
@@ -14,7 +16,8 @@ export const createMarketplaceListing = async (
 ): Promise<void> => {
   try {
     const {
-      form,
+      subCategory,
+      zone,
       fields,
       ratings,
       description,
@@ -24,16 +27,55 @@ export const createMarketplaceListing = async (
       languages,
     } = req.body;
 
-    if (!Array.isArray(fields)) {
-      sendResponse(res, null, "`fields` must be an array", 400);
+    // Validate required fields
+    if (!subCategory || !zone) {
+      sendResponse(res, null, "`subCategory` and `zone` are required", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
+    if (!Array.isArray(fields) || fields.length === 0) {
+      sendResponse(res, null, "`fields` must be a non-empty array", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    // Validate Zone existence
+    const zoneDoc = await Zone.findById(zone).lean();
+    if (!zoneDoc) {
+      sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    // Check if subCategory is part of zone.subCategories
+    const isSubCategoryInZone = Array.isArray(zoneDoc.subCategories) &&
+      zoneDoc.subCategories.map((id: any) => String(id)).includes(String(subCategory));
+
+    if (!isSubCategoryInZone) {
+      sendResponse(
+        res,
+        null,
+        "The provided subCategory does not belong to the selected zone.",
+        STATUS_CODES.BAD_REQUEST
+      );
+      return;
+    }
+
+    // Validate SubCategory existence
+    const subCategoryDoc = await SubCategory.findById(subCategory).lean();
+    if (!subCategoryDoc) {
+      sendResponse(res, null, "SubCategory not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    // Create the marketplace listing
     const newListing = new MarketplaceListing({
-      user: req.user?.id, 
-      form,
+      user: req.user?.id,
+      subCategory,
+      zone,
       fields,
-      ratings,
+      ratings: {
+        count: ratings?.count || 0,
+        average: ratings?.average || 0,
+      },
       description,
       currency,
       price,
@@ -43,14 +85,14 @@ export const createMarketplaceListing = async (
 
     const saved = await newListing.save();
 
-    sendResponse(res, saved, "Marketplace listing created successfully", 201);
+    sendResponse(res, saved, "Marketplace listing created successfully", STATUS_CODES.CREATED);
   } catch (err: any) {
     console.error("Error creating listing:", err);
-    sendResponse(res, null, err.message || "Internal server error", 500);
+    sendResponse(res, null, err.message || "Internal server error", STATUS_CODES.INTERNAL_SERVER_ERROR);
   }
 };
 
-//READ LIST (GET ALL)
+// READ ALL
 export const getAllMarketplaceListings = async (
   req: Request,
   res: Response,
@@ -60,7 +102,10 @@ export const getAllMarketplaceListings = async (
     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
     const { page = 1, limit = 10 } = req.query;
 
-    const baseQuery = MarketplaceListing.find().populate("form");
+    const baseQuery = MarketplaceListing.find()
+      .populate("subCategory")
+      .populate("zone")
+      .populate("fields");
 
     const { data, total } = await paginateQuery(baseQuery, {
       page: +page,
@@ -74,34 +119,38 @@ export const getAllMarketplaceListings = async (
       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
       if (listingLang?.translations) {
         obj.description = listingLang.translations.description || obj.description;
-        obj.fields = obj.fields.map((f: any) => ({
-          ...f,
-          name: listingLang.translations.name || f.name,
-        }));
       }
       delete obj.languages;
 
-      // Convert form to any (cast to expected populated form object)
-      const formObj = obj.form as any;
-
-      // Translate form content
-      if (formObj && Array.isArray(formObj.languages)) {
-        const match = formObj.languages.find((l: any) => l.locale === locale);
+      // ADDED: Translate each field
+      obj.fields = obj.fields.map((field: any) => {
+        const match = field.languages?.find((l: any) => l.locale === locale);
         if (match?.translations) {
-          formObj.name = match.translations.name || formObj.name;
-          formObj.description = match.translations.description || formObj.description;
+          field.name = match.translations.name || field.name;
+          field.label = match.translations.label || field.label;
+          field.placeholder = match.translations.placeholder || field.placeholder;
         }
-        delete formObj.languages;
+        delete field.languages;
+        return field;
+      });
+
+      // EXISTING: Translate subCategory
+      const subCategoryObj = obj.subCategory as any;
+      if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
+        const match = subCategoryObj.languages.find((l: any) => l.locale === locale);
+        if (match?.translations) {
+          subCategoryObj.name = match.translations.name || subCategoryObj.name;
+          subCategoryObj.description = match.translations.description || subCategoryObj.description;
+        }
+        delete subCategoryObj.languages;
       }
 
       return obj;
     });
 
-    
-    //New logic to calculate total unique users and total listings
+    // Meta stats
     const uniqueUserIds = await MarketplaceListing.distinct("user");
     const totalUsersWithListings = uniqueUserIds.length;
-
     const totalMarketplaceListings = await MarketplaceListing.countDocuments();
 
     sendResponse(
@@ -113,9 +162,9 @@ export const getAllMarketplaceListings = async (
   } catch (err) {
     next(err);
   }
-};  
+};
 
-//READ ONE (GET BY ID)
+// READ ONE BY ID
 export const getMarketplaceListingById = async (
   req: Request,
   res: Response,
@@ -131,8 +180,10 @@ export const getMarketplaceListingById = async (
     }
 
     const doc = await MarketplaceListing.findById(id)
-      .populate("form")
-      .lean(); // lean returns plain object
+      .populate("subCategory")
+      .populate("zone")
+      .populate("fields") 
+      .lean();
 
     if (!doc) {
       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
@@ -144,23 +195,31 @@ export const getMarketplaceListingById = async (
       const match = doc.languages.find((l: any) => l.locale === locale);
       if (match?.translations) {
         doc.description = match.translations.description || doc.description;
-        doc.fields = doc.fields.map((f: any) => ({
-          ...f,
-          name: match.translations.name || f.name,
-        }));
       }
     }
     delete (doc as any).languages;
 
-    // Translate form content
-    const formObj = doc.form as any;
-    if (formObj && Array.isArray(formObj.languages)) {
-      const match = formObj.languages.find((l: any) => l.locale === locale);
+    //ADDED: Translate fields
+    doc.fields = doc.fields.map((field: any) => {
+      const match = field.languages?.find((l: any) => l.locale === locale);
       if (match?.translations) {
-        formObj.name = match.translations.name || formObj.name;
-        formObj.description = match.translations.description || formObj.description;
+        field.name = match.translations.name || field.name;
+        field.label = match.translations.label || field.label;
+        field.placeholder = match.translations.placeholder || field.placeholder;
       }
-      delete formObj.languages;
+      delete field.languages;
+      return field;
+    });
+
+    //EXISTING: Translate subCategory
+    const subCategoryObj = doc.subCategory as any;
+    if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
+      const match = subCategoryObj.languages.find((l: any) => l.locale === locale);
+      if (match?.translations) {
+        subCategoryObj.name = match.translations.name || subCategoryObj.name;
+        subCategoryObj.description = match.translations.description || subCategoryObj.description;
+      }
+      delete subCategoryObj.languages;
     }
 
     sendResponse(res, doc, "Listing fetched", STATUS_CODES.OK);
