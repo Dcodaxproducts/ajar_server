@@ -1,0 +1,19 @@
+import express from "express";
+import { createBusinessSetting, deleteBusinessSettingByPage, getBusinessSettingByPage, updateBusinessSetting } from "../controllers/businesssetting.controller";
+
+
+
+const router = express.Router();
+
+function asyncHandler(fn: any) {
+  return function (req: any, res: any, next: any) {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
+router.post("/", asyncHandler(createBusinessSetting));
+router.patch("/:pageName", asyncHandler(updateBusinessSetting));
+router.get("/:pageName", asyncHandler(getBusinessSettingByPage)); 
+router.delete("/:pageName", asyncHandler(deleteBusinessSettingByPage));
+
+export default router;

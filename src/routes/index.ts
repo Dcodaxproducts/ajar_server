@@ -11,6 +11,7 @@ import dropdownRoutes from "./dropdown.routes";
 import paymentRoutes from "./payment.routes";
 import bookingRoutes from "./booking.routes";
 import damageReportRoutes from "./damageReport.routes";
+import BusinessSetting from "./businessSetting.routes";
 
 const router = express.Router();
 
@@ -26,5 +27,6 @@ router.use("/fields", fieldRoutes);
 router.use("/dropdowns", dropdownRoutes);
 router.use("/bookings", bookingRoutes);
 router.use("/damage-reports", damageReportRoutes); 
+router.use("/businessSetting", BusinessSetting);
 
 export default router;
