@@ -100,9 +100,19 @@ export const getAllMarketplaceListings = async (
 ): Promise<void> => {
   try {
     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, zone, subCategory } = req.query;
 
-    const baseQuery = MarketplaceListing.find()
+    const filter: any = {};
+
+    if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+      filter.zone = zone;
+    }
+
+    if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
+      filter.subCategory = subCategory;
+    }
+
+    const baseQuery = MarketplaceListing.find(filter)
       .populate("subCategory")
       .populate("zone")
       .populate("fields");
@@ -122,7 +132,7 @@ export const getAllMarketplaceListings = async (
       }
       delete obj.languages;
 
-      // ADDED: Translate each field
+      // Translate each field
       obj.fields = obj.fields.map((field: any) => {
         const match = field.languages?.find((l: any) => l.locale === locale);
         if (match?.translations) {
@@ -134,7 +144,7 @@ export const getAllMarketplaceListings = async (
         return field;
       });
 
-      // EXISTING: Translate subCategory
+      // Translate subCategory
       const subCategoryObj = obj.subCategory as any;
       if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
         const match = subCategoryObj.languages.find((l: any) => l.locale === locale);
@@ -148,14 +158,20 @@ export const getAllMarketplaceListings = async (
       return obj;
     });
 
-    // Meta stats
-    const uniqueUserIds = await MarketplaceListing.distinct("user");
+    const uniqueUserIds = await MarketplaceListing.distinct("user", filter);
     const totalUsersWithListings = uniqueUserIds.length;
-    const totalMarketplaceListings = await MarketplaceListing.countDocuments();
+    const totalMarketplaceListings = await MarketplaceListing.countDocuments(filter);
 
     sendResponse(
       res,
-      { listings: final, total, page: +page, limit: +limit, totalUsersWithListings, totalMarketplaceListings },
+      {
+        listings: final,
+        total,
+        page: +page,
+        limit: +limit,
+        totalUsersWithListings,
+        totalMarketplaceListings,
+      },
       `Fetched listings${locale !== "en" ? ` (locale: ${locale})` : ""}`,
       STATUS_CODES.OK
     );
@@ -163,6 +179,77 @@ export const getAllMarketplaceListings = async (
     next(err);
   }
 };
+
+// export const getAllMarketplaceListings = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
+//     const { page = 1, limit = 10 } = req.query;
+
+//     const baseQuery = MarketplaceListing.find()
+//       .populate("subCategory")
+//       .populate("zone")
+//       .populate("fields");
+
+//     const { data, total } = await paginateQuery(baseQuery, {
+//       page: +page,
+//       limit: +limit,
+//     });
+
+//     const final = data.map((doc: any) => {
+//       const obj = doc.toObject();
+
+//       // Translate listing content
+//       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
+//       if (listingLang?.translations) {
+//         obj.description = listingLang.translations.description || obj.description;
+//       }
+//       delete obj.languages;
+
+//       // ADDED: Translate each field
+//       obj.fields = obj.fields.map((field: any) => {
+//         const match = field.languages?.find((l: any) => l.locale === locale);
+//         if (match?.translations) {
+//           field.name = match.translations.name || field.name;
+//           field.label = match.translations.label || field.label;
+//           field.placeholder = match.translations.placeholder || field.placeholder;
+//         }
+//         delete field.languages;
+//         return field;
+//       });
+
+//       // EXISTING: Translate subCategory
+//       const subCategoryObj = obj.subCategory as any;
+//       if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
+//         const match = subCategoryObj.languages.find((l: any) => l.locale === locale);
+//         if (match?.translations) {
+//           subCategoryObj.name = match.translations.name || subCategoryObj.name;
+//           subCategoryObj.description = match.translations.description || subCategoryObj.description;
+//         }
+//         delete subCategoryObj.languages;
+//       }
+
+//       return obj;
+//     });
+
+//     // Meta stats
+//     const uniqueUserIds = await MarketplaceListing.distinct("user");
+//     const totalUsersWithListings = uniqueUserIds.length;
+//     const totalMarketplaceListings = await MarketplaceListing.countDocuments();
+
+//     sendResponse(
+//       res,
+//       { listings: final, total, page: +page, limit: +limit, totalUsersWithListings, totalMarketplaceListings },
+//       `Fetched listings${locale !== "en" ? ` (locale: ${locale})` : ""}`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (err) {
+//     next(err);
+//   }
+// };
 
 // READ ONE BY ID
 export const getMarketplaceListingById = async (
