@@ -34,6 +34,7 @@ function asyncHandler(fn: any) {
 
 router.patch(
   "/:id",
+  upload.single("thumbnail"),
   asyncHandler(languageTranslationMiddleware(Zone)),
   updateZone
 );
