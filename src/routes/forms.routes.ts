@@ -5,6 +5,7 @@ import { authMiddleware } from "../middlewares/auth.middleware";
 import { createNewForm, getAllForms, getFormDetails,getFormByZoneAndSubCategory,deleteForm } from "../controllers/forms.controller";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 import { Form } from "../models/form.model";
+import upload from "../utils/multer";
 
 const router = express.Router();
 
@@ -20,7 +21,7 @@ router.get("/:id", getFormDetails);
 
 
 // Create form
-router.post("/", authMiddleware, createNewForm);
+router.post("/", upload.single("thumbnail"), authMiddleware, createNewForm);
 
 // Add/update translations
 function asyncHandler(fn: any) {
@@ -30,7 +31,7 @@ function asyncHandler(fn: any) {
 }
 
 
-router.patch("/:id", asyncHandler(languageTranslationMiddleware(Form)));
+router.patch("/:id", upload.single("thumbnail"), asyncHandler(languageTranslationMiddleware(Form)));
 
 // Delete form
 router.delete("/:id", authMiddleware, deleteForm);
