@@ -48,15 +48,10 @@ export const createBusinessSetting = async (req: Request, res: Response) => {
 export const updateBusinessSetting = async (req: Request, res: Response) => {
   try {
     const { pageName } = req.params;
-    const { pageSettings } = req.body;
-
-    if (!pageSettings) {
-      return res.status(400).json({ success: false, message: "`pageSettings` is required" });
-    }
 
     const updated = await BusinessSetting.findOneAndUpdate(
       { pageName },
-      { pageSettings },
+      req.body,
       { new: true }
     );
 
@@ -73,6 +68,7 @@ export const updateBusinessSetting = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 //GET by pageName
 export const getBusinessSettingByPage = async (req: Request, res: Response) => {
