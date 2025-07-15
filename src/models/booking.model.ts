@@ -13,12 +13,10 @@ interface IExtensionCharges {
 }
 
 interface ILanguageTranslation {
-  locale: string;   
-  translations: {
-    bookingNote?: string;
-     roomType?: string;
-  };
+  locale: string;
+  translations: Record<string, any>; //Flexible translations
 }
+
 
 export interface IBooking extends Document {
     status: "pending" | "accepted" | "rejected" | "completed"; 
@@ -79,13 +77,10 @@ const BookingSchema = new Schema<IBooking>(
       totalPrice: { type: Number },
     },
     language: { type: String, default: "en" },
-    languages: [
+     languages: [
       {
         locale: { type: String, required: true },
-        translations: {
-          bookingNote: { type: String },
-          roomType: { type: String }, 
-        },
+        translations: { type: Schema.Types.Mixed }, //Dynamic
       },
     ],
        otp: {
