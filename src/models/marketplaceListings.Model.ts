@@ -1,12 +1,10 @@
 import mongoose, { Schema, Document, model } from "mongoose";
 
 interface ILanguageTranslation {
-  local: string;
-  translations: {
-    name?: string;
-    description?: string;
-  };
+  locale: string;
+  translations: Record<string, any>; //Flexible translations
 }
+
 
 interface MarketplaceListingField {
   name: string;
@@ -74,13 +72,10 @@ fields: [
     currency: { type: String, required: true },
     price: { type: Number, required: true },
     language: { type: String, default: "en" },
-    languages: [
+     languages: [
       {
         locale: { type: String, required: true },
-        translations: {
-          name: { type: String },
-          description: { type: String },
-        },
+        translations: { type: Schema.Types.Mixed }, //Dynamic
       },
     ],
   },

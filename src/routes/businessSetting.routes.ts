@@ -1,5 +1,8 @@
 import express from "express";
 import { createBusinessSetting, deleteBusinessSettingByPage, getBusinessSettingByPage, updateBusinessSetting } from "../controllers/businesssetting.controller";
+import upload from "../utils/multer";
+import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
+import { BusinessSetting } from "../models/businessSetting.model";
 
 
 
@@ -12,7 +15,15 @@ function asyncHandler(fn: any) {
 }
 
 router.post("/", asyncHandler(createBusinessSetting));
-router.patch("/:pageName", asyncHandler(updateBusinessSetting));
+
+router.patch(
+  "/pageName",
+   upload.single("thumbnail"),
+  asyncHandler(languageTranslationMiddleware(BusinessSetting)),
+  asyncHandler(updateBusinessSetting)
+);
+
+// router.patch("/:pageName", asyncHandler(updateBusinessSetting));
 router.get("/:pageName", asyncHandler(getBusinessSettingByPage)); 
 router.delete("/:pageName", asyncHandler(deleteBusinessSettingByPage));
 

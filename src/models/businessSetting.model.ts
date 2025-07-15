@@ -1,8 +1,14 @@
 import mongoose, { Schema, Document, model } from "mongoose";
 
+interface ILanguageTranslation {
+  locale: string;
+  translations: Record<string, any>; // Flexible translations
+}
+
 export interface IBusinessSetting extends Document {
   pageName: string;
   pageSettings: Record<string, any>;
+  languages?: ILanguageTranslation[]; // Include this field
 }
 
 const BusinessSettingSchema = new Schema<IBusinessSetting>(
@@ -26,6 +32,12 @@ const BusinessSettingSchema = new Schema<IBusinessSetting>(
       type: Schema.Types.Mixed,
       required: true,
     },
+    languages: [
+      {
+        locale: { type: String, required: true },
+        translations: { type: Schema.Types.Mixed }, // Dynamic
+      },
+    ],
   },
   { timestamps: true }
 );

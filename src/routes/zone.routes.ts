@@ -25,20 +25,11 @@ router.post(
   createZone
 );
 
-// router.patch(
-//   "/:id",
-//   authMiddleware,
-//   upload.single("thumbnail"),
-//   validateRequest({ body: zoneSchema }),
-//   updateZone
-// );
-
 function asyncHandler(fn: any) {
   return function (req: any, res: any, next: any) {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 }
-
 
 
 router.patch(

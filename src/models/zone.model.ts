@@ -2,9 +2,7 @@ import mongoose, { Schema, Document } from "mongoose";
 
 interface IZoneLanguage {
   locale: string;
-  translations: {
-    name?: string;
-  };
+  translations: Record<string, any>; //Flexible translations
 }
 
 interface IZone extends Document {
@@ -26,13 +24,11 @@ const ZoneSchema = new Schema(
     language: { type: String, default: "en" }, 
     polygons: [{ type: [{ lat: Number, lng: Number }], default: [] }],
     languages: [
-      {
-        locale: { type: String, required: true },
-        translations: {
-          name: String,
-        },
-      },
-    ],
+  {
+    locale: { type: String, required: true },
+    translations: { type: Schema.Types.Mixed }, 
+  },
+],
   },
   { timestamps: true }
 );

@@ -2,11 +2,8 @@ import { Schema, model, Document, Types, models } from "mongoose";
 import slugify from "slugify";
 
 interface IZoneLanguage {
-  locale: string;
-  translations: {
-    name: string;
-    description?: string;
-  };
+   locale: string;
+  translations: Record<string, any>; 
 }
 
 
@@ -70,13 +67,10 @@ const FormSchema = new Schema<IForm>(
       required: true,
     },
     language: { type: String, default: "en" }, 
-     languages: [
+       languages: [
       {
         locale: { type: String, required: true },
-        translations: {
-          name: String,
-          description: String,
-        },
+        translations: { type: Schema.Types.Mixed }, //Dynamic
       },
     ],
  
