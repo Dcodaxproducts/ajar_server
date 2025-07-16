@@ -31,7 +31,7 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
 
     const newBooking = await Booking.create({
       marketplaceListingId,
-      userId: user.id,
+      renter: user.id,
       dates,
       noOfGuests,
       roomType,
@@ -129,7 +129,7 @@ export const getBookingsByUserIdForAdmin = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-    const baseQuery = Booking.find({ userId })
+    const baseQuery = Booking.find({ renter: userId })
       .populate("marketplaceListingId")
       .lean() as any;
 
@@ -168,7 +168,7 @@ export const getBookingById = async (req: Request, res: Response, next: NextFunc
       return;
     }
 
-    const booking = await Booking.findById(id).populate("marketplaceListingId").lean();
+    const booking = await Booking.findById(id).populate("marketplaceListingId").populate("renter").lean();
 
     if (!booking) {
       sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
@@ -201,7 +201,7 @@ export const getBookingsByUser = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-    const baseQuery = Booking.find({ userId: user.id })
+    const baseQuery = Booking.find({ renter: user.id })
       .populate("marketplaceListingId")
       .lean() as any;
 
@@ -278,7 +278,7 @@ export const updateBookingStatus = async (
       return sendResponse(res, null, "Invalid status", STATUS_CODES.BAD_REQUEST);
     }
 
-    const booking = await Booking.findById(id).populate("userId", "email name");
+    const booking = await Booking.findById(id).populate("renter", "email name");
     if (!booking) {
       return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
     }
@@ -289,7 +289,7 @@ export const updateBookingStatus = async (
       const pin = Math.floor(1000 + Math.random() * 9000).toString();
       booking.otp = pin;
 
-      const user = booking.userId as any; 
+      const user = booking.renter as any; 
       await sendEmail({
         to: user.email,
         name: user.name,
@@ -320,7 +320,7 @@ export const submitBookingPin = async (req: Request, res: Response, next: NextFu
       return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
     }
 
-    const booking = await Booking.findById(id).populate("userId", "email name");
+    const booking = await Booking.findById(id).populate("renter", "email name");
     if (!booking) {
       return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
     }

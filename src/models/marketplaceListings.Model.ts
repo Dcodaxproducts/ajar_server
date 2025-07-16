@@ -10,15 +10,17 @@ export interface IMarketplaceListing extends Document {
   subCategory: mongoose.Types.ObjectId;
   zone: mongoose.Types.ObjectId;
   
-  ratings: {
+  ratings: {  
     count: number;
     average: number;
   };
   name?: string; // added
   images?: string[]; //  added
   description: string;
+  address: string
   currency?: string;
   price: number;
+  isActive?: boolean;
   language?: string;
   languages?: ILanguageTranslation[];
   [key: string]: any; //allow other dynamic fields
@@ -46,11 +48,13 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
       count: { type: Number, default: 0 },
       average: { type: Number, default: 0 },
     },
-    name: { type: String }, // added
-    images: [{ type: String }], //  added
+    name: { type: String }, 
+    images: [{ type: String }], 
     description: { type: String, required: true },
+    address: { type: String, required: true },
     currency: { type: String },
     price: { type: Number, required: true },
+    isActive: { type: Boolean, default: true },
     language: { type: String, default: "en" },
     languages: [
       {

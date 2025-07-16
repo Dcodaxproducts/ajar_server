@@ -33,8 +33,8 @@ function asyncHandler(fn: any) {
 
 
 router.patch(
-  "/:id",
-   upload.single("image"),
+  "/:id", 
+   upload.single("image"),authMiddleware,
    asyncHandler(languageTranslationMiddleware(MarketplaceListing)),
   updateMarketplaceListing
 );
