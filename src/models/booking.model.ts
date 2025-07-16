@@ -14,18 +14,22 @@ interface IExtensionCharges {
 
 interface ILanguageTranslation {
   locale: string;
-  translations: Record<string, any>; //Flexible translations
+  translations: Record<string, any>; 
 }
 
 
 export interface IBooking extends Document {
-    status: "pending" | "accepted" | "rejected" | "completed"; 
+   [key: string]: any; 
+    status: "pending" | "accepted" | "rejected" | "completed" | "cancelled"; 
 
             renter: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true,
     },
+   leaser?: mongoose.Types.ObjectId;
+   actualReturnedAt?: Date | null;
+
     marketplaceListingId: mongoose.Types.ObjectId;
         dates: {
             checkIn: Date;
@@ -45,7 +49,7 @@ const BookingSchema = new Schema<IBooking>(
   {
      status: {
       type: String,
-      enum: ["pending", "accepted", "rejected", "completed"],
+      enum: ["pending", "accepted", "rejected", "completed", "cancelled"],
       default: "pending",
     },
 
@@ -54,6 +58,15 @@ const BookingSchema = new Schema<IBooking>(
       ref: "User",
       required: true,
     },
+    leaser: {
+  type: Schema.Types.ObjectId,
+  ref: "User",
+},
+actualReturnedAt: {
+  type: Date,
+  default: null,
+},
+
     marketplaceListingId: {
       type: Schema.Types.ObjectId,
       ref: "MarketplaceListing",
@@ -88,7 +101,7 @@ const BookingSchema = new Schema<IBooking>(
       default: "",
     },
   },
-  { timestamps: true }
+  { timestamps: true,strict: false, }
 );
 
 export const Booking = model<IBooking>("Booking", BookingSchema);

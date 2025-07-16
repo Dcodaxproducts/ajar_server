@@ -6,6 +6,7 @@ import { STATUS_CODES } from "../config/constants";
 import { paginateQuery } from "../utils/paginate";
 import { sendEmail } from "../helpers/node-mailer"; 
 import { User } from "../models/user.model"; 
+import { MarketplaceListing } from "../models/marketplaceListings.model";
 
 // CREATE
 export const createBooking = async (req: Request, res: Response, next: NextFunction) => {
@@ -16,35 +17,23 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
       return sendResponse(res, null, "Unauthenticated", STATUS_CODES.UNAUTHORIZED);
     }
 
-    const {
-      marketplaceListingId,
-      dates,
-      noOfGuests,
-      roomType,
-      phone,
-      priceDetails,
-      extensionCharges,
-      language,
-      languages,
-      bookingNote,
-    } = req.body;
+    const { marketplaceListingId } = req.body;
+
+    const listing = await MarketplaceListing.findById(marketplaceListingId).lean();
+    if (!listing) {
+      return sendResponse(res, null, "Marketplace listing not found", STATUS_CODES.NOT_FOUND);
+    }
 
     const newBooking = await Booking.create({
-      marketplaceListingId,
+      ...req.body,
       renter: user.id,
-      dates,
-      noOfGuests,
-      roomType,
-      phone,
-      priceDetails,
-      extensionCharges,
-      language,
-      languages,
-      bookingNote,
-       status: "pending",
+      leaser: listing.leaser,
+      status: "pending",
     });
 
-    sendResponse(res, newBooking, "Booking created successfully", STATUS_CODES.CREATED);
+    console.log("Booking input body:", req.body);
+
+    sendResponse(res, newBooking.toObject(), "Booking created successfully", STATUS_CODES.CREATED);
   } catch (err) {
     next(err);
   }
@@ -227,21 +216,36 @@ export const getBookingsByUser = async (
 export const updateBooking = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    const user = (req as any).user; //Added to get current user info
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    const updatedBooking = await Booking.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true,
-    });
-
-    if (!updatedBooking) {
+    const booking = await Booking.findById(id); //Fetch booking first to check roles
+    if (!booking) {
       sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
       return;
     }
+
+    //Check if `actualReturnedAt` is being updated
+    if (
+      "actualReturnedAt" in req.body &&
+      (!user || String(user.id) !== String(booking.leaser))
+    ) {
+      return sendResponse(
+        res,
+        null,
+        "Only the leaser can update 'actualReturnedAt'",
+        STATUS_CODES.FORBIDDEN
+      );
+    }
+
+    //Apply all updates (safe since schema is dynamic via `strict: false`)
+    Object.assign(booking, req.body);
+
+    const updatedBooking = await booking.save(); //Save after manual update
 
     sendResponse(res, updatedBooking, "Booking updated successfully", STATUS_CODES.OK);
   } catch (err: any) {
@@ -264,7 +268,7 @@ export const deleteBooking = async (req: Request, res: Response, next: NextFunct
   }
 };
 
-// update booking status accepted/rejected  
+// PATCH /bookings/:id/status
 export const updateBookingStatus = async (
   req: Request,
   res: Response,
@@ -273,8 +277,10 @@ export const updateBookingStatus = async (
   try {
     const { id } = req.params;
     const { status } = req.body;
+    const user = (req as any).user;
 
-    if (!["accepted", "rejected", "completed"].includes(status)) {
+    const allowedStatuses = ["accepted", "rejected", "completed", "cancelled"];
+    if (!allowedStatuses.includes(status)) {
       return sendResponse(res, null, "Invalid status", STATUS_CODES.BAD_REQUEST);
     }
 
@@ -283,24 +289,50 @@ export const updateBookingStatus = async (
       return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
     }
 
-    booking.status = status as "accepted" | "rejected" | "completed";
+    const isRenter =
+  typeof booking.renter === "object" && "_id" in booking.renter
+    ? user.id === (booking.renter as any)._id.toString()
+    : user.id === booking.renter.toString();
 
+
+    const isLeaser = user.id === booking.leaser?.toString(); // in case leaser is optional
+
+    // 🔒 Restriction Logic
+    if (status === "cancelled") {
+      if (!isRenter) {
+        return sendResponse(res, null, "Only renter can cancel the booking", STATUS_CODES.FORBIDDEN);
+      }
+    } else {
+      if (!isLeaser) {
+        return sendResponse(res, null, "Only leaser can change the booking status", STATUS_CODES.FORBIDDEN);
+      }
+    }
+
+    const bookingToUpdate = await Booking.findById(id); // Fetch again to update
+
+    if (!bookingToUpdate) {
+      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+    }
+
+    bookingToUpdate.status = status as any;
+
+    // If accepted → send OTP to renter
     if (status === "accepted") {
       const pin = Math.floor(1000 + Math.random() * 9000).toString();
-      booking.otp = pin;
+      bookingToUpdate.otp = pin;
 
-      const user = booking.renter as any; 
+      const userInfo = booking.renter as any;
       await sendEmail({
-        to: user.email,
-        name: user.name,
+        to: userInfo.email,
+        name: userInfo.name,
         subject: "Your Booking Confirmation PIN",
-        content: `Dear ${user.name},\n\nYour booking has been accepted. Your confirmation PIN is: ${pin}`,
+        content: `Dear ${userInfo.name},\n\nYour booking has been accepted. Your confirmation PIN is: ${pin}`,
       });
     }
 
-    await booking.save();
+    await bookingToUpdate.save();
 
-    sendResponse(res, booking, `Booking ${status} successfully`, STATUS_CODES.OK);
+    sendResponse(res, bookingToUpdate, `Booking status updated to ${status}`, STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }

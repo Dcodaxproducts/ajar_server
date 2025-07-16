@@ -25,7 +25,7 @@ router.get("/user/bookings", authMiddleware, asyncHandler(getBookingsByUser));
 router.patch(
   "/:id",authMiddleware,
    asyncHandler(languageTranslationMiddleware(Booking)),
-  updateBooking
+  asyncHandler(updateBooking)
 );
 
 
