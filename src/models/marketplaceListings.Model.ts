@@ -6,7 +6,7 @@ interface ILanguageTranslation {
 }
 
 export interface IMarketplaceListing extends Document {
-  user: mongoose.Schema.Types.ObjectId;
+  leaser: mongoose.Schema.Types.ObjectId;
   subCategory: mongoose.Types.ObjectId;
   zone: mongoose.Types.ObjectId;
   
@@ -26,7 +26,7 @@ export interface IMarketplaceListing extends Document {
 
 const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
   {
-    user: {
+    leaser: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,

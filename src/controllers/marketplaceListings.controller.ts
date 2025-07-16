@@ -57,7 +57,7 @@ export const createMarketplaceListing = async (
     // Save everything from req.body + user
     const newListing = new MarketplaceListing({
       ...req.body,
-      user: req.user?.id, // override user from req
+      leaser: req.user?.id, // override user from req
     });
 
     const saved = await newListing.save();
@@ -81,7 +81,7 @@ export const getAllMarketplaceListings = async (
 
     const filter: any = {};
 
-    // If user is not admin, restrict access without zone
+    // 🔸 Apply role-based access
     if (req.user?.role !== "admin") {
       if (!zone) {
         sendResponse(res, null, "`zone` is required for users", STATUS_CODES.BAD_REQUEST);
@@ -92,7 +92,6 @@ export const getAllMarketplaceListings = async (
         filter.zone = zone;
       }
     } else {
-      // Admin can filter if zone or subCategory is provided
       if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
         filter.zone = zone;
       }
@@ -102,10 +101,10 @@ export const getAllMarketplaceListings = async (
       filter.subCategory = subCategory;
     }
 
+    // 🔸 Adjusted population (removed full zone, limited fields from user & subCategory)
     const baseQuery = MarketplaceListing.find(filter)
-      .populate("user")
-      .populate("subCategory")
-      .populate("zone");
+      .populate("leaser", "_id name profilePicture phone createdAt updatedAt")
+      .populate("subCategory", "_id name thumbnail createdAt updatedAt");
 
     const { data, total } = await paginateQuery(baseQuery, {
       page: +page,
@@ -115,35 +114,17 @@ export const getAllMarketplaceListings = async (
     const final = data.map((doc: any) => {
       const obj = doc.toObject();
 
-      // Remove sensitive user data
-      if (obj.user) {
-        delete obj.user.otp;
-        delete obj.user.stripe;
-        delete obj.user.role;
-      }
-
-      // Translate description
+      // 🔸 Translate description by language
       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
       if (listingLang?.translations) {
         obj.description = listingLang.translations.description || obj.description;
       }
       delete obj.languages;
 
-      // Translate subCategory
-      const subCategoryObj = obj.subCategory as any;
-      if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
-        const match = subCategoryObj.languages.find((l: any) => l.locale === locale);
-        if (match?.translations) {
-          subCategoryObj.name = match.translations.name || subCategoryObj.name;
-          subCategoryObj.description = match.translations.description || subCategoryObj.description;
-        }
-        delete subCategoryObj.languages;
-      }
-
       return obj;
     });
 
-    const uniqueUserIds = await MarketplaceListing.distinct("user", filter);
+    const uniqueUserIds = await MarketplaceListing.distinct("leaser", filter);
     const totalUsersWithListings = uniqueUserIds.length;
     const totalMarketplaceListings = await MarketplaceListing.countDocuments(filter);
 
@@ -164,6 +145,100 @@ export const getAllMarketplaceListings = async (
     next(err);
   }
 };
+// export const getAllMarketplaceListings = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
+//     const { page = 1, limit = 10, zone, subCategory } = req.query;
+
+//     const filter: any = {};
+
+//     // If user is not admin, restrict access without zone
+//     if (req.user?.role !== "admin") {
+//       if (!zone) {
+//         sendResponse(res, null, "`zone` is required for users", STATUS_CODES.BAD_REQUEST);
+//         return;
+//       }
+
+//       if (mongoose.Types.ObjectId.isValid(String(zone))) {
+//         filter.zone = zone;
+//       }
+//     } else {
+//       // Admin can filter if zone or subCategory is provided
+//       if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//         filter.zone = zone;
+//       }
+//     }
+
+//     if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
+//       filter.subCategory = subCategory;
+//     }
+
+//     const baseQuery = MarketplaceListing.find(filter)
+//       .populate("user")
+//       .populate("subCategory")
+//       .populate("zone");
+
+//     const { data, total } = await paginateQuery(baseQuery, {
+//       page: +page,
+//       limit: +limit,
+//     });
+
+//     const final = data.map((doc: any) => {
+//       const obj = doc.toObject();
+
+//       // Remove sensitive user data
+//       if (obj.user) {
+//         delete obj.user.otp;
+//         delete obj.user.stripe;
+//         delete obj.user.role;
+//       }
+
+//       // Translate description
+//       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
+//       if (listingLang?.translations) {
+//         obj.description = listingLang.translations.description || obj.description;
+//       }
+//       delete obj.languages;
+
+//       // Translate subCategory
+//       const subCategoryObj = obj.subCategory as any;
+//       if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
+//         const match = subCategoryObj.languages.find((l: any) => l.locale === locale);
+//         if (match?.translations) {
+//           subCategoryObj.name = match.translations.name || subCategoryObj.name;
+//           subCategoryObj.description = match.translations.description || subCategoryObj.description;
+//         }
+//         delete subCategoryObj.languages;
+//       }
+
+//       return obj;
+//     });
+
+//     const uniqueUserIds = await MarketplaceListing.distinct("user", filter);
+//     const totalUsersWithListings = uniqueUserIds.length;
+//     const totalMarketplaceListings = await MarketplaceListing.countDocuments(filter);
+
+//     sendResponse(
+//       res,
+//       {
+//         listings: final,
+//         total,
+//         page: +page,
+//         limit: +limit,
+//         totalUsersWithListings,
+//         totalMarketplaceListings,
+//       },
+//       `Fetched listings${locale !== "en" ? ` (locale: ${locale})` : ""}`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (err) {
+//     next(err);
+//   }
+// };
 
 
 // READ ONE BY ID
