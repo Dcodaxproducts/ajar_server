@@ -4,7 +4,7 @@ import { sendResponse } from "../utils/response";
 import { verifyAccessToken } from "../utils/jwt.utils";
 
 export interface AuthRequest extends Request {
-  user?: { id: string };
+  user?: { id: string; role: string };
 }
 
 export const authMiddleware = (
@@ -37,6 +37,12 @@ export const authMiddleware = (
     return;
   }
 
-  req.user = { id: decoded.id };
+  req.user = {
+    id: decoded.id,
+    role: decoded.role, 
+  };
+
   next();
 };
+
+

@@ -18,23 +18,11 @@ export const createMarketplaceListing = async (
     const {
       subCategory,
       zone,
-      fields,
-      ratings,
-      description,
-      currency,
-      price,
-      language = "en",
-      languages,
     } = req.body;
 
     // Validate required fields
     if (!subCategory || !zone) {
       sendResponse(res, null, "`subCategory` and `zone` are required", STATUS_CODES.BAD_REQUEST);
-      return;
-    }
-
-    if (!Array.isArray(fields) || fields.length === 0) {
-      sendResponse(res, null, "`fields` must be a non-empty array", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -66,21 +54,10 @@ export const createMarketplaceListing = async (
       return;
     }
 
-    // Create the marketplace listing
+    // Save everything from req.body + user
     const newListing = new MarketplaceListing({
-      user: req.user?.id,
-      subCategory,
-      zone,
-      fields,
-      ratings: {
-        count: ratings?.count || 0,
-        average: ratings?.average || 0,
-      },
-      description,
-      currency,
-      price,
-      language,
-      languages,
+      ...req.body,
+      user: req.user?.id, // override user from req
     });
 
     const saved = await newListing.save();
@@ -92,9 +69,9 @@ export const createMarketplaceListing = async (
   }
 };
 
-// READ ALL
+// Get All Marketplace Listings
 export const getAllMarketplaceListings = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
@@ -104,8 +81,21 @@ export const getAllMarketplaceListings = async (
 
     const filter: any = {};
 
-    if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
-      filter.zone = zone;
+    // If user is not admin, restrict access without zone
+    if (req.user?.role !== "admin") {
+      if (!zone) {
+        sendResponse(res, null, "`zone` is required for users", STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+
+      if (mongoose.Types.ObjectId.isValid(String(zone))) {
+        filter.zone = zone;
+      }
+    } else {
+      // Admin can filter if zone or subCategory is provided
+      if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+        filter.zone = zone;
+      }
     }
 
     if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
@@ -113,9 +103,9 @@ export const getAllMarketplaceListings = async (
     }
 
     const baseQuery = MarketplaceListing.find(filter)
+      .populate("user")
       .populate("subCategory")
-      .populate("zone")
-      .populate("fields");
+      .populate("zone");
 
     const { data, total } = await paginateQuery(baseQuery, {
       page: +page,
@@ -125,24 +115,19 @@ export const getAllMarketplaceListings = async (
     const final = data.map((doc: any) => {
       const obj = doc.toObject();
 
-      // Translate listing content
+      // Remove sensitive user data
+      if (obj.user) {
+        delete obj.user.otp;
+        delete obj.user.stripe;
+        delete obj.user.role;
+      }
+
+      // Translate description
       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
       if (listingLang?.translations) {
         obj.description = listingLang.translations.description || obj.description;
       }
       delete obj.languages;
-
-      // Translate each field
-      obj.fields = obj.fields.map((field: any) => {
-        const match = field.languages?.find((l: any) => l.locale === locale);
-        if (match?.translations) {
-          field.name = match.translations.name || field.name;
-          field.label = match.translations.label || field.label;
-          field.placeholder = match.translations.placeholder || field.placeholder;
-        }
-        delete field.languages;
-        return field;
-      });
 
       // Translate subCategory
       const subCategoryObj = obj.subCategory as any;
@@ -180,76 +165,6 @@ export const getAllMarketplaceListings = async (
   }
 };
 
-// export const getAllMarketplaceListings = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction
-// ): Promise<void> => {
-//   try {
-//     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
-//     const { page = 1, limit = 10 } = req.query;
-
-//     const baseQuery = MarketplaceListing.find()
-//       .populate("subCategory")
-//       .populate("zone")
-//       .populate("fields");
-
-//     const { data, total } = await paginateQuery(baseQuery, {
-//       page: +page,
-//       limit: +limit,
-//     });
-
-//     const final = data.map((doc: any) => {
-//       const obj = doc.toObject();
-
-//       // Translate listing content
-//       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
-//       if (listingLang?.translations) {
-//         obj.description = listingLang.translations.description || obj.description;
-//       }
-//       delete obj.languages;
-
-//       // ADDED: Translate each field
-//       obj.fields = obj.fields.map((field: any) => {
-//         const match = field.languages?.find((l: any) => l.locale === locale);
-//         if (match?.translations) {
-//           field.name = match.translations.name || field.name;
-//           field.label = match.translations.label || field.label;
-//           field.placeholder = match.translations.placeholder || field.placeholder;
-//         }
-//         delete field.languages;
-//         return field;
-//       });
-
-//       // EXISTING: Translate subCategory
-//       const subCategoryObj = obj.subCategory as any;
-//       if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
-//         const match = subCategoryObj.languages.find((l: any) => l.locale === locale);
-//         if (match?.translations) {
-//           subCategoryObj.name = match.translations.name || subCategoryObj.name;
-//           subCategoryObj.description = match.translations.description || subCategoryObj.description;
-//         }
-//         delete subCategoryObj.languages;
-//       }
-
-//       return obj;
-//     });
-
-//     // Meta stats
-//     const uniqueUserIds = await MarketplaceListing.distinct("user");
-//     const totalUsersWithListings = uniqueUserIds.length;
-//     const totalMarketplaceListings = await MarketplaceListing.countDocuments();
-
-//     sendResponse(
-//       res,
-//       { listings: final, total, page: +page, limit: +limit, totalUsersWithListings, totalMarketplaceListings },
-//       `Fetched listings${locale !== "en" ? ` (locale: ${locale})` : ""}`,
-//       STATUS_CODES.OK
-//     );
-//   } catch (err) {
-//     next(err);
-//   }
-// };
 
 // READ ONE BY ID
 export const getMarketplaceListingById = async (
@@ -269,7 +184,6 @@ export const getMarketplaceListingById = async (
     const doc = await MarketplaceListing.findById(id)
       .populate("subCategory")
       .populate("zone")
-      .populate("fields") 
       .lean();
 
     if (!doc) {
@@ -286,17 +200,6 @@ export const getMarketplaceListingById = async (
     }
     delete (doc as any).languages;
 
-    //ADDED: Translate fields
-    doc.fields = doc.fields.map((field: any) => {
-      const match = field.languages?.find((l: any) => l.locale === locale);
-      if (match?.translations) {
-        field.name = match.translations.name || field.name;
-        field.label = match.translations.label || field.label;
-        field.placeholder = match.translations.placeholder || field.placeholder;
-      }
-      delete field.languages;
-      return field;
-    });
 
     //EXISTING: Translate subCategory
     const subCategoryObj = doc.subCategory as any;

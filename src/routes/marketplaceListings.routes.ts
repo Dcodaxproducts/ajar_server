@@ -12,7 +12,7 @@ import upload from "../utils/multer";
 
 const router = express.Router();
 
-router.get("/", getAllMarketplaceListings);
+router.get("/", authMiddleware, getAllMarketplaceListings);
 router.get("/:id", getMarketplaceListingById);
 
 router.post(

@@ -2,84 +2,64 @@ import mongoose, { Schema, Document, model } from "mongoose";
 
 interface ILanguageTranslation {
   locale: string;
-  translations: Record<string, any>; //Flexible translations
+  translations: Record<string, any>;
 }
 
-
-interface MarketplaceListingField {
-  name: string;
-  description: string;
-  image: string;
-  price: number;
-  company: string;
-  link?: string;
-  model?: string;
-  color?: string;
-  size?: string;
-  rent?: number;
-}
-  
 export interface IMarketplaceListing extends Document {
-  user: mongoose.Schema.Types.ObjectId,
+  user: mongoose.Schema.Types.ObjectId;
   subCategory: mongoose.Types.ObjectId;
   zone: mongoose.Types.ObjectId;
-  fields: mongoose.Types.ObjectId[];
-
+  
   ratings: {
     count: number;
     average: number;
   };
+  name?: string; // added
+  images?: string[]; //  added
   description: string;
-  currency: string;
+  currency?: string;
   price: number;
   language?: string;
   languages?: ILanguageTranslation[];
+  [key: string]: any; //allow other dynamic fields
 }
-
-
 
 const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
   {
     user: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "User",
-  required: true,
-},
-
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
     subCategory: {
-  type: Schema.Types.ObjectId,
-  ref: "SubCategory",
-  required: true,
-},
-zone: {
-  type: Schema.Types.ObjectId,
-  ref: "Zone",
-  required: true,
-},
-fields: [
-  {
-    type: Schema.Types.ObjectId,
-    ref: "Field",
-    required: true,
-  },
-],
+      type: Schema.Types.ObjectId,
+      ref: "SubCategory",
+      required: true,
+    },
+    zone: {
+      type: Schema.Types.ObjectId,
+      ref: "Zone",
+      required: true,
+    },
 
     ratings: {
       count: { type: Number, default: 0 },
       average: { type: Number, default: 0 },
     },
+    name: { type: String }, // added
+    images: [{ type: String }], //  added
     description: { type: String, required: true },
-    currency: { type: String, required: true },
+    currency: { type: String },
     price: { type: Number, required: true },
     language: { type: String, default: "en" },
-     languages: [
+    languages: [
       {
         locale: { type: String, required: true },
-        translations: { type: Schema.Types.Mixed }, //Dynamic
+        translations: { type: Schema.Types.Mixed },
       },
     ],
   },
-  { timestamps: true }
+  { timestamps: true, strict: false } // allows dynamic fields
 );
 
 export const MarketplaceListing = model<IMarketplaceListing>(

@@ -24,15 +24,6 @@ export const marketplaceListingSchema = z.object({
       message: "Invalid Zone ID",
     }),
 
-  fields: z
-    .array(
-      z
-        .string()
-        .refine((val) => mongoose.Types.ObjectId.isValid(val), {
-          message: "Each field must be a valid ObjectId",
-        })
-    )
-    .min(1, "At least one field is required"),
 
   ratings: z
     .object({
@@ -42,8 +33,6 @@ export const marketplaceListingSchema = z.object({
     .optional(),
 
   description: z.string().min(1, "Description is required"),
-
-  currency: z.string().min(1, "Currency is required"),
 
   price: z.number().nonnegative("Price must be positive"),
 
