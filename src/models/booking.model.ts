@@ -21,7 +21,7 @@ interface ILanguageTranslation {
 export interface IBooking extends Document {
     status: "pending" | "accepted" | "rejected" | "completed"; 
 
-            userId: {
+            renter: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true,
@@ -49,7 +49,7 @@ const BookingSchema = new Schema<IBooking>(
       default: "pending",
     },
 
-    userId: {
+    renter: {
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
@@ -80,7 +80,7 @@ const BookingSchema = new Schema<IBooking>(
      languages: [
       {
         locale: { type: String, required: true },
-        translations: { type: Schema.Types.Mixed }, //Dynamic
+        translations: { type: Schema.Types.Mixed }, 
       },
     ],
        otp: {

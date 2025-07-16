@@ -81,7 +81,7 @@ export const getAllMarketplaceListings = async (
 
     const filter: any = {};
 
-    // 🔸 Apply role-based access
+    //Apply role-based access
     if (req.user?.role !== "admin") {
       if (!zone) {
         sendResponse(res, null, "`zone` is required for users", STATUS_CODES.BAD_REQUEST);
@@ -101,7 +101,7 @@ export const getAllMarketplaceListings = async (
       filter.subCategory = subCategory;
     }
 
-    // 🔸 Adjusted population (removed full zone, limited fields from user & subCategory)
+    //Adjusted population (removed full zone, limited fields from user & subCategory)
     const baseQuery = MarketplaceListing.find(filter)
       .populate("leaser", "_id name profilePicture phone createdAt updatedAt")
       .populate("subCategory", "_id name thumbnail createdAt updatedAt");
@@ -114,7 +114,7 @@ export const getAllMarketplaceListings = async (
     const final = data.map((doc: any) => {
       const obj = doc.toObject();
 
-      // 🔸 Translate description by language
+      //Translate description by language
       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
       if (listingLang?.translations) {
         obj.description = listingLang.translations.description || obj.description;
@@ -295,31 +295,42 @@ export const getMarketplaceListingById = async (
 
 // UPDATE
 export const updateMarketplaceListing = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
     const { id } = req.params;
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    const updated = await MarketplaceListing.findByIdAndUpdate(id, req.body, {
-      new: true,
-    });
-
-    if (!updated) {
+    // Find the listing
+    const existingListing = await MarketplaceListing.findById(id);
+    if (!existingListing) {
       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
       return;
     }
+
+    //Ensure only the listing's leaser can update it
+    if (String(existingListing.leaser) !== String(req.user?.id)) {
+      sendResponse(res, null, "Forbidden: You are not the owner of this listing", STATUS_CODES.FORBIDDEN);
+      return;
+    }
+
+    //Perform update
+    const updated = await MarketplaceListing.findByIdAndUpdate(id, req.body, {
+      new: true,
+    });
 
     sendResponse(res, updated, "Listing updated", STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }
 };
+
 
 // DELETE
 export const deleteMarketplaceListing = async (
