@@ -14,8 +14,8 @@ export interface IMarketplaceListing extends Document {
     count: number;
     average: number;
   };
-  name?: string; // added
-  images?: string[]; //  added
+  name?: string; 
+  images?: string[]; 
   description: string;
   address: string
   currency?: string;
@@ -23,7 +23,7 @@ export interface IMarketplaceListing extends Document {
   isActive?: boolean;
   language?: string;
   languages?: ILanguageTranslation[];
-  [key: string]: any; //allow other dynamic fields
+  [key: string]: any; 
 }
 
 const MarketplaceListingSchema = new Schema<IMarketplaceListing>(

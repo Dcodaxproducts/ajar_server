@@ -14,16 +14,16 @@ class RedisClient {
         keepAlive: 1,
         maxRetriesPerRequest: 2,
         reconnectOnError: (err) => {
-          console.error("❌ Redis Connection Error:", err);
+          console.error("Redis Connection Error:", err);
           return true;
         },
       });
 
       RedisClient.instance.on("connect", () =>
-        console.log("✅ Redis Connected")
+        console.log("Redis Connected")
       );
       RedisClient.instance.on("error", (err) =>
-        console.error("❌ Redis Error:", err)
+        console.error("Redis Error:", err)
       );
     }
 

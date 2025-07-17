@@ -139,7 +139,7 @@ export const refreshToken = async (
 
   const decoded = verifyRefreshToken(refreshToken);
   if (!decoded) {
-    refreshTokens.delete(refreshToken); // Remove expired token
+    refreshTokens.delete(refreshToken);
     sendResponse(
       res,
       null,
@@ -188,9 +188,6 @@ export const getUserDetails = async (
       return;
     }
 
-    // get all my bookings
-    // const bookings = await Booking.find({ user: userId }).lean();
-
     const docsAttached = await UserDocument.find({
       user: userId,
     }).lean();
@@ -200,7 +197,6 @@ export const getUserDetails = async (
       {
         user,
         documents: docsAttached,
-        // bookings,
       },
       "User details fetched successfully",
       STATUS_CODES.OK

@@ -4,8 +4,6 @@ import upload from "../utils/multer";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 import { BusinessSetting } from "../models/businessSetting.model";
 
-
-
 const router = express.Router();
 
 function asyncHandler(fn: any) {
@@ -23,7 +21,6 @@ router.patch(
   asyncHandler(updateBusinessSetting)
 );
 
-// router.patch("/:pageName", asyncHandler(updateBusinessSetting));
 router.get("/:pageName", asyncHandler(getBusinessSettingByPage)); 
 router.delete("/:pageName", asyncHandler(deleteBusinessSettingByPage));
 

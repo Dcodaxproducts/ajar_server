@@ -1,4 +1,3 @@
-// FILE: models/field.model.ts
 import { Schema, model, Document } from "mongoose";
 
 interface ILanguageTranslation {

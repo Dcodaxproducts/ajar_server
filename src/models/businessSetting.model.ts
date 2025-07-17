@@ -8,7 +8,7 @@ interface ILanguageTranslation {
 export interface IBusinessSetting extends Document {
   pageName: string;
   pageSettings: Record<string, any>;
-  languages?: ILanguageTranslation[]; // Include this field
+  languages?: ILanguageTranslation[];
 }
 
 const BusinessSettingSchema = new Schema<IBusinessSetting>(

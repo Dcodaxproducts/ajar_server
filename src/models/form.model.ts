@@ -6,7 +6,6 @@ interface IZoneLanguage {
   translations: Record<string, any>; 
 }
 
-
 // Setting interface
 interface ISetting {
   commissionType: "fixed" | "percentage";
@@ -15,8 +14,6 @@ interface ISetting {
   tax: number;
   expiry: Date
 }
-
-
 
 interface IForm extends Document {
   subCategory: Types.ObjectId;
@@ -29,7 +26,6 @@ interface IForm extends Document {
   languages?: IZoneLanguage[];
   setting: ISetting;
 }
-
 
 
 const FormSchema = new Schema<IForm>(

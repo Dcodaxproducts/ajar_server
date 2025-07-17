@@ -12,7 +12,6 @@ function asyncHandler(fn: any) {
   };
 }
 
-
 router.post("/", authMiddleware, asyncHandler(createBooking));
 router.get("/", asyncHandler(getAllBookings));
 router.get("/:id", getBookingById);
@@ -21,21 +20,16 @@ router.get("/admin/user/:userId", authMiddleware, asyncHandler(getBookingsByUser
 
 router.get("/user/bookings", authMiddleware, asyncHandler(getBookingsByUser));
 
-
 router.patch(
   "/:id",authMiddleware,
    asyncHandler(languageTranslationMiddleware(Booking)),
   asyncHandler(updateBooking)
 );
 
-
 router.patch("/:id/status", authMiddleware, asyncHandler(updateBookingStatus));
-
 
 router.delete("/:id", authMiddleware, deleteBooking);
 
 router.post("/:id/submit-pin", authMiddleware, asyncHandler(submitBookingPin));
-
-
 
 export default router;

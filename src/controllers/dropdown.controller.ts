@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { Dropdown } from "../models/dropdown.model"; // model file you created
+import { Dropdown } from "../models/dropdown.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 

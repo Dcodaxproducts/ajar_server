@@ -19,7 +19,6 @@ export const createUserSchema = z.object({
       required_error: "password is required",
     })
     .min(6, { message: "Password is too short" }),
-  // dob, nationality, user_type
 
   dob: z
     .string({
@@ -82,9 +81,7 @@ export const forgotPasswordSchema = z.object({
 });
 
 export const resetPasswordSchema = z.object({
-  // email: z
-  //   .string({ required_error: "Email is required" })
-  //   .email("Invalid email address"),
+ 
   password: z
     .string({ required_error: "Password is required" })
     .min(4, "Password must be at least 4 characters"),

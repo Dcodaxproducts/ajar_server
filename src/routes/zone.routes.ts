@@ -31,14 +31,12 @@ function asyncHandler(fn: any) {
   };
 }
 
-
 router.patch(
   "/:id",
   upload.single("thumbnail"),
   asyncHandler(languageTranslationMiddleware(Zone)),
   updateZone
 );
-
 
 router.delete("/:id", deleteZone);
 export default router;

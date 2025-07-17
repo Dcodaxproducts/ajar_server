@@ -104,10 +104,10 @@ export const getFieldDetails = async (
 
         const translatedField = {
           ...field,
-          ...translations, // override name, label, placeholder if they exist in translations
+          ...translations,
         };
 
-        delete translatedField.languages; // remove languages array from output
+        delete translatedField.languages; 
 
         sendResponse(
           res,
@@ -117,7 +117,7 @@ export const getFieldDetails = async (
         );
         return;
       } else {
-        // Locale provided but not found
+       
         sendResponse(
           res,
           null,
@@ -128,7 +128,6 @@ export const getFieldDetails = async (
       }
     }
 
-    // No locale provided — return base English field
     sendResponse(
       res,
       field,

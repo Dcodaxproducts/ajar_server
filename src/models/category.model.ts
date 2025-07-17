@@ -3,7 +3,7 @@ import slugify from "slugify";
 
 interface ILanguageTranslation {
   locale: string;
-  translations: Record<string, any>; //Flexible translations
+  translations: Record<string, any>; 
 }
 
 interface ICategory extends Document {
@@ -40,7 +40,7 @@ const BaseCategorySchema = new Schema<ICategory>(
     languages: [
       {
         locale: { type: String, required: true },
-        translations: { type: Schema.Types.Mixed }, //Dynamic
+        translations: { type: Schema.Types.Mixed }, 
       },
     ],
   },

@@ -9,7 +9,6 @@ router.get("/", getAllChats);
 router.post(
   "/",
   authMiddleware,
-  // validateRequest({ body: createChatSchema }),
   createChat
 );
 export default router;
