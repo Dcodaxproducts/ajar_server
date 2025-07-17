@@ -49,10 +49,10 @@ export const getAllBookings = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-     const status = req.query.status as "pending" | "accepted" | "rejected" | undefined;
+     const status = req.query.status as "pending" | "accepted" | "rejected" | "cancelled" | "completed" | undefined;
 
     const filter: any = {};
-    if (status && ["pending", "accepted", "rejected"].includes(status)) {
+    if (status && ["pending", "accepted", "rejected", "cancelled", "completed"].includes(status)) {
       filter.status = status;
     }
 
@@ -190,7 +190,17 @@ export const getBookingsByUser = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-    const baseQuery = Booking.find({ renter: user.id })
+    // Extract status from query
+    const status = req.query.status;
+
+    // Build filter conditionally
+    const filter: any = { renter: user.id };
+    if (status) {
+      filter.status = status;
+    }
+
+    // Apply the filter
+    const baseQuery = Booking.find(filter)
       .populate("marketplaceListingId")
       .lean() as any;
 
