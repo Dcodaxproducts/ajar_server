@@ -10,6 +10,7 @@ interface IExtensionCharges {
   adminFee: number;
   additionalCharges: number;
   totalPrice: number;
+  [key: string]: any; // Allow additional properties
 }
 
 interface ILanguageTranslation {
