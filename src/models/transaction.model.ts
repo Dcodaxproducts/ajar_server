@@ -24,7 +24,6 @@ const TransactionSchema = new Schema<ITransaction>(
       required: true,
       index: true,
     },
-    // sellerId: { type: Schema.Types.ObjectId, ref: "User" },
     connectedAccountId: { type: String },
     paymentIntentId: { type: String, required: true, unique: true },
     transferId: { type: String },

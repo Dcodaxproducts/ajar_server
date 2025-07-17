@@ -1,4 +1,3 @@
-// middlewares/languageTranslation.middleware.ts
 import { Request, Response, NextFunction } from "express";
 import mongoose, { Model } from "mongoose";
 
@@ -7,7 +6,7 @@ export const languageTranslationMiddleware = (model: Model<any>) => {
     const { id } = req.params;
     const { locale, ...rest } = req.body;
 
-    if (!locale || locale === "en") return next(); // Skip if no locale or default locale
+    if (!locale || locale === "en") return next(); 
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: "Invalid ID format" });
@@ -60,7 +59,6 @@ export const languageTranslationMiddleware = (model: Model<any>) => {
         });
       }
 
-      // Proceed to controller if other fields exist
       next();
     } catch (error) {
       next(error);

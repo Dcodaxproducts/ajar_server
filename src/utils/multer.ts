@@ -11,8 +11,8 @@ interface MulterFile extends Express.Multer.File {
 }
 
 const sanitizeFileName = (filename: string) => {
-  const name = path.parse(filename).name.replace(/[^a-zA-Z0-9-_]/g, ""); // Remove special characters
-  const ext = path.extname(filename).toLowerCase(); // Ensure lowercase extension
+  const name = path.parse(filename).name.replace(/[^a-zA-Z0-9-_]/g, ""); 
+  const ext = path.extname(filename).toLowerCase(); 
   return `${name}${ext}`;
 };
 

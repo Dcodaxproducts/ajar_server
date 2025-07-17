@@ -84,7 +84,6 @@ export const getZoneDetails = async (
       return;
     }
 
-    // const zone = await Zone.findById(id).lean();
     const zone = await Zone.findById(id).populate("subCategories").lean();
 
     if (!zone) {
@@ -286,7 +285,6 @@ export const updateZone = async (
 
         subCategories = validIds;
       } catch {
-        // subCategories = existingZone.subCategories;
         subCategories = existingZone.subCategories.map((id) => id.toString());
       }
     }

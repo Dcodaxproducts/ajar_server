@@ -27,24 +27,18 @@ router.post(
   createNewCategory
 );
 
-
-// Utility to wrap async middlewares
 function asyncHandler(fn: any) {
   return function (req: any, res: any, next: any) {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 }
 
-
-// PATCH: Translate specific fields to a locale
 router.patch(
   "/:id",
    upload.single("thumbnail"),
   asyncHandler(languageTranslationMiddleware(Category)),
   updateCategory
 );
-
-
 
 router.patch(
   "/:id/thumbnail",

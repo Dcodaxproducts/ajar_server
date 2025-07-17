@@ -178,7 +178,7 @@ export const getFormDetails = async (
       };
     });
 
-    // 🛠 Zone safe-check
+    //Zone safe-check
     const zone = form.zone as any;
     const zoneTranslation = zone?.languages?.find(
       (entry: any) => entry.locale?.toLowerCase() === lang
@@ -190,7 +190,7 @@ export const getFormDetails = async (
         }
       : null;
 
-    // 🛠 SubCategory safe-check
+    //SubCategory safe-check
     const subCat = form.subCategory as any;
     const subCatTranslation = subCat?.languages?.find(
       (entry: any) => entry.locale?.toLowerCase() === lang

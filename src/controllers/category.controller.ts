@@ -116,7 +116,7 @@ export const getCategoryDetails = async (
     }
 
     const category = await Category.findById(id)
-      .populate<{ category: ICategory }>("category") //Properly typed populate
+      .populate<{ category: ICategory }>("category") 
       .lean()
       .exec();
 
