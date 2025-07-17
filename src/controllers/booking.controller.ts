@@ -297,7 +297,7 @@ export const updateBookingStatus = async (
 
     const isLeaser = user.id === booking.leaser?.toString(); // in case leaser is optional
 
-    // 🔒 Restriction Logic
+    //Restriction Logic
     if (status === "cancelled") {
       if (!isRenter) {
         return sendResponse(res, null, "Only renter can cancel the booking", STATUS_CODES.FORBIDDEN);
