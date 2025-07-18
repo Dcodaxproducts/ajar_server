@@ -31,7 +31,7 @@ export const getAllPayments = async (
 
     let filter: Record<string, any> = {};
 
-    if (user?.role === "vendor") {
+    if (user?.role === "admin") {
       filter.vendor = userId;
     } else if (user?.role === "user") {
       filter.user = userId;
