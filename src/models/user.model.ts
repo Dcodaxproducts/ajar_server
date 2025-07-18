@@ -4,10 +4,9 @@ export interface IUser extends Document {
   name: string;
   email: string;
   password: string;
-  role: string;
+  role: "user" | "admin";
   dob: Date;
   nationality: string;
-
   profilePicture: string;
   phone: string;
   stripe: {
@@ -23,6 +22,7 @@ export interface IUser extends Document {
     resetToken: string;
     resetTokenExpiry: Date;
   };
+  status: "active" | "inactive" | "blocked" | "Unblocked";
 }
 
 const UserSchema: Schema = new Schema(
@@ -49,11 +49,20 @@ const UserSchema: Schema = new Schema(
       connectedAccountLink: { type: String, default: "" },
     },
     password: { type: String, required: true },
-    role: { type: String, default: "user" },
+    role: {
+      type: String,
+      enum: ["user", "admin"],
+      default: "user",
+    },
     dob: { type: Date, required: true },
     nationality: { type: String, required: true },
     profilePicture: { type: String, default: "" },
     phone: { type: String, default: "" },
+    status: {
+      type: String,
+      enum: ["active", "inactive", "blocked", "Unblocked"],
+      default: "active",
+    },
   },
   { timestamps: true }
 );

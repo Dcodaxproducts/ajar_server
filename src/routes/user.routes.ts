@@ -11,6 +11,7 @@ import {
   resendOtp,
   resetPassword,
   updateUserProfile,
+  updateUserStatus,
   verifyOtp,
 } from "../controllers/user.controller";
 import { validateRequest } from "../middlewares/validateRequest";
@@ -24,8 +25,9 @@ import {
   userDetailsSchema,
   verifyOtpSchema,
 } from "../schemas/user.schema";
-import { authMiddleware } from "../middlewares/auth.middleware";
+
 import upload from "../utils/multer";
+import { authMiddleware } from "../middlewares/auth.middleware";
 
 const router = express.Router();
 
@@ -77,6 +79,11 @@ router.put(
 );
 
 router.get("/stats", authMiddleware, getDashboardStats);
+
+router.patch(
+  "/status/:userId", authMiddleware ,
+  updateUserStatus
+);
 
 
 export default router;

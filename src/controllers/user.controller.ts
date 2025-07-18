@@ -529,3 +529,40 @@ export const getDashboardStats = async (
     next(error);
   }
 };
+
+
+// In user.controller.ts
+export const updateUserStatus = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (typeof req.user?.role === "string" && req.user.role !== "admin") {
+      sendResponse(res, null, "Forbidden: Admins only", STATUS_CODES.FORBIDDEN);
+      return;
+    }
+
+    const { userId } = req.params;
+    const { status } = req.body;
+
+    const allowedStatuses = ["active", "inactive", "blocked", "Unblocked"];
+    if (!allowedStatuses.includes(status)) {
+      sendResponse(res, null, "Invalid status value", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    user.status = status;
+    await user.save();
+
+    sendResponse(res, user, "User status updated successfully", STATUS_CODES.OK);
+  } catch (error) {
+    next(error);
+  }
+};
