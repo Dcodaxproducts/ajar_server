@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import { STATUS_CODES } from "../config/constants";
 import { sendResponse } from "../utils/response";
 import { paginateQuery } from "../utils/paginate";
-import { MarketplaceListing } from "../models/marketplaceListings.Model";
+import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 
 // CREATE
