@@ -18,6 +18,7 @@ import { UserDocument } from "../models/userDocs.mode";
 import { Category } from "../models/category.model";
 import { Booking } from "../models/booking.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
+import { Employee } from "../models/employeeManagement.model";
 
 export const createUser = async (
   req: Request,
@@ -86,40 +87,67 @@ export const loginUser = async (
 ): Promise<void> => {
   const { email, password, role } = req.body;
 
-  const user = await User.findOne({ email })
-    .select("email password role")
-    .lean();
-  if (!user) {
-    sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
-    return;
+  try {
+    if (role === "staff") {
+      // Staff login using Employee model with plain password
+      const employee = await Employee.findOne({ email }).select("email password roles").lean();
+
+      if (!employee) {
+        sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
+        return;
+      }
+
+      if (employee.password !== password) {
+        sendResponse(res, null, "Invalid email or password", STATUS_CODES.UNAUTHORIZED);
+        return;
+      }
+
+      const accessToken = generateAccessToken({ id: employee._id, role: "staff" });
+
+      sendResponse(
+        res,
+        {
+          token: accessToken,
+          user: employee,
+        },
+        "Login successful (staff)",
+        STATUS_CODES.OK
+      );
+
+    } else if (role === "user" || role === "admin") {
+      // User/Admin login using User model with bcrypt
+      const user = await User.findOne({ email, role }).select("email password role").lean();
+
+      if (!user) {
+        sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+        return;
+      }
+
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
+        sendResponse(res, null, "Invalid email or password", STATUS_CODES.UNAUTHORIZED);
+        return;
+      }
+
+      const accessToken = generateAccessToken({ id: user._id, role: user.role });
+
+      sendResponse(
+        res,
+        {
+          token: accessToken,
+          user: user,
+        },
+        "Login successful",
+        STATUS_CODES.OK
+      );
+    } else {
+      sendResponse(res, null, "Invalid role provided", STATUS_CODES.BAD_REQUEST);
+    }
+  } catch (error) {
+    next(error);
   }
-
-  const isPasswordValid = await bcrypt.compare(password, user.password);
-  if (!isPasswordValid) {
-    sendResponse(
-      res,
-      null,
-      "Invalid email or password",
-      STATUS_CODES.UNAUTHORIZED
-    );
-    return;
-  }
-
-  const accessToken = generateAccessToken({ id: user._id, role: user.role });
-  // const refreshToken = generateRefreshToken({ id: user._id }, "7d");
-
-  // refreshTokens.add(refreshToken); // Store refresh token (DB recommended)
-
-  sendResponse(
-    res,
-    {
-      token: accessToken,
-      user: user,
-    },
-    "Login successful",
-    STATUS_CODES.OK
-  );
 };
+
 
 export const refreshToken = async (
   req: Request,
@@ -168,7 +196,7 @@ export const logout = async (
   next: NextFunction
 ): Promise<void> => {
   const { refreshToken } = req.body;
-  refreshTokens.delete(refreshToken); // Remove refresh token from store
+  refreshTokens.delete(refreshToken); 
 
   sendResponse(res, null, "Logged out successfully", STATUS_CODES.OK);
 };
