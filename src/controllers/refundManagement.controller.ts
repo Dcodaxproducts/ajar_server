@@ -4,6 +4,7 @@ import { Zone } from "../models/zone.model";
 import { Category } from "../models/category.model";
 import mongoose from "mongoose";
 import asyncHandler from "express-async-handler";
+import { Booking } from "../models/booking.model";
 
 // Helper function to check if ObjectId is valid and exists
 const isValidObjectIdAndExists = async (
@@ -37,7 +38,7 @@ export const createRefundSettings = asyncHandler(
     }
 
     const refundSettings = await RefundManagement.create({
-      zoneId: zone,
+      zone: zone,
       subCategory,
       allowFund,
       cutoffTime,
@@ -58,7 +59,7 @@ export const createRefundSettings = asyncHandler(
 export const getAllRefundSettings = asyncHandler(
   async (req: Request, res: Response) => {
     const settings = await RefundManagement.find()
-      .populate("zoneId", "zoneName")
+      .populate("zone", "zoneName")
       .populate("subCategory", "categoryName");
 
     res.status(200).json({
@@ -130,6 +131,115 @@ export const deleteRefundSettings = asyncHandler(
     res.status(200).json({
       success: true,
       message: "Refund settings deleted successfully",
+    });
+  }
+);
+
+
+
+
+//for leaser
+
+// Create Refund Request (User)
+export const createRefundRequest = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const {
+      booking,
+      reason,
+      deduction,
+      totalRefundAmount,
+      card,
+      cardDetails,
+      profile,
+      idVerification,
+      businessVerification,
+      selectTime,
+    } = req.body;
+
+    if (!(await isValidObjectIdAndExists(booking, Booking))) {
+      res.status(400).json({ message: "Invalid booking ID" });
+      return;
+    }
+
+    const refund = await RefundManagement.create({
+      booking,
+      reason,
+      deduction,
+      totalRefundAmount,
+      card,
+      cardDetails,
+      profile,
+      idVerification,
+      businessVerification,
+      selectTime,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Refund request submitted successfully",
+      data: refund,
+    });
+  }
+);
+
+//Get My Refund Requests (User)
+export const getMyRefundRequests = asyncHandler(
+  async (req: Request, res: Response) => {
+    const refunds = await RefundManagement.find({
+      booking: req.query.booking,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: refunds,
+    });
+  }
+);
+
+//Update Refund Request (User)
+export const updateRefundRequest = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    const refund = await RefundManagement.findById(id);
+    if (!refund) {
+      res.status(404).json({ message: "Refund request not found" });
+      return;
+    }
+
+    const updates = req.body;
+
+    // Optional: validate booking if being updated
+    if (updates.booking && !(await isValidObjectIdAndExists(updates.booking, Booking))) {
+      res.status(400).json({ message: "Invalid booking ID" });
+      return;
+    }
+
+    Object.assign(refund, updates);
+    await refund.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Refund request updated",
+      data: refund,
+    });
+  }
+);
+
+//Delete Refund Request (User)
+export const deleteRefundRequest = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    const refund = await RefundManagement.findByIdAndDelete(id);
+    if (!refund) {
+      res.status(404).json({ message: "Refund request not found" });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Refund request deleted",
     });
   }
 );
