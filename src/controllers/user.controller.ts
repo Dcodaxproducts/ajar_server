@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { IUser, User } from "../models/user.model";
@@ -9,7 +10,6 @@ import {
   generateResetToken,
   verifyRefreshToken,
 } from "../utils/jwt.utils";
-import { AuthRequest } from "../types/express";
 import { sendEmail } from "../helpers/node-mailer";
 import { createCustomer } from "../helpers/stripe-functions";
 import { redis } from "../utils/redis.client";
@@ -201,21 +201,58 @@ export const logout = async (
   sendResponse(res, null, "Logged out successfully", STATUS_CODES.OK);
 };
 
+// Assuming your AuthRequest extends Express Request and adds a `user` object
+interface AuthRequest extends Request {
+  user?: {
+    id: string;
+    role: string | string[]; // Allow both string and string[] formats
+  };
+}
+
 export const getUserDetails = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log({ user: req.user });
     const userId = req.user?.id;
+    const role = req.user?.role;
 
-    const user = await User.findById(userId).select("email name role").lean();
+    if (!userId || !role) {
+      sendResponse(res, null, "User not authenticated", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
+    let user: any = null;
+
+    // Helper function to check role existence
+    const hasRole = (r: string): boolean =>
+      Array.isArray(role) ? role.includes(r) : role === r;
+
+    if (hasRole("admin") || hasRole("user")) {
+      user = await User.findById(userId).select("email name role").lean();
+    } else if (hasRole("staff")) {
+      user = await Employee.findById(userId)
+        .select("email firstName lastName role")
+        .lean();
+
+      if (user) {
+        // Combine firstName and lastName into a name field for consistency
+        user.name = `${user.firstName} ${user.lastName}`;
+        delete user.firstName;
+        delete user.lastName;
+      }
+    } else {
+      sendResponse(res, null, "Invalid role", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
     if (!user) {
       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
+    // Fetch attached documents
     const docsAttached = await UserDocument.find({
       user: userId,
     }).lean();
@@ -233,6 +270,39 @@ export const getUserDetails = async (
     next(error);
   }
 };
+
+// export const getUserDetails = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     console.log({ user: req.user });
+//     const userId = req.user?.id;
+
+//     const user = await User.findById(userId).select("email name role").lean();
+//     if (!user) {
+//       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+//       return;
+//     }
+
+//     const docsAttached = await UserDocument.find({
+//       user: userId,
+//     }).lean();
+
+//     sendResponse(
+//       res,
+//       {
+//         user,
+//         documents: docsAttached,
+//       },
+//       "User details fetched successfully",
+//       STATUS_CODES.OK
+//     );
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 export const resendOtp = async (
   req: Request,

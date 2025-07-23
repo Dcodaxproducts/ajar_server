@@ -1,115 +1,176 @@
-import express from "express";
-import { authMiddleware } from "../middlewares/auth.middleware";
+import express, { Request, Response, NextFunction } from "express";
+import asyncHandler from "express-async-handler";
 import upload from "../utils/multer";
-import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
-import { Employee } from "../models/employeeManagement.model";
-import { createEmployee, deleteEmployee, getAllEmployees, getEmployeeById, updateEmployee } from "../controllers/employeeManagement.controller";
+import { authMiddleware } from "../middlewares/auth.middleware";
 import { employeeAuthMiddleware } from "../middlewares/employeeAuth.middleware";
-import { createZone, deleteZone, getAllZones, getZoneDetails, updateZone } from "../controllers/zone.controller";
-import { Zone } from "../models/zone.model";
+import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 import { validateRequest } from "../middlewares/validateRequest";
 import { categorySchema } from "../schemas/category.schema";
-import { createNewCategory, deleteCategory, getAllCategories, getCategoryDetails, updateCategory, updateCategoryThumbnail } from "../controllers/category.controller";
-import { Category } from "../models/category.model";
 import { fieldSchema } from "../schemas/field.schema";
-import { createNewField, deleteField, getAllFields, getFieldDetails, updateField } from "../controllers/field.controller";
+
+// Import controllers
+import * as employeeController from "../controllers/employeeManagement.controller";
+import * as zoneController from "../controllers/zone.controller";
+import * as categoryController from "../controllers/category.controller";
+import * as fieldController from "../controllers/field.controller";
+
+// Import models
+import { Employee } from "../models/employeeManagement.model";
+import { Zone } from "../models/zone.model";
+import { Category } from "../models/category.model";
 import { Field } from "../models/field.model";
+import { STATUS_CODES } from "../config/constants";
+import { sendResponse } from "../utils/response";
 
 const router = express.Router();
 
-function asyncHandler(fn: any) {
-  return function (req: any, res: any, next: any) {
-    Promise.resolve(fn(req, res, next)).catch(next);
-  };
-}
+// Helper function to properly type the asyncHandler with languageTranslationMiddleware
+const wrapTranslationMiddleware = (model: any) => {
+  return asyncHandler(async (req, res, next) => {
+    await new Promise<void>((resolve, reject) => {
+      languageTranslationMiddleware(model)(req, res, (err) => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+    next();
+  });
+};
 
-router.get("/", getAllEmployees);
-router.get("/:id", asyncHandler(getEmployeeById));
+// EMPLOYEE ROUTES (Admin only)
+router.get("/", authMiddleware, asyncHandler(employeeController.getAllEmployees));
+router.get("/:id", authMiddleware, asyncHandler(employeeController.getEmployeeById));
 
 router.post(
   "/",
   authMiddleware,
   upload.array("images", 5),
- asyncHandler(createEmployee)
+  asyncHandler(employeeController.createEmployee)
 );
 
 router.patch(
   "/:id",
   authMiddleware,
   upload.array("images", 5),
-  asyncHandler(languageTranslationMiddleware(Employee)),
- asyncHandler(updateEmployee)
+  wrapTranslationMiddleware(Employee),
+  asyncHandler(employeeController.updateEmployee)
 );
 
-router.delete("/:id", authMiddleware, asyncHandler(deleteEmployee));
+router.delete("/:id", authMiddleware, asyncHandler(employeeController.deleteEmployee));
 
-
-//zone management routes
-// Employee access routes
+// ZONE ROUTES (Zone Manager only)
 router.post(
-  "/employee",
-  employeeAuthMiddleware,
+  "/zones",
+  employeeAuthMiddleware("zone_manager"),
   upload.single("thumbnail"),
-  createZone
+  asyncHandler(zoneController.createZone)
 );
 
 router.patch(
-  "/employee/:id",
-  employeeAuthMiddleware,
+  "/zones/:id",
+  employeeAuthMiddleware("zone_manager"),
   upload.single("thumbnail"),
-  asyncHandler(languageTranslationMiddleware(Zone)),
-  updateZone
+  wrapTranslationMiddleware(Zone),
+  asyncHandler(zoneController.updateZone)
 );
 
-router.get("/", employeeAuthMiddleware, getAllZones);
-router.get("/:id", employeeAuthMiddleware, getZoneDetails);
-router.delete("/:id", employeeAuthMiddleware, deleteZone);
+router.get("/zones", employeeAuthMiddleware("zone_manager"), asyncHandler(zoneController.getAllZones));
+router.get("/zones/:id", employeeAuthMiddleware("zone_manager"), asyncHandler(zoneController.getZoneDetails));
+router.delete("/zones/:id", employeeAuthMiddleware("zone_manager"), asyncHandler(zoneController.deleteZone));
 
-//category management routes
-// Employee access routes
+// CATEGORY ROUTES (Categories Manager only)
 router.post(
-  "/category",
-  employeeAuthMiddleware,
+  "/categories",
+  employeeAuthMiddleware("categories_manager"),
   upload.single("thumbnail"),
   validateRequest({ body: categorySchema }),
-  createNewCategory
+  asyncHandler(categoryController.createNewCategory)
 );
 
 router.patch(
-  "/category/:id",
+  "/categories/:id",
+  employeeAuthMiddleware("categories_manager"),
   upload.single("thumbnail"),
-  asyncHandler(languageTranslationMiddleware(Category)),
-  updateCategory
+  wrapTranslationMiddleware(Category),
+  asyncHandler(categoryController.updateCategory)
 );
 
 router.patch(
-  "/category/:id/thumbnail",
-  employeeAuthMiddleware,
+  "/categories/:id/thumbnail",
+  employeeAuthMiddleware("categories_manager"),
   upload.single("thumbnail"),
-  updateCategoryThumbnail
+  asyncHandler(categoryController.updateCategoryThumbnail)
 );
 
-router.get("/", getAllCategories);
-router.get("/:id", getCategoryDetails);
-router.delete("/:id", deleteCategory);
+// Public read access to categories
+router.get("/categories", asyncHandler(categoryController.getAllCategories));
 
-//field management routes
-// Employee access routes
+// Manager-only category endpoints
+router.get("/categories/:id", employeeAuthMiddleware("categories_manager"), asyncHandler(categoryController.getCategoryDetails));
+router.delete("/categories/:id", employeeAuthMiddleware("categories_manager"), asyncHandler(categoryController.deleteCategory));
 
+// FIELD ROUTES (Field Manager only)
 router.post(
-  "/field",
-  employeeAuthMiddleware,
+  "/fields",
+  employeeAuthMiddleware("field_manager"),
   validateRequest({ body: fieldSchema }),
-  createNewField
+  asyncHandler(fieldController.createNewField)
 );
 
 router.patch(
-  "/:id",
-  asyncHandler(languageTranslationMiddleware(Field)),
-  updateField
+  "/fields/:id",
+  employeeAuthMiddleware("field_manager"),
+  wrapTranslationMiddleware(Field),
+  asyncHandler(fieldController.updateField)
 );
-router.get("/", getAllFields);
-router.get("/:id", getFieldDetails);
-router.delete("/:id", employeeAuthMiddleware, deleteField);
+
+router.get("/fields", employeeAuthMiddleware("field_manager"), asyncHandler(fieldController.getAllFields));
+router.get("/fields/:id", employeeAuthMiddleware("field_manager"), asyncHandler(fieldController.getFieldDetails));
+router.delete("/fields/:id", employeeAuthMiddleware("field_manager"), asyncHandler(fieldController.deleteField));
+
+// CROSS-ROLE ACCESS ROUTES (For employees with multiple staffRoles)
+router.get("/my-resources", 
+  employeeAuthMiddleware("zone_manager", "categories_manager", "field_manager"),
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const employee = (req as any).employee;
+    
+    const resources: any = {};
+    
+    if (employee.staffRoles.includes("zone_manager")) {
+      const mockNext = () => {};
+      const mockReq = { ...req, query: {} } as Request;
+      const mockRes = {
+        json: (data: any) => { resources.zones = data; },
+        status: () => mockRes
+      } as unknown as Response;
+      
+      await zoneController.getAllZones(mockReq, mockRes, mockNext);
+    }
+    
+    if (employee.staffRoles.includes("categories_manager")) {
+      const mockNext = () => {};
+      const mockReq = { ...req, query: {} } as Request;
+      const mockRes = {
+        json: (data: any) => { resources.categories = data; },
+        status: () => mockRes
+      } as unknown as Response;
+      
+      await categoryController.getAllCategories(mockReq, mockRes, mockNext);
+    }
+    
+    if (employee.staffRoles.includes("field_manager")) {
+      const mockNext = () => {};
+      const mockReq = { ...req, query: {} } as Request;
+      const mockRes = {
+        json: (data: any) => { resources.fields = data; },
+        status: () => mockRes
+      } as unknown as Response;
+      
+      await fieldController.getAllFields(mockReq, mockRes, mockNext);
+    }
+    
+    sendResponse(res, resources, "Employee resources fetched", STATUS_CODES.OK);
+  })
+);
 
 export default router;
