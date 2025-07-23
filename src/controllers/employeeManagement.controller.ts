@@ -5,9 +5,7 @@ import { Zone } from "../models/zone.model";
 import { Category } from "../models/category.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
-import { paginateQuery } from "../utils/paginate";
 import { Dropdown } from "../models/dropdown.model";
-import { log } from "console";
 
 // Get all employees
 export const getAllEmployees = async (
@@ -21,7 +19,6 @@ export const getAllEmployees = async (
     const limit = Number(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Fetch all employees with pagination
     const employees = await Employee.find()
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -30,7 +27,6 @@ export const getAllEmployees = async (
     let filteredData = employees;
 
     if (locale && employees.some((emp: any) => emp.languages?.length)) {
-      // Filter and translate only if some employees have languages defined
       filteredData = employees
         .filter((employee: any) =>
           employee.languages?.some((lang: any) => lang.locale === locale)
@@ -39,21 +35,16 @@ export const getAllEmployees = async (
           const matchedLang = employee.languages.find(
             (lang: any) => lang.locale === locale
           );
-
           const empObj = employee.toObject();
-
           if (matchedLang?.translations) {
-            empObj.firstName =
-              matchedLang.translations.firstName || empObj.firstName;
-            empObj.lastName =
-              matchedLang.translations.lastName || empObj.lastName;
+            empObj.firstName = matchedLang.translations.firstName || empObj.firstName;
+            empObj.lastName = matchedLang.translations.lastName || empObj.lastName;
           }
-
           delete empObj.languages;
           return empObj;
         });
     } else {
-       filteredData = employees.map((emp: any) => {
+      filteredData = employees.map((emp: any) => {
         const empObj = emp.toObject();
         delete empObj.languages;
         return empObj;
@@ -62,13 +53,13 @@ export const getAllEmployees = async (
 
     const totalCount = await Employee.countDocuments();
 
-    res.status(200).json({
+    sendResponse(res, {
       success: true,
       message: "Employees fetched successfully",
       employees: filteredData,
       totalPages: Math.ceil(totalCount / limit),
       currentPage: page,
-    });
+    }, "Employees fetched successfully", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -85,7 +76,8 @@ export const getEmployeeById = async (
     const locale = req.headers["language"]?.toString() || null;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendResponse(res, null, "Invalid Employee ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, "Invalid Employee ID", STATUS_CODES.BAD_REQUEST);
+      return;
     }
 
     const employee = await Employee.findById(id)
@@ -93,7 +85,8 @@ export const getEmployeeById = async (
       .lean();
 
     if (!employee) {
-      return sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
+      return;
     }
 
     if (locale) {
@@ -104,19 +97,21 @@ export const getEmployeeById = async (
       if (matchedLang?.translations) {
         const translated = { ...employee, ...matchedLang.translations };
         delete translated.languages;
-        return sendResponse(
+        sendResponse(
           res,
           translated,
           `Employee details for locale: ${locale}`,
           STATUS_CODES.OK
         );
+        return;
       } else {
-        return sendResponse(
+        sendResponse(
           res,
           null,
           `No translations found for locale: ${locale}`,
           STATUS_CODES.NOT_FOUND
         );
+        return;
       }
     }
 
@@ -136,7 +131,7 @@ export const createEmployee = async (req: Request, res: Response, next: NextFunc
       phone,
       password,
       confirmPassword,
-      roles,
+      staffRoles,
       permissions,
       setPermissions,
       images,
@@ -147,52 +142,52 @@ export const createEmployee = async (req: Request, res: Response, next: NextFunc
       categories,
     } = req.body;
 
-    // 1. Check for duplicate email
     const existingEmail = await Employee.findOne({ email });
     if (existingEmail) {
-      return sendResponse(res, null, "Email already exists", STATUS_CODES.CONFLICT);
+      sendResponse(res, null, "Email already exists", STATUS_CODES.CONFLICT);
+      return;
     }
 
-    // 2. Validate roles using dropdown
-    if (roles && roles.length > 0) {
-      const dropdown = await Dropdown.findOne({ name: "employeeRoles" }).lean();
+    if (staffRoles && staffRoles.length > 0) {
+      const dropdown = await Dropdown.findOne({ name: "employeestaffRoles" }).lean();
       if (!dropdown) {
-        return sendResponse(res, null, "Employee roles dropdown not found", STATUS_CODES.BAD_REQUEST);
+        sendResponse(res, null, "Employee staffRoles dropdown not found", STATUS_CODES.BAD_REQUEST);
+        return;
       }
 
-      const allowedRoles = dropdown.values.map((v) => v.value);
-      const invalidRoles = roles.filter((role: string) => !allowedRoles.includes(role));
-      if (invalidRoles.length > 0) {
-        return sendResponse(
+      const allowedstaffRoles = dropdown.values.map((v) => v.value);
+      const invalidstaffRoles = staffRoles.filter((role: string) => !allowedstaffRoles.includes(role));
+      if (invalidstaffRoles.length > 0) {
+        sendResponse(
           res,
           null,
-          `Invalid role(s): ${invalidRoles.join(", ")}. Allowed roles: ${allowedRoles.join(", ")}`,
+          `Invalid role(s): ${invalidstaffRoles.join(", ")}. Allowed staffRoles: ${allowedstaffRoles.join(", ")}`,
           STATUS_CODES.BAD_REQUEST
         );
+        return;
       }
     }
 
-    // 3. Validate zones
     if (zones && zones.length > 0) {
       const validZones = await Zone.find({ _id: { $in: zones } }).select("_id").lean();
       const validZoneIds = validZones.map((z) => z._id.toString());
       const invalidZoneIds = zones.filter((z: string) => !validZoneIds.includes(z));
       if (invalidZoneIds.length > 0) {
-        return sendResponse(res, null, `Invalid Zone IDs: ${invalidZoneIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
+        sendResponse(res, null, `Invalid Zone IDs: ${invalidZoneIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
+        return;
       }
     }
 
-    // 4. Validate categories
     if (categories && categories.length > 0) {
       const validCategories = await Category.find({ _id: { $in: categories } }).select("_id").lean();
       const validCategoryIds = validCategories.map((c) => c._id.toString());
       const invalidCategoryIds = categories.filter((c: string) => !validCategoryIds.includes(c));
       if (invalidCategoryIds.length > 0) {
-        return sendResponse(res, null, `Invalid Category IDs: ${invalidCategoryIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
+        sendResponse(res, null, `Invalid Category IDs: ${invalidCategoryIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
+        return;
       }
     }
 
-    // 5. Save employee
     const newEmployee = new Employee({
       firstName,
       lastName,
@@ -200,7 +195,7 @@ export const createEmployee = async (req: Request, res: Response, next: NextFunc
       phone,
       password,
       confirmPassword,
-      roles,
+      staffRoles,
       permissions,
       setPermissions,
       images,
@@ -213,7 +208,7 @@ export const createEmployee = async (req: Request, res: Response, next: NextFunc
 
     await newEmployee.save();
 
-    return sendResponse(res, newEmployee, "Employee created successfully", STATUS_CODES.CREATED);
+    sendResponse(res, newEmployee, "Employee created successfully", STATUS_CODES.CREATED);
   } catch (error) {
     next(error);
   }
@@ -228,12 +223,14 @@ export const updateEmployee = async (
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendResponse(res, null, "Invalid Employee ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, "Invalid Employee ID", STATUS_CODES.BAD_REQUEST);
+      return;
     }
 
     const employee = await Employee.findById(id);
     if (!employee) {
-      return sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
+      return;
     }
 
     Object.assign(employee, req.body);
@@ -253,17 +250,16 @@ export const deleteEmployee = async (
 ) => {
   try {
     const { id } = req.params;
-    console.log(`Attempting to delete employee with ID: ${id}`);
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendResponse(res, null, "Invalid Employee ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, "Invalid Employee ID", STATUS_CODES.BAD_REQUEST);
+      return;
     }
-
-    console.log(`Deleting employee with ID: ${id}`);
 
     const employee = await Employee.findByIdAndDelete(id);
     if (!employee) {
-      return sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
+      return;
     }
 
     sendResponse(res, employee, "Employee deleted", STATUS_CODES.OK);
