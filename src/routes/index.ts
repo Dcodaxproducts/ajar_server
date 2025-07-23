@@ -13,6 +13,7 @@ import bookingRoutes from "./booking.routes";
 import damageReportRoutes from "./damageReport.routes";
 import BusinessSetting from "./businessSetting.routes";
 import employeeManagementRoutes from "./employeeManagement.routes";
+import refundRoutes from "./refundManagement.routes";
 
 const router = express.Router();
 
@@ -30,5 +31,6 @@ router.use("/bookings", bookingRoutes);
 router.use("/damage-reports", damageReportRoutes); 
 router.use("/businessSetting", BusinessSetting);
 router.use("/employeeManagement", employeeManagementRoutes);
+router.use("/refunds", refundRoutes);
 
 export default router;
