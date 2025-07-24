@@ -41,6 +41,7 @@ export interface IRefundManagement extends Document {
     hours: number;
   };
   note: string;
+  status: "pending" | "accept" | "reject";
 }
 
 const refundManagementSchema = new Schema<IRefundManagement>(
@@ -117,6 +118,11 @@ const refundManagementSchema = new Schema<IRefundManagement>(
     },
     note: {
       type: String,
+    },
+    status: {
+      type: String,
+      enum: ["pending", "accept", "reject"],
+      default: "pending", 
     },
   },
   { timestamps: true }
