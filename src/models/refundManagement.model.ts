@@ -48,11 +48,11 @@ const refundManagementSchema = new Schema<IRefundManagement>(
     booking: {
       type: Schema.Types.ObjectId,
       ref: "Booking",
-      required: true,
+      
     },
     reason: {
       type: String,
-      required: true,
+      
     },
     deduction: {
       type: Number,
@@ -60,47 +60,44 @@ const refundManagementSchema = new Schema<IRefundManagement>(
     },
     totalRefundAmount: {
       type: Number,
-      required: true,
+      
     },
     card: {
       type: String,
       enum: ["MasterCard", "Visa", "DebitCard"],
-      required: true,
+      
     },
     cardDetails: {
-      cardNumber: { type: String, required: true },
-      cardHolderName: { type: String, required: true },
-      expiry: { type: String, required: true },
-      cvvCode: { type: String, required: true },
+      cardNumber: { type: String, },
+      cardHolderName: { type: String, },
+      expiry: { type: String, },
+      cvvCode: { type: String, },
     },
     profile: {
-      name: { type: String, required: true },
-      dob: { type: Date, required: true },
-      nationality: { type: String, required: true },
+      name: { type: String, },
+      dob: { type: Date, },
+      nationality: { type: String, },
     },
     idVerification: {
-      documentType: { type: String, required: true },
-      expiryDate: { type: Date, required: true },
-      documentUpload: { type: String, required: true }, // file URL or path
+      documentType: { type: String, },
+      expiryDate: { type: Date, },
+      documentUpload: { type: String, }, 
     },
     businessVerification: {
-      taxId: { type: String, required: true },
-      expiryDate: { type: Date, required: true },
-      businessLicense: { type: String, required: true }, // file URL or path
+      taxId: { type: String, },
+      expiryDate: { type: Date, },
+      businessLicense: { type: String, }, 
     },
     selectTime: {
       type: String,
-      required: true,
     },
     zone: {
       type: Schema.Types.ObjectId,
       ref: "Zone",
-      required: true,
     },
     subCategory: {
       type: Schema.Types.ObjectId,
       ref: "Category",
-      required: true,
     },
     allowFund: {
       type: Boolean,
