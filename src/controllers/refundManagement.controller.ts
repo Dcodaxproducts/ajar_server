@@ -5,6 +5,7 @@ import { Category } from "../models/category.model";
 import mongoose from "mongoose";
 import asyncHandler from "express-async-handler";
 import { Booking } from "../models/booking.model";
+import { paginateQuery } from "../utils/paginate";
 
 // Helper function to check if ObjectId is valid and exists
 const isValidObjectIdAndExists = async (
@@ -58,13 +59,21 @@ export const createRefundSettings = asyncHandler(
 //Get All Refund Settings (Admin)
 export const getAllRefundSettings = asyncHandler(
   async (req: Request, res: Response) => {
-    const settings = await RefundManagement.find()
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+
+    const baseQuery = RefundManagement.find()
       .populate("zone", "zoneName")
       .populate("subCategory", "categoryName");
 
+    const { data, total } = await paginateQuery(baseQuery, { page, limit });
+
     res.status(200).json({
       success: true,
-      data: settings,
+      data,
+      total,
+      page,
+      limit,
     });
   }
 );
@@ -135,9 +144,7 @@ export const deleteRefundSettings = asyncHandler(
   }
 );
 
-
 //for leaser
-
 // Create Refund Request (User)
 export const createRefundRequest = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
@@ -305,29 +312,36 @@ export const getRefundRequestById = asyncHandler(
   }
 );
 
-
 // Get All Refund Requests (User Only)
 export const getMyRefundRequests = asyncHandler(
   async (req: Request, res: Response) => {
-    const refunds = await RefundManagement.find()
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+
+    const baseQuery = RefundManagement.find()
       .populate("zone", "zoneName")
       .populate("subCategory", "categoryName")
       .populate("booking");
 
-    // Calculate counts by status
-    const totalRequests = refunds.length;
-    const pendingRequests = refunds.filter(r => r.status === "pending").length;
-    const rejectedRequests = refunds.filter(r => r.status === "reject").length;
-    const acceptedRequests = refunds.filter(r => r.status === "accept").length;
+    // Paginate
+    const { data, total } = await paginateQuery(baseQuery, { page, limit });
+
+    // Calculate counts by status from DB
+    const [pendingRequests, rejectedRequests, acceptedRequests] = await Promise.all([
+      RefundManagement.countDocuments({ status: "pending" }),
+      RefundManagement.countDocuments({ status: "reject" }),
+      RefundManagement.countDocuments({ status: "accept" }),
+    ]);
 
     res.status(200).json({
       success: true,
-      totalRequests,
+      data,
+      totalRequests: total, 
       pendingRequests,
       rejectedRequests,
       acceptedRequests,
-      data: refunds,
+      page,
+      limit,
     });
   }
 );
-
