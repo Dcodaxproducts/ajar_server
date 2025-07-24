@@ -314,10 +314,20 @@ export const getMyRefundRequests = asyncHandler(
       .populate("subCategory", "categoryName")
       .populate("booking");
 
+    // Calculate counts by status
+    const totalRequests = refunds.length;
+    const pendingRequests = refunds.filter(r => r.status === "pending").length;
+    const rejectedRequests = refunds.filter(r => r.status === "reject").length;
+    const acceptedRequests = refunds.filter(r => r.status === "accept").length;
+
     res.status(200).json({
       success: true,
-      count: refunds.length,
+      totalRequests,
+      pendingRequests,
+      rejectedRequests,
+      acceptedRequests,
       data: refunds,
     });
   }
 );
+
