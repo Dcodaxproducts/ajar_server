@@ -58,7 +58,7 @@ const EmployeeSchema = new Schema<IEmployee>(
 );
 
 // Indexes
-EmployeeSchema.index({ email: 1 });
+// EmployeeSchema.index({ email: 1 });
 
 const Employee = mongoose.model<IEmployee>("Employee", EmployeeSchema);
 
