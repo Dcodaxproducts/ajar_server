@@ -150,10 +150,13 @@ export const createZone = async (
       subCategories: rawSubCategoryIds,
     } = req.body;
 
+    console.log("Creating zone with data:", req.body);
+
     let polygons;
     if (rawPolygons) {
       polygons =
         typeof rawPolygons === "string" ? JSON.parse(rawPolygons) : rawPolygons;
+      console.log("Parsed polygons:", polygons);
     }
 
     let subCategories: string[] = [];
@@ -163,7 +166,10 @@ export const createZone = async (
           ? JSON.parse(rawSubCategoryIds)
           : rawSubCategoryIds;
 
+      console.log("Parsed subCategory IDs:", parsedIds);
+
       if (!Array.isArray(parsedIds)) {
+        console.warn("subCategories is not an array:", parsedIds);
         sendResponse(
           res,
           null,
@@ -179,9 +185,10 @@ export const createZone = async (
       }).select("_id");
 
       const validIds = validSubCategories.map((cat) => cat._id.toString());
-      const invalidIds = parsedIds.filter(
-        (id: string) => !validIds.includes(id)
-      );
+      const invalidIds = parsedIds.filter((id: string) => !validIds.includes(id));
+
+      console.log("Valid subCategory IDs:", validIds);
+      console.warn("Invalid subCategory IDs:", invalidIds);
 
       if (invalidIds.length > 0) {
         sendResponse(
@@ -207,12 +214,15 @@ export const createZone = async (
     });
 
     await newZone.save();
+    console.log("Zone created:", newZone);
 
     sendResponse(res, newZone, "Zone created successfully", STATUS_CODES.CREATED);
   } catch (error) {
+    console.error("Error creating zone:", error);
     next(error);
   }
 };
+
 
 //update zone
 export const updateZone = async (
