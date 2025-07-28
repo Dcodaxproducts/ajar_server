@@ -1,4 +1,3 @@
-// routes/faq.routes.ts
 import express from "express";
 import {
   createFAQ,
