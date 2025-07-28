@@ -19,6 +19,7 @@ import { Category } from "../models/category.model";
 import { Booking } from "../models/booking.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { Employee } from "../models/employeeManagement.model";
+import { Zone } from "../models/zone.model";
 
 export const createUser = async (
   req: Request,
@@ -559,8 +560,6 @@ export const addForm = async (
   }
 };
 
-
-
 // GET DASHBOARD STATS (Admin)
 export const getDashboardStats = async (
   req: Request,
@@ -569,11 +568,28 @@ export const getDashboardStats = async (
 ): Promise<void> => {
   try {
     const now = new Date();
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    // Filter logic
+    const filter = req.query.filter as string;
+    let filterDate: Date | null = null;
+
+    if (filter === "week") {
+      filterDate = new Date();
+      filterDate.setDate(now.getDate() - 7);
+    } else if (filter === "month") {
+      filterDate = new Date();
+      filterDate.setDate(now.getDate() - 28); 
+    } else if (filter === "year") {
+      filterDate = new Date();
+      filterDate.setFullYear(now.getFullYear() - 1);
+    } else if (filter) {
+      sendResponse(
+        res,
+        null,
+        "Invalid filter. Use 'week', 'month', or 'year'.",
+        STATUS_CODES.BAD_REQUEST
+      ); return;
+    }
 
     // --- User Stats ---
     const [totalUsers, totalAdmins, totalNormalUsers] = await Promise.all([
@@ -592,14 +608,20 @@ export const getDashboardStats = async (
     // --- Category Stats ---
     const totalCategories = await Category.countDocuments({ type: "category" });
 
-    // --- Booking Stats ---
-    const [monthlyBookings, yearlyBookings, allBookings] = await Promise.all([
-      Booking.countDocuments({ createdAt: { $gte: oneMonthAgo, $lte: now } }),
-      Booking.countDocuments({ createdAt: { $gte: oneYearAgo, $lte: now } }),
-      Booking.find().lean(),
-    ]);
+    // --- Zone Stats ---
+    const totalZones = await Zone.countDocuments();
 
-    const totalEarning = allBookings.reduce((acc, booking) => {
+    // --- Booking Stats ---
+    let bookingFilter = {};
+    if (filterDate) {
+      bookingFilter = { createdAt: { $gte: filterDate, $lte: now } };
+    }
+
+    const filteredBookings = await Booking.find(bookingFilter).lean();
+
+    const bookingCount = filteredBookings.length;
+
+    const totalEarning = filteredBookings.reduce((acc, booking) => {
       const price = booking.priceDetails?.totalPrice || 0;
       const extension = booking.extensionCharges?.totalPrice || 0;
       return acc + price + extension;
@@ -615,9 +637,9 @@ export const getDashboardStats = async (
           totalLeasers,
           totalMarketplaceListings,
           totalCategories,
-          monthlyBookings,
-          yearlyBookings,
-          totalEarning, 
+          totalZones,
+          bookingCount,
+          totalEarning,
         },
       },
       "Dashboard statistics fetched successfully",
