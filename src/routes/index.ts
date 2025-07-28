@@ -15,6 +15,7 @@ import BusinessSetting from "./businessSetting.routes";
 import employeeManagementRoutes from "./employeeManagement.routes";
 import refundRoutes from "./refundManagement.routes";
 import reviewRoutes from "./review.routes";
+import faqRoutes from "./faq.routes";
 
 const router = express.Router();
 
@@ -33,6 +34,7 @@ router.use("/damage-reports", damageReportRoutes);
 router.use("/businessSetting", BusinessSetting);
 router.use("/employeeManagement", employeeManagementRoutes);
 router.use("/refunds", refundRoutes);
-router.use("/reviews", reviewRoutes); 
+router.use("/reviews", reviewRoutes);
+router.use("/faqs", faqRoutes);
 
 export default router;
