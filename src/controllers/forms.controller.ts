@@ -63,6 +63,7 @@ export const createNewForm = async (
   }
 };
 
+
 export const getAllForms = async (
   req: Request,
   res: Response,
@@ -73,8 +74,8 @@ export const getAllForms = async (
 
     const query =
       lang === "en"
-        ? {} 
-        : { "languages.locale": lang }; 
+        ? {}
+        : { "languages.locale": lang };
 
     const forms = await Form.find(query)
       .populate("fields")
@@ -109,17 +110,19 @@ export const getAllForms = async (
           }
         : null;
 
-      const localizedFields = (form.fields as any[]).map((field) => {
-        const fieldTranslation = field?.languages?.find(
-          (entry: any) => entry.locale?.toLowerCase() === lang
-        );
-        return {
-          ...field,
-          name: fieldTranslation?.translations?.name || field.name,
-          label: fieldTranslation?.translations?.label || field.label,
-          placeholder: fieldTranslation?.translations?.placeholder || field.placeholder,
-        };
-      });
+      const localizedFields = Array.isArray(form.fields)
+        ? (form.fields as any[]).map((field) => {
+            const fieldTranslation = field?.languages?.find(
+              (entry: any) => entry.locale?.toLowerCase() === lang
+            );
+            return {
+              ...field,
+              name: fieldTranslation?.translations?.name || field.name,
+              label: fieldTranslation?.translations?.label || field.label,
+              placeholder: fieldTranslation?.translations?.placeholder || field.placeholder,
+            };
+          })
+        : [];
 
       return {
         _id: form._id,
@@ -137,6 +140,7 @@ export const getAllForms = async (
     next(error);
   }
 };
+
 export const getFormDetails = async (
   req: Request,
   res: Response,
@@ -166,19 +170,20 @@ export const getFormDetails = async (
       description: formTranslation?.translations?.description || form.description,
     };
 
-    translatedForm.fields = (form.fields as any[]).map((field: any) => {
-      const fieldTranslation = field.languages?.find(
-        (entry: any) => entry.locale?.toLowerCase() === lang
-      );
-      return {
-        ...field,
-        name: fieldTranslation?.translations?.name || field.name,
-        label: fieldTranslation?.translations?.label || field.label,
-        placeholder: fieldTranslation?.translations?.placeholder || field.placeholder,
-      };
-    });
+    translatedForm.fields = Array.isArray(form.fields)
+      ? (form.fields as any[]).map((field: any) => {
+          const fieldTranslation = field.languages?.find(
+            (entry: any) => entry.locale?.toLowerCase() === lang
+          );
+          return {
+            ...field,
+            name: fieldTranslation?.translations?.name || field.name,
+            label: fieldTranslation?.translations?.label || field.label,
+            placeholder: fieldTranslation?.translations?.placeholder || field.placeholder,
+          };
+        })
+      : [];
 
-    //Zone safe-check
     const zone = form.zone as any;
     const zoneTranslation = zone?.languages?.find(
       (entry: any) => entry.locale?.toLowerCase() === lang
@@ -190,7 +195,6 @@ export const getFormDetails = async (
         }
       : null;
 
-    //SubCategory safe-check
     const subCat = form.subCategory as any;
     const subCatTranslation = subCat?.languages?.find(
       (entry: any) => entry.locale?.toLowerCase() === lang
@@ -213,7 +217,7 @@ export const getFormDetails = async (
   }
 };
 
-// controllers/form.controller.ts
+
 export const getFormByZoneAndSubCategory = async (
   req: Request,
   res: Response,
