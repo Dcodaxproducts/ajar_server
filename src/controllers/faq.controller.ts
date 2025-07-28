@@ -1,23 +1,29 @@
-// controllers/faq.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { FAQ } from "../models/faq.model";
 import asyncHandler from "express-async-handler";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
+import { paginateQuery } from "../utils/paginate";
 
 // Create FAQ
 export const createFAQ = asyncHandler(async (req: Request, res: Response) => {
-  const { question, answer } = req.body;
-  const faq = await FAQ.create({ question, answer });
+  const { question, answer, order } = req.body;
+  const faq = await FAQ.create({ question, answer, order });
 
   sendResponse(res, faq, "FAQ created successfully", STATUS_CODES.CREATED);
-});
+}); 
 
 // Get all FAQs
 export const getAllFAQs = asyncHandler(async (req: Request, res: Response) => {
-  const faqs = await FAQ.find();
-  sendResponse(res, faqs, "FAQs fetched successfully", STATUS_CODES.OK);
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+
+  const query = FAQ.find().sort({ order: 1 });
+  const result = await paginateQuery(query, { page, limit });
+
+  sendResponse(res, result, "FAQs fetched successfully", STATUS_CODES.OK);
 });
+
 
 // Get single FAQ by ID
 export const getFAQById = asyncHandler(async (req: Request, res: Response) => {
