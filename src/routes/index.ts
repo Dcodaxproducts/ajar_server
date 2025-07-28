@@ -14,6 +14,7 @@ import damageReportRoutes from "./damageReport.routes";
 import BusinessSetting from "./businessSetting.routes";
 import employeeManagementRoutes from "./employeeManagement.routes";
 import refundRoutes from "./refundManagement.routes";
+import reviewRoutes from "./review.routes";
 
 const router = express.Router();
 
@@ -32,5 +33,6 @@ router.use("/damage-reports", damageReportRoutes);
 router.use("/businessSetting", BusinessSetting);
 router.use("/employeeManagement", employeeManagementRoutes);
 router.use("/refunds", refundRoutes);
+router.use("/reviews", reviewRoutes); 
 
 export default router;
