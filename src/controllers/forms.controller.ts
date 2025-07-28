@@ -7,6 +7,7 @@ import mongoose from "mongoose";
 import { SubCategory } from "../models/category.model";
 import { IZone } from "../models/zone.model";
 import { ICategory } from "../models/category.model";
+import { paginateQuery } from "../utils/paginate";
 
 
 export const createNewForm = async (
@@ -63,7 +64,6 @@ export const createNewForm = async (
   }
 };
 
-
 export const getAllForms = async (
   req: Request,
   res: Response,
@@ -71,19 +71,21 @@ export const getAllForms = async (
 ): Promise<void> => {
   try {
     const lang = (req.query.language || "en").toString().toLowerCase();
+    const page = parseInt(req.query.page as string) || 1;     
+    const limit = parseInt(req.query.limit as string) || 10;   
 
-    const query =
-      lang === "en"
-        ? {}
-        : { "languages.locale": lang };
+    const query = lang === "en"
+      ? Form.find({})
+      : Form.find({ "languages.locale": lang });
 
-    const forms = await Form.find(query)
+    const populatedQuery = query
       .populate("fields")
       .populate("zone")
-      .populate("subCategory")
-      .lean();
+      .populate("subCategory");
 
-    const localizedForms = forms.map((form) => {
+    const paginated = await paginateQuery(populatedQuery, { page, limit }); 
+
+    const localizedForms = paginated.data.map((form) => {
       const formTranslation = form.languages?.find(
         (entry) => entry.locale?.toLowerCase() === lang
       );
@@ -119,7 +121,8 @@ export const getAllForms = async (
               ...field,
               name: fieldTranslation?.translations?.name || field.name,
               label: fieldTranslation?.translations?.label || field.label,
-              placeholder: fieldTranslation?.translations?.placeholder || field.placeholder,
+              placeholder:
+                fieldTranslation?.translations?.placeholder || field.placeholder,
             };
           })
         : [];
@@ -135,11 +138,107 @@ export const getAllForms = async (
       };
     });
 
-    sendResponse(res, localizedForms, `Forms found for language: ${lang}`, STATUS_CODES.OK);
+    //Send paginated result
+    sendResponse(
+      res,
+      {
+        forms: localizedForms,
+        total: paginated.total,
+        page: paginated.page,
+        limit: paginated.limit,
+      },
+      `Forms found for language: ${lang}`,
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
 };
+
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const lang = (req.query.language || "en").toString().toLowerCase();
+//     const page = parseInt(req.query.page as string) || 1;      
+//     const limit = parseInt(req.query.limit as string) || 10;   
+
+//     const query =
+//       lang === "en"
+//         ? {}
+//         : { "languages.locale": lang };
+
+//     const forms = await Form.find(query)
+//       .populate("fields")
+//       .populate("zone")
+//       .populate("subCategory")
+//       .lean();
+
+//        const paginated = await paginateQuery(populatedQuery, { page, limit });
+
+//     const localizedForms = forms.map((form) => {
+//       const formTranslation = form.languages?.find(
+//         (entry) => entry.locale?.toLowerCase() === lang
+//       );  
+
+//       const zone = form.zone as any;
+//       const zoneTranslation = zone?.languages?.find(
+//         (entry: any) => entry.locale?.toLowerCase() === lang
+//       );
+//       const localizedZone = zone
+//         ? {
+//             ...zone,
+//             name: zoneTranslation?.translations?.name || zone.name,
+//           }
+//         : null;
+
+//       const subCat = form.subCategory as any;
+//       const subCatTranslation = subCat?.languages?.find(
+//         (entry: any) => entry.locale?.toLowerCase() === lang
+//       );
+//       const localizedSubCategory = subCat
+//         ? {
+//             ...subCat,
+//             name: subCatTranslation?.translations?.name || subCat.name,
+//           }
+//         : null;
+
+//       const localizedFields = Array.isArray(form.fields)
+//         ? (form.fields as any[]).map((field) => {
+//             const fieldTranslation = field?.languages?.find(
+//               (entry: any) => entry.locale?.toLowerCase() === lang
+//             );
+//             return {
+//               ...field,
+//               name: fieldTranslation?.translations?.name || field.name,
+//               label: fieldTranslation?.translations?.label || field.label,
+//               placeholder: fieldTranslation?.translations?.placeholder || field.placeholder,
+//             };
+//           })
+//         : [];
+
+//       return {
+//         _id: form._id,
+//         name: formTranslation?.translations?.name || form.name,
+//         description: formTranslation?.translations?.description || form.description,
+//         fields: localizedFields,
+//         zone: localizedZone,
+//         subCategory: localizedSubCategory,
+//         language: lang,
+//       };
+//     });
+
+//     sendResponse(res,  {
+//         forms: localizedForms,
+//         total: paginated.total,
+//         page: paginated.page,
+//         limit: paginated.limit,
+//       }, `Forms found for language: ${lang}`, STATUS_CODES.OK);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 export const getFormDetails = async (
   req: Request,
