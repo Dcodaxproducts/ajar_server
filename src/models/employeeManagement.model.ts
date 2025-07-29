@@ -15,7 +15,6 @@ interface IEmployee extends Document {
   role: string; // This can be used for a primary role if needed
   staffRoles: string[];
   permissions: string[];
-  setPermissions: string[];
   images: string[];
   address: string;
   language: string;
@@ -38,7 +37,6 @@ const EmployeeSchema = new Schema<IEmployee>(
     role: { type: String, default: "staff", trim: true },
     staffRoles: [{ type: String, trim: true }],
     permissions: [{ type: String, trim: true }],
-    setPermissions: [{ type: String, trim: true }],
 
     images: [{ type: String, trim: true }], 
     address: { type: String, trim: true },
