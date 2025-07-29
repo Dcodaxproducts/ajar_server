@@ -470,12 +470,18 @@ export const getAllUsersWithStats = async (
 ): Promise<void> => {
   try {
     const role = req.query.role;
+
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+
     const filter: { role?: string } = {};
     if (role && typeof role === "string") {
       filter.role = role;
     }
 
-    const users = await User.find(filter).lean().select("email name role");
+    // const users = await User.find(filter).lean().select("email name role");
+    const users = await User.find({ ...filter, role: { $ne: "admin" } }).lean().select("email name phone status");
+
 
     // User statistics
     const totalUsers = await User.countDocuments();
@@ -483,15 +489,30 @@ export const getAllUsersWithStats = async (
     const totalNormalUsers = await User.countDocuments({ role: "user" });
     const total = totalAdmins + totalNormalUsers;
 
+     //Added status statistics
+    const totalActiveUsers = await User.countDocuments({ status: "active" });
+    const totalInactiveUsers = await User.countDocuments({ status: "inactive" });
+    const totalBlockedUsers = await User.countDocuments({ status: "blocked" });
+    const totalUnblockedUsers = await User.countDocuments({ status: "Unblocked" });
+
+
     sendResponse(
       res,
       {
         users,
+         pagination: {
+          total,
+          page,
+          limit,
+        },
         stats: {
           totalUsers,
           totalAdmins,
           totalNormalUsers,
-          total,
+          totalActiveUsers,
+          totalInactiveUsers,
+          totalBlockedUsers,
+          totalUnblockedUsers,
         },
       },
       "Users and statistics fetched successfully",
