@@ -66,7 +66,7 @@ const FormSchema = new Schema<IForm>(
        languages: [
       {
         locale: { type: String, required: true },
-        translations: { type: Schema.Types.Mixed }, //Dynamic
+        translations: { type: Schema.Types.Mixed }, 
       },
     ],
  
