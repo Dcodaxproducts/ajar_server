@@ -15,9 +15,13 @@ export const getAllCategories = async (
 ): Promise<void> => {
   try {
     const language = req.headers["language"]?.toString() || "en";
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, type = "category" } = req.query; 
 
-    const baseQuery = Category.find({ type: "category" }).populate({
+   
+    const filter: any = {};
+    if (type) filter.type = type;
+
+    const baseQuery = Category.find(filter).populate({
       path: "subcategories",
     });
 
@@ -26,8 +30,8 @@ export const getAllCategories = async (
       limit: Number(limit),
     });
 
-    const totalCategoriesOnly = await Category.countDocuments({ type: "category" });
-
+    // Use same filter for countDocuments
+    const totalCategoriesOnly = await Category.countDocuments(filter);
 
     const translatedCategories = data.map((cat: any) => {
       const categoryObj = cat.toObject();
@@ -99,6 +103,7 @@ export const getAllCategories = async (
     next(error);
   }
 };
+
 
 //Get Category Details
 export const getCategoryDetails = async (
