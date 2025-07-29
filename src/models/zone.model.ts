@@ -25,7 +25,7 @@ const ZoneSchema = new Schema(
     polygons: [{ type: [{ lat: Number, lng: Number }], default: [] }],
     languages: [
   {
-    locale: { type: String, required: true },
+    locale: { type: String },
     translations: { type: Schema.Types.Mixed }, 
   },
 ],

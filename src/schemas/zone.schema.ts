@@ -6,6 +6,10 @@ export const zoneSchema = z.object({
     .min(3, "Name must be at least 3 characters")
     .max(100, "Name must not exceed 100 characters"),
 
+  currency: z
+    .string({ required_error: "Currency is required" })
+    .min(1, "Currency must be at least 1 character"),
+
   subCategories: z
     .union([z.array(z.string()), z.string()])
     .optional()
@@ -14,17 +18,15 @@ export const zoneSchema = z.object({
       return val;
     }),
 
-  currency: z
-    .string({ required_error: "Currency is required" })
-    .min(1, "Currency must be at least 1 character"),
-
   timeZone: z
-    .string({ required_error: "Time zone is required" })
-    .min(1, "Time zone must be specified"),
+    .string()
+    .min(1, "Time zone must be specified")
+    .optional(),
 
   language: z
-    .string({ required_error: "Language is required" })
-    .min(2, "Language must be at least 2 characters"),
+    .string()
+    .min(2, "Language must be at least 2 characters")
+    .optional(),
 
   polygons: z
     .array(
@@ -40,7 +42,7 @@ export const zoneSchema = z.object({
     .array(
       z.object({
         locale: z
-          .string({ required_error: "Locale is required" })
+          .string()
           .min(2, "Locale must be at least 2 characters"),
         translations: z
           .object({
@@ -49,7 +51,7 @@ export const zoneSchema = z.object({
           .optional(),
       })
     )
-    .optional(),
+    .optional(), 
 
   createdAt: z.date().optional(),
   updatedAt: z.date().optional(),

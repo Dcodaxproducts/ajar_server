@@ -30,7 +30,7 @@ export const getAllCategories = async (
       limit: Number(limit),
     });
 
-    // Use same filter for countDocuments
+    //  Use same filter for countDocuments
     const totalCategoriesOnly = await Category.countDocuments(filter);
 
     const translatedCategories = data.map((cat: any) => {
