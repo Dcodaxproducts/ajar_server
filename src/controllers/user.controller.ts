@@ -599,7 +599,7 @@ export const getDashboardStats = async (
       filterDate.setDate(now.getDate() - 7);
     } else if (filter === "month") {
       filterDate = new Date();
-      filterDate.setDate(now.getDate() - 28); 
+      filterDate.setDate(now.getDate() - 28);
     } else if (filter === "year") {
       filterDate = new Date();
       filterDate.setFullYear(now.getFullYear() - 1);
@@ -609,7 +609,8 @@ export const getDashboardStats = async (
         null,
         "Invalid filter. Use 'week', 'month', or 'year'.",
         STATUS_CODES.BAD_REQUEST
-      ); return;
+      );
+      return;
     }
 
     // --- User Stats ---
@@ -639,7 +640,6 @@ export const getDashboardStats = async (
     }
 
     const filteredBookings = await Booking.find(bookingFilter).lean();
-
     const bookingCount = filteredBookings.length;
 
     const totalEarning = filteredBookings.reduce((acc, booking) => {
@@ -648,6 +648,89 @@ export const getDashboardStats = async (
       return acc + price + extension;
     }, 0);
 
+    // --- Chart Breakdown Based on Filter ---
+    const chart: any[] = [];
+
+    if (filter === "week") {
+      for (let i = 6; i >= 0; i--) {
+        const start = new Date(now);
+        start.setDate(now.getDate() - i);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setHours(23, 59, 59, 999);
+
+        const [users, bookings] = await Promise.all([
+          User.countDocuments({ createdAt: { $gte: start, $lte: end } }),
+          Booking.find({ createdAt: { $gte: start, $lte: end } }).lean(),
+        ]);
+
+        const dailyEarning = bookings.reduce((acc, booking) => {
+          const price = booking.priceDetails?.totalPrice || 0;
+          const extension = booking.extensionCharges?.totalPrice || 0;
+          return acc + price + extension;
+        }, 0);
+
+        chart.push({
+          day: `${7 - i}`, // as string
+          totalUsers: users,
+          totalEarning: dailyEarning,
+        });
+      }
+    }
+
+    if (filter === "month") {
+      for (let i = 3; i >= 0; i--) {
+        const start = new Date(now);
+        start.setDate(now.getDate() - i * 7);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 6);
+        end.setHours(23, 59, 59, 999);
+
+        const [users, bookings] = await Promise.all([
+          User.countDocuments({ createdAt: { $gte: start, $lte: end } }),
+          Booking.find({ createdAt: { $gte: start, $lte: end } }).lean(),
+        ]);
+
+        const weeklyEarning = bookings.reduce((acc, booking) => {
+          const price = booking.priceDetails?.totalPrice || 0;
+          const extension = booking.extensionCharges?.totalPrice || 0;
+          return acc + price + extension;
+        }, 0);
+
+        chart.push({
+          week: `${4 - i}`, // as string
+          totalUsers: users,
+          totalEarning: weeklyEarning,
+        });
+      }
+    }
+
+    if (filter === "year") {
+      for (let i = 11; i >= 0; i--) {
+        const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const end = new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59, 999);
+
+        const [users, bookings] = await Promise.all([
+          User.countDocuments({ createdAt: { $gte: start, $lte: end } }),
+          Booking.find({ createdAt: { $gte: start, $lte: end } }).lean(),
+        ]);
+
+        const monthlyEarning = bookings.reduce((acc, booking) => {
+          const price = booking.priceDetails?.totalPrice || 0;
+          const extension = booking.extensionCharges?.totalPrice || 0;
+          return acc + price + extension;
+        }, 0);
+
+        chart.push({
+          month: `${12 - i}`, // as string
+          totalUsers: users,
+          totalEarning: monthlyEarning,
+        });
+      }
+    }
+
+    // Final response
     sendResponse(
       res,
       {
@@ -662,6 +745,7 @@ export const getDashboardStats = async (
           bookingCount,
           totalEarning,
         },
+        chart, // moved out of stats
       },
       "Dashboard statistics fetched successfully",
       STATUS_CODES.OK
