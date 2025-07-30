@@ -7,6 +7,7 @@ const router = express.Router();
 
 router.post("/", authMiddleware, asyncHandler(roleController.createRole));
 router.get("/", authMiddleware, asyncHandler(roleController.getAllRoles));
+router.get("/:id", authMiddleware, asyncHandler(roleController.getRoleById));
 router.patch("/:id", authMiddleware, asyncHandler(roleController.updateRole));
 router.delete("/:id", authMiddleware, asyncHandler(roleController.deleteRole));
 

@@ -45,6 +45,28 @@ export const getAllRoles = async (
   }
 };
 
+// Get Role by ID
+export const getRoleById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const role = await Role.findById(id);
+
+    if (!role) {
+      sendResponse(res, null, "Role not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    sendResponse(res, role, "Role fetched", STATUS_CODES.OK);
+  } catch (err) {
+    next(err);
+  }
+};
+
+
 // Update Role
 export const updateRole = async (
   req: Request,
