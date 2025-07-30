@@ -590,7 +590,6 @@ export const getDashboardStats = async (
   try {
     const now = new Date();
 
-    // Filter logic
     const filter = req.query.filter as string;
     let filterDate: Date | null = null;
 
@@ -613,27 +612,21 @@ export const getDashboardStats = async (
       return;
     }
 
-    // --- User Stats ---
     const [totalUsers, totalAdmins, totalNormalUsers] = await Promise.all([
       User.countDocuments(),
       User.countDocuments({ role: "admin" }),
       User.countDocuments({ role: "user" }),
     ]);
 
-    // --- Listing Stats ---
     const [totalMarketplaceListings, uniqueUserIds] = await Promise.all([
       MarketplaceListing.countDocuments(),
       MarketplaceListing.distinct("user"),
     ]);
     const totalLeasers = uniqueUserIds.length;
 
-    // --- Category Stats ---
     const totalCategories = await Category.countDocuments({ type: "category" });
-
-    // --- Zone Stats ---
     const totalZones = await Zone.countDocuments();
 
-    // --- Booking Stats ---
     let bookingFilter = {};
     if (filterDate) {
       bookingFilter = { createdAt: { $gte: filterDate, $lte: now } };
@@ -648,8 +641,8 @@ export const getDashboardStats = async (
       return acc + price + extension;
     }, 0);
 
-    // --- Chart Breakdown Based on Filter ---
-    const chart: any[] = [];
+    const userRecords: any[] = [];
+    const earningRecords: any[] = [];
 
     if (filter === "week") {
       for (let i = 6; i >= 0; i--) {
@@ -670,11 +663,8 @@ export const getDashboardStats = async (
           return acc + price + extension;
         }, 0);
 
-        chart.push({
-          day: `${7 - i}`, // as string
-          totalUsers: users,
-          totalEarning: dailyEarning,
-        });
+        userRecords.push({ day: `${7 - i}`, totalUsers: users });
+        earningRecords.push({ day: `${7 - i}`, totalEarning: dailyEarning });
       }
     }
 
@@ -698,13 +688,13 @@ export const getDashboardStats = async (
           return acc + price + extension;
         }, 0);
 
-        chart.push({
-          week: `${4 - i}`, // as string
-          totalUsers: users,
-          totalEarning: weeklyEarning,
-        });
+        userRecords.push({ month: `${4 - i}`, totalUsers: users });
+        earningRecords.push({ month: `${4 - i}`, totalEarning: weeklyEarning });
       }
     }
+
+    let userTrend: { value: string; trend: string };
+    let earningTrend: { value: string; trend: string };
 
     if (filter === "year") {
       for (let i = 11; i >= 0; i--) {
@@ -722,15 +712,73 @@ export const getDashboardStats = async (
           return acc + price + extension;
         }, 0);
 
-        chart.push({
-          month: `${12 - i}`, // as string
-          totalUsers: users,
-          totalEarning: monthlyEarning,
-        });
+        userRecords.push({ month: `${12 - i}`, totalUsers: users });
+        earningRecords.push({ month: `${12 - i}`, totalEarning: monthlyEarning });
       }
+
+      // Calculate current vs previous year total
+      const currentYear = now.getFullYear();
+      const previousYear = currentYear - 1;
+
+      const [prevUserDocs, prevBookings] = await Promise.all([
+        User.countDocuments({
+          createdAt: {
+            $gte: new Date(previousYear, 0, 1),
+            $lte: new Date(previousYear, 11, 31, 23, 59, 59, 999),
+          },
+        }),
+        Booking.find({
+          createdAt: {
+            $gte: new Date(previousYear, 0, 1),
+            $lte: new Date(previousYear, 11, 31, 23, 59, 59, 999),
+          },
+        }).lean(),
+      ]);
+
+      const prevTotalUsers = prevUserDocs;
+      const prevTotalEarning = prevBookings.reduce((acc, booking) => {
+        const price = booking.priceDetails?.totalPrice || 0;
+        const extension = booking.extensionCharges?.totalPrice || 0;
+        return acc + price + extension;
+      }, 0);
+
+      const currTotalUsers = userRecords.reduce((acc, cur) => acc + cur.totalUsers, 0);
+      const currTotalEarning = earningRecords.reduce((acc, cur) => acc + cur.totalEarning, 0);
+
+      const calcTrend = (current: number, previous: number) => {
+        const diff = current - previous;
+        const trend = diff >= 0 ? "up" : "down";
+        const percentage = previous === 0 ? (current > 0 ? 100 : 0) : Math.abs(Math.round((diff / previous) * 100));
+        return { value: `${percentage}`, trend };
+      };
+
+      userTrend = calcTrend(currTotalUsers, prevTotalUsers);
+      earningTrend = calcTrend(currTotalEarning, prevTotalEarning);
+    } else {
+      const calcTrend = (current: number, previous: number) => {
+        const diff = current - previous;
+        const trend = diff >= 0 ? "up" : "down";
+        const percentage = previous === 0 ? (current > 0 ? 100 : 0) : Math.abs(Math.round((diff / previous) * 100));
+        return { value: `${percentage}`, trend };
+      };
+
+      userTrend =
+        userRecords.length >= 2
+          ? calcTrend(
+              userRecords[userRecords.length - 1].totalUsers,
+              userRecords[userRecords.length - 2].totalUsers
+            )
+          : { value: "0", trend: "up" };
+
+      earningTrend =
+        earningRecords.length >= 2
+          ? calcTrend(
+              earningRecords[earningRecords.length - 1].totalEarning,
+              earningRecords[earningRecords.length - 2].totalEarning
+            )
+          : { value: "0", trend: "up" };
     }
 
-    // Final response
     sendResponse(
       res,
       {
@@ -745,7 +793,16 @@ export const getDashboardStats = async (
           bookingCount,
           totalEarning,
         },
-        chart, // moved out of stats
+        charts: {
+          users: {
+            change: userTrend,
+            record: userRecords,
+          },
+          earnings: {
+            change: earningTrend,
+            record: earningRecords,
+          },
+        },
       },
       "Dashboard statistics fetched successfully",
       STATUS_CODES.OK
@@ -754,7 +811,6 @@ export const getDashboardStats = async (
     next(error);
   }
 };
-
 
 // In user.controller.ts
 export const updateUserStatus = async (
