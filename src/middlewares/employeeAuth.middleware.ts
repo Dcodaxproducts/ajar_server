@@ -40,7 +40,8 @@ export const employeeAuthMiddleware = (...allowedRoles: string[]) => {
       }
 
       const hasRole =
-        allowedRoles.length === 0 || employee.staffRoles.some(role => allowedRoles.includes(role));
+        allowedRoles.length === 0 || employee.staffRoles.some(role => allowedRoles.includes(role.toString()));
+        // allowedRoles.length === 0 || employee.staffRoles.some(role => allowedRoles.includes(role));
       console.log("Employee roles:", employee.staffRoles, "Allowed roles:", allowedRoles, "Access granted:", hasRole);
 
       if (!hasRole) {

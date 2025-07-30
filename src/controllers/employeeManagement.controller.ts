@@ -6,6 +6,7 @@ import { Category } from "../models/category.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { Dropdown } from "../models/dropdown.model";
+import  Role  from "../models/employeeRole.model";
 
 // Get all employees
 export const getAllEmployees = async (
@@ -82,6 +83,7 @@ export const getEmployeeById = async (
 
     const employee = await Employee.findById(id)
       .populate(["zones", "categories"])
+      .populate("staffRoles", "name permissions")
       .lean();
 
     if (!employee) {
@@ -121,6 +123,7 @@ export const getEmployeeById = async (
   }
 };
 
+
 // Create employee
 export const createEmployee = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -141,12 +144,14 @@ export const createEmployee = async (req: Request, res: Response, next: NextFunc
       categories,
     } = req.body;
 
+    // Check if email already exists
     const existingEmail = await Employee.findOne({ email });
     if (existingEmail) {
       sendResponse(res, null, "Email already exists", STATUS_CODES.CONFLICT);
       return;
     }
 
+    // Validate against dropdown values
     if (staffRoles && staffRoles.length > 0) {
       const dropdown = await Dropdown.findOne({ name: "employeestaffRoles" }).lean();
       if (!dropdown) {
@@ -154,19 +159,31 @@ export const createEmployee = async (req: Request, res: Response, next: NextFunc
         return;
       }
 
-      const allowedstaffRoles = dropdown.values.map((v) => v.value);
-      const invalidstaffRoles = staffRoles.filter((role: string) => !allowedstaffRoles.includes(role));
-      if (invalidstaffRoles.length > 0) {
+      const allowedStaffRoles = dropdown.values.map((v) => v.value);
+      const invalidStaffRoles = staffRoles.filter((role: string) => !allowedStaffRoles.includes(role));
+      if (invalidStaffRoles.length > 0) {
         sendResponse(
           res,
           null,
-          `Invalid role(s): ${invalidstaffRoles.join(", ")}. Allowed staffRoles: ${allowedstaffRoles.join(", ")}`,
+          `Invalid role(s): ${invalidStaffRoles.join(", ")}. Allowed staffRoles: ${allowedStaffRoles.join(", ")}`,
           STATUS_CODES.BAD_REQUEST
         );
         return;
       }
     }
 
+    // Validate against Role model (ObjectId validation)
+    if (staffRoles && staffRoles.length > 0) {
+      const validRoles = await Role.find({ _id: { $in: staffRoles } }).lean();
+      const validRoleIds = validRoles.map((role) => role._id.toString());
+      const invalidRoleIds = staffRoles.filter((id: string) => !validRoleIds.includes(id));
+      if (invalidRoleIds.length > 0) {
+        sendResponse(res, null, `Invalid Role IDs: ${invalidRoleIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+    }
+
+    // Validate zones
     if (zones && zones.length > 0) {
       const validZones = await Zone.find({ _id: { $in: zones } }).select("_id").lean();
       const validZoneIds = validZones.map((z) => z._id.toString());
@@ -177,6 +194,7 @@ export const createEmployee = async (req: Request, res: Response, next: NextFunc
       }
     }
 
+    // Validate categories
     if (categories && categories.length > 0) {
       const validCategories = await Category.find({ _id: { $in: categories } }).select("_id").lean();
       const validCategoryIds = validCategories.map((c) => c._id.toString());
@@ -187,6 +205,7 @@ export const createEmployee = async (req: Request, res: Response, next: NextFunc
       }
     }
 
+    // Create and save new employee
     const newEmployee = new Employee({
       firstName,
       lastName,
@@ -211,6 +230,111 @@ export const createEmployee = async (req: Request, res: Response, next: NextFunc
     next(error);
   }
 };
+
+// export const createEmployee = async (req: Request, res: Response, next: NextFunction) => {
+//   try {
+//     const {
+//       firstName,
+//       lastName,
+//       email,
+//       phone,
+//       password,
+//       confirmPassword,
+//       staffRoles,
+//       permissions,
+//       images,
+//       address,
+//       language,
+//       languages,
+//       zones,
+//       categories,
+//     } = req.body;
+
+//     // Check if email already exists
+//     const existingEmail = await Employee.findOne({ email });
+//     if (existingEmail) {
+//       sendResponse(res, null, "Email already exists", STATUS_CODES.CONFLICT);
+//       return;
+//     }
+
+//     // Validate dropdown-based staffRoles
+//     if (staffRoles && staffRoles.length > 0) {
+//       const dropdown = await Dropdown.findOne({ name: "employeestaffRoles" }).lean();
+//       if (!dropdown) {
+//         sendResponse(res, null, "Employee staffRoles dropdown not found", STATUS_CODES.BAD_REQUEST);
+//         return;
+//       }
+
+//       const allowedstaffRoles = dropdown.values.map((v) => v.value);
+//       const invalidstaffRoles = staffRoles.filter((role: string) => !allowedstaffRoles.includes(role));
+//       if (invalidstaffRoles.length > 0) {
+//         sendResponse(
+//           res,
+//           null,
+//           `Invalid role(s): ${invalidstaffRoles.join(", ")}. Allowed staffRoles: ${allowedstaffRoles.join(", ")}`,
+//           STATUS_CODES.BAD_REQUEST
+//         );
+//         return;
+//       }
+
+//       // ALSO validate staffRoles against Role model (if they are _id references)
+//       const validRoles = await Role.find({ _id: { $in: staffRoles } }).lean();
+//       const validRoleIds = validRoles.map((role) => role._id.toString());
+//       const invalidRoleIds = staffRoles.filter((id: string) => !validRoleIds.includes(id));
+//       if (invalidRoleIds.length > 0) {
+//         sendResponse(res, null, `Invalid Role IDs: ${invalidRoleIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
+//         return;
+//       }
+//     }
+
+//     // Validate zones
+//     if (zones && zones.length > 0) {
+//       const validZones = await Zone.find({ _id: { $in: zones } }).select("_id").lean();
+//       const validZoneIds = validZones.map((z) => z._id.toString());
+//       const invalidZoneIds = zones.filter((z: string) => !validZoneIds.includes(z));
+//       if (invalidZoneIds.length > 0) {
+//         sendResponse(res, null, `Invalid Zone IDs: ${invalidZoneIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
+//         return;
+//       }
+//     }
+
+//     // Validate categories
+//     if (categories && categories.length > 0) {
+//       const validCategories = await Category.find({ _id: { $in: categories } }).select("_id").lean();
+//       const validCategoryIds = validCategories.map((c) => c._id.toString());
+//       const invalidCategoryIds = categories.filter((c: string) => !validCategoryIds.includes(c));
+//       if (invalidCategoryIds.length > 0) {
+//         sendResponse(res, null, `Invalid Category IDs: ${invalidCategoryIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
+//         return;
+//       }
+//     }
+
+//     // Save new employee
+//     const newEmployee = new Employee({
+//       firstName,
+//       lastName,
+//       email,
+//       phone,
+//       password,
+//       confirmPassword,
+//       staffRoles,
+//       permissions,
+//       images,
+//       address,
+//       language,
+//       languages,
+//       zones,
+//       categories,
+//     });
+
+//     await newEmployee.save();
+
+//     sendResponse(res, newEmployee, "Employee created successfully", STATUS_CODES.CREATED);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 
 // Update employee
 export const updateEmployee = async (
