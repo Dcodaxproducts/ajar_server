@@ -3,11 +3,9 @@ import { z } from "zod";
 
 export const createUserSchema = z.object({
   name: z
-    .string({
-      required_error: "name is required",
-    })
+    .string()
     .min(3)
-    .max(50),
+    .max(50).optional(),
   email: z
     .string({
       required_error: "email is required",
@@ -21,20 +19,12 @@ export const createUserSchema = z.object({
     .min(6, { message: "Password is too short" }),
 
   dob: z
-    .string({
-      required_error: "dob is required",
-    })
-    .min(6, { message: "dob is too short" }),
+    .string()
+    .min(6, { message: "dob is too short" }).optional(),
   nationality: z
-    .string({
-      required_error: "nationality is required",
-    })
-    .min(3, { message: "nationality is too short" }),
-  user_type: z
-    .string({
-      required_error: "user_type is required",
-    })
-    .min(3, { message: "user_type is too short" }),
+    .string()
+    .min(3, { message: "nationality is too short" }).optional(),
+ 
 });
 
 export const loginUserSchema = z.object({
