@@ -61,27 +61,27 @@ router.delete("/:id", authMiddleware, asyncHandler(employeeController.deleteEmpl
 // ZONE ROUTES (Zone Manager only)
 router.post(
   "/zones",
-  employeeAuthMiddleware("zone_manager"),
+  employeeAuthMiddleware("zone", "create"),
   upload.single("thumbnail"),
   asyncHandler(zoneController.createZone)
 );
 
 router.patch(
   "/zones/:id",
-  employeeAuthMiddleware("zone_manager"),
+  employeeAuthMiddleware("zone", "update"),
   upload.single("thumbnail"),
   wrapTranslationMiddleware(Zone),
   asyncHandler(zoneController.updateZone)
 );
 
-router.get("/zones", employeeAuthMiddleware("zone_manager"), asyncHandler(zoneController.getAllZones));
-router.get("/zones/:id", employeeAuthMiddleware("zone_manager"), asyncHandler(zoneController.getZoneDetails));
-router.delete("/zones/:id", employeeAuthMiddleware("zone_manager"), asyncHandler(zoneController.deleteZone));
+router.get("/zones", employeeAuthMiddleware("zone", "read"), asyncHandler(zoneController.getAllZones));
+router.get("/zones/:id", employeeAuthMiddleware("zone", "read"), asyncHandler(zoneController.getZoneDetails));
+router.delete("/zones/:id", employeeAuthMiddleware("zone", "delete"), asyncHandler(zoneController.deleteZone));
 
 // CATEGORY ROUTES (Categories Manager only)
 router.post(
   "/categories",
-  employeeAuthMiddleware("categories_manager"),
+  employeeAuthMiddleware("categories", "create"),
   upload.single("thumbnail"),
   validateRequest({ body: categorySchema }),
   asyncHandler(categoryController.createNewCategory)
@@ -89,7 +89,7 @@ router.post(
 
 router.patch(
   "/categories/:id",
-  employeeAuthMiddleware("categories_manager"),
+  employeeAuthMiddleware("categories", "update"),
   upload.single("thumbnail"),
   wrapTranslationMiddleware(Category),
   asyncHandler(categoryController.updateCategory)
@@ -97,46 +97,46 @@ router.patch(
 
 router.patch(
   "/categories/:id/thumbnail",
-  employeeAuthMiddleware("categories_manager"),
+  employeeAuthMiddleware("categories", "update"),
   upload.single("thumbnail"),
   asyncHandler(categoryController.updateCategoryThumbnail)
 );
 
 // Public read access to categories
-router.get("/categories", asyncHandler(categoryController.getAllCategories));
+router.get("/categories", employeeAuthMiddleware("categories", "read"), asyncHandler(categoryController.getAllCategories));
 
 // Manager-only category endpoints
-router.get("/categories/:id", employeeAuthMiddleware("categories_manager"), asyncHandler(categoryController.getCategoryDetails));
-router.delete("/categories/:id", employeeAuthMiddleware("categories_manager"), asyncHandler(categoryController.deleteCategory));
+router.get("/categories/:id", employeeAuthMiddleware("categories", "read"), asyncHandler(categoryController.getCategoryDetails));
+router.delete("/categories/:id", employeeAuthMiddleware("categories", "delete"), asyncHandler(categoryController.deleteCategory));
 
 // FIELD ROUTES (Field Manager only)
 router.post(
   "/fields",
-  employeeAuthMiddleware("field_manager"),
+  employeeAuthMiddleware("field", "create"),
   validateRequest({ body: fieldSchema }),
   asyncHandler(fieldController.createNewField)
 );
 
 router.patch(
   "/fields/:id",
-  employeeAuthMiddleware("field_manager"),
+  employeeAuthMiddleware("field", "update"),
   wrapTranslationMiddleware(Field),
   asyncHandler(fieldController.updateField)
 );
 
-router.get("/fields", employeeAuthMiddleware("field_manager"), asyncHandler(fieldController.getAllFields));
-router.get("/fields/:id", employeeAuthMiddleware("field_manager"), asyncHandler(fieldController.getFieldDetails));
-router.delete("/fields/:id", employeeAuthMiddleware("field_manager"), asyncHandler(fieldController.deleteField));
+router.get("/fields", employeeAuthMiddleware("field", "read"), asyncHandler(fieldController.getAllFields));
+router.get("/fields/:id", employeeAuthMiddleware("field", "read"), asyncHandler(fieldController.getFieldDetails));
+router.delete("/fields/:id", employeeAuthMiddleware("field", "delete"), asyncHandler(fieldController.deleteField));
 
 // CROSS-ROLE ACCESS ROUTES (For employees with multiple staffRoles)
 router.get("/my-resources", 
-  employeeAuthMiddleware("zone_manager", "categories_manager", "field_manager"),
+  employeeAuthMiddleware("zone", "categories", "field"),
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const employee = (req as any).employee;
     
     const resources: any = {};
     
-    if (employee.staffRoles.includes("zone_manager")) {
+    if (employee.staffRoles.includes("zone")) {
       const mockNext = () => {};
       const mockReq = { ...req, query: {} } as Request;
       const mockRes = {
@@ -147,7 +147,7 @@ router.get("/my-resources",
       await zoneController.getAllZones(mockReq, mockRes, mockNext);
     }
     
-    if (employee.staffRoles.includes("categories_manager")) {
+    if (employee.staffRoles.includes("categories")) {
       const mockNext = () => {};
       const mockReq = { ...req, query: {} } as Request;
       const mockRes = {
@@ -158,7 +158,7 @@ router.get("/my-resources",
       await categoryController.getAllCategories(mockReq, mockRes, mockNext);
     }
     
-    if (employee.staffRoles.includes("field_manager")) {
+    if (employee.staffRoles.includes("field")) {
       const mockNext = () => {};
       const mockReq = { ...req, query: {} } as Request;
       const mockRes = {
