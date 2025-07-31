@@ -21,8 +21,7 @@ interface IEmployee extends Document {
   password: string;
   confirmPassword: string;
   role: string; // This can be used for a primary role if needed
-  staffRoles: mongoose.Types.ObjectId[]; // Referencing Role collection
-  permissions: IAccessPermission[];      // Structured access/operations
+  allowAccess: mongoose.Types.ObjectId;
   images: string[];
   address: string;
   language: string;
@@ -57,8 +56,7 @@ const EmployeeSchema = new Schema<IEmployee>(
     password: { type: String, required: true },
     confirmPassword: { type: String, required: true }, 
     role: { type: String, default: "staff", trim: true },
-    staffRoles: [{ type: Schema.Types.ObjectId, ref: "Role" }],
-    permissions: [AccessPermissionSchema],
+    allowAccess: { type: Schema.Types.ObjectId, ref: "Role" },
 
     images: [{ type: String, trim: true }], 
     address: { type: String, trim: true },
