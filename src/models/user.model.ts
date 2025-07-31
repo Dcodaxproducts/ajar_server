@@ -27,7 +27,7 @@ export interface IUser extends Document {
 
 const UserSchema: Schema = new Schema(
   {
-    name: { type: String, required: true, trim: true },
+    name: { type: String, trim: true },
     email: {
       type: String,
       required: true,
@@ -54,8 +54,8 @@ const UserSchema: Schema = new Schema(
       enum: ["user", "admin"],
       default: "user",
     },
-    dob: { type: Date, required: true },
-    nationality: { type: String, required: true },
+    dob: { type: Date },
+    nationality: { type: String },
     profilePicture: { type: String, default: "" },
     phone: { type: String, default: "" },
     status: {
