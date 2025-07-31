@@ -663,8 +663,8 @@ export const getDashboardStats = async (
           return acc + price + extension;
         }, 0);
 
-        userRecords.push({ day: `${7 - i}`, totalUsers: users });
-        earningRecords.push({ day: `${7 - i}`, totalEarning: dailyEarning });
+        userRecords.push({ value: `${7 - i}`, totalUsers: users });
+        earningRecords.push({ value: `${7 - i}`, totalEarning: dailyEarning });
       }
     }
 
@@ -688,8 +688,8 @@ export const getDashboardStats = async (
           return acc + price + extension;
         }, 0);
 
-        userRecords.push({ month: `${4 - i}`, totalUsers: users });
-        earningRecords.push({ month: `${4 - i}`, totalEarning: weeklyEarning });
+        userRecords.push({ value: `${4 - i}`, totalUsers: users });
+        earningRecords.push({ value: `${4 - i}`, totalEarning: weeklyEarning });
       }
     }
 
@@ -712,8 +712,8 @@ export const getDashboardStats = async (
           return acc + price + extension;
         }, 0);
 
-        userRecords.push({ month: `${12 - i}`, totalUsers: users });
-        earningRecords.push({ month: `${12 - i}`, totalEarning: monthlyEarning });
+        userRecords.push({ value: `${12 - i}`, totalUsers: users });
+        earningRecords.push({ value: `${12 - i}`, totalEarning: monthlyEarning });
       }
 
       // Calculate current vs previous year total
@@ -782,6 +782,7 @@ export const getDashboardStats = async (
     sendResponse(
       res,
       {
+        filter,
         stats: {
           totalUsers,
           totalAdmins,
