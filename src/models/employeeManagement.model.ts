@@ -11,8 +11,6 @@ interface IAccessPermission {
 }
 
 
-
-
 interface IEmployee extends Document {
   firstName: string;
   lastName: string;
@@ -20,6 +18,7 @@ interface IEmployee extends Document {
   phone: string;
   password: string;
   confirmPassword: string;
+  status: "active" | "inactive" | "blocked"; 
   role: string; // This can be used for a primary role if needed
   allowAccess: mongoose.Types.ObjectId;
   images: string[];
@@ -55,6 +54,11 @@ const EmployeeSchema = new Schema<IEmployee>(
 
     password: { type: String, required: true },
     confirmPassword: { type: String, required: true }, 
+    status: {
+      type: String,
+      enum: ["active", "inactive", "blocked"],
+      default: "active",
+    },
     role: { type: String, default: "staff", trim: true },
     allowAccess: { type: Schema.Types.ObjectId, ref: "Role" },
 

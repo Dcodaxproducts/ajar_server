@@ -88,110 +88,6 @@ export const createEmployee = async (req: Request, res: Response, next: NextFunc
   }
 };
 
-// export const createEmployee = async (req: Request, res: Response, next: NextFunction) => {
-//   try {
-//     const {
-//       firstName,
-//       lastName,
-//       email,
-//       phone,
-//       password,
-//       confirmPassword,
-//       staffRoles,
-//       permissions,
-//       images,
-//       address,
-//       language,
-//       languages,
-//       zones,
-//       categories,
-//     } = req.body;
-
-//     // 1. Check if email already exists
-//     const existingEmail = await Employee.findOne({ email });
-//     if (existingEmail) {
-//       sendResponse(res, null, "Email already exists", STATUS_CODES.CONFLICT);
-//       return;
-//     }
-
-//     // 2. Validate staffRoles against Role model (ObjectIds only)
-//     if (staffRoles && staffRoles.length > 0) {
-//       const validRoles = await Role.find({ _id: { $in: staffRoles } }).lean();
-//       const validRoleIds = validRoles.map((role) => role._id.toString());
-//       const invalidRoleIds = staffRoles.filter((id: string) => !validRoleIds.includes(id));
-//       if (invalidRoleIds.length > 0) {
-//         sendResponse(res, null, `Invalid Role IDs: ${invalidRoleIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
-//         return;
-//       }
-//     }
-
-//     // 3. Validate permissions
-//     if (permissions && permissions.length > 0) {
-//       const allowedOps = ["create", "read", "update", "delete"];
-//       for (const perm of permissions) {
-//         const invalidOps = perm.operations.filter(
-//           (op: string) => !allowedOps.includes(op)
-//         );
-//         if (invalidOps.length > 0) {
-//           sendResponse(
-//             res,
-//             null,
-//             `Invalid operations for access "${perm.access}": ${invalidOps.join(", ")}`,
-//             STATUS_CODES.BAD_REQUEST
-//           );
-//           return;
-//         }
-//       }
-//     }
-
-//     // 4. Validate zones
-//     if (zones && zones.length > 0) {
-//       const validZones = await Zone.find({ _id: { $in: zones } }).select("_id").lean();
-//       const validZoneIds = validZones.map((z) => z._id.toString());
-//       const invalidZoneIds = zones.filter((z: string) => !validZoneIds.includes(z));
-//       if (invalidZoneIds.length > 0) {
-//         sendResponse(res, null, `Invalid Zone IDs: ${invalidZoneIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
-//         return;
-//       }
-//     }
-
-//     // 5. Validate categories
-//     if (categories && categories.length > 0) {
-//       const validCategories = await Category.find({ _id: { $in: categories } }).select("_id").lean();
-//       const validCategoryIds = validCategories.map((c) => c._id.toString());
-//       const invalidCategoryIds = categories.filter((c: string) => !validCategoryIds.includes(c));
-//       if (invalidCategoryIds.length > 0) {
-//         sendResponse(res, null, `Invalid Category IDs: ${invalidCategoryIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
-//         return;
-//       }
-//     }
-
-//     // 6. Create and save new employee
-//     const newEmployee = new Employee({
-//       firstName,
-//       lastName,
-//       email,
-//       phone,
-//       password,
-//       confirmPassword,
-//       staffRoles,
-//       permissions,
-//       images,
-//       address,
-//       language,
-//       languages,
-//       zones,
-//       categories,
-//     });
-
-//     await newEmployee.save();
-
-//     sendResponse(res, newEmployee, "Employee created successfully", STATUS_CODES.CREATED);
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
 // Get all employees
 export const getAllEmployees = async (
   req: Request,
@@ -308,7 +204,6 @@ export const getEmployeeById = async (
   }
 };
 
-
 // Update employee
 export const updateEmployee = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -355,6 +250,18 @@ export const updateEmployee = async (req: Request, res: Response, next: NextFunc
       }
     }
 
+
+      if (req.body.status && !["active", "inactive", "blocked"].includes(req.body.status)) {
+      sendResponse(
+        res,
+        null,
+        "Invalid status value. Must be 'active', 'inactive', or 'blocked'.",
+        STATUS_CODES.BAD_REQUEST
+      );
+      return;
+    }
+
+
     Object.assign(employee, req.body);
     await employee.save();
 
@@ -363,92 +270,6 @@ export const updateEmployee = async (req: Request, res: Response, next: NextFunc
     next(error);
   }
 };
-// export const updateEmployee = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction
-// ) => {
-//   try {
-//     const { id } = req.params;
-//     const {
-//       staffRoles,
-//       permissions,
-//       zones,
-//       categories,
-//     } = req.body;
-
-//     if (!mongoose.Types.ObjectId.isValid(id)) {
-//       sendResponse(res, null, "Invalid Employee ID", STATUS_CODES.BAD_REQUEST);
-//       return;
-//     }
-
-//     const employee = await Employee.findById(id);
-//     if (!employee) {
-//       sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
-//       return;
-//     }
-
-//     //Validate staffRoles as ObjectIds from Role model
-//     if (staffRoles && staffRoles.length > 0) {
-//       const validRoles = await Role.find({ _id: { $in: staffRoles } }).lean();
-//       const validRoleIds = validRoles.map((role) => role._id.toString());
-//       const invalidRoleIds = staffRoles.filter((id: string) => !validRoleIds.includes(id));
-//       if (invalidRoleIds.length > 0) {
-//         sendResponse(res, null, `Invalid Role IDs: ${invalidRoleIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
-//         return;
-//       }
-//     }
-
-//     //Validate permissions operations
-//     if (permissions && permissions.length > 0) {
-//       const allowedOps = ["create", "read", "update", "delete"];
-//       for (const perm of permissions) {
-//         const invalidOps = perm.operations.filter(
-//           (op: string) => !allowedOps.includes(op)
-//         );
-//         if (invalidOps.length > 0) {
-//           sendResponse(
-//             res,
-//             null,
-//             `Invalid operations for access "${perm.access}": ${invalidOps.join(", ")}`,
-//             STATUS_CODES.BAD_REQUEST
-//           );
-//           return;
-//         }
-//       }
-//     }
-
-//     //Validate zones as ObjectIds
-//     if (zones && zones.length > 0) {
-//       const validZones = await Zone.find({ _id: { $in: zones } }).select("_id").lean();
-//       const validZoneIds = validZones.map((z) => z._id.toString());
-//       const invalidZoneIds = zones.filter((z: string) => !validZoneIds.includes(z));
-//       if (invalidZoneIds.length > 0) {
-//         sendResponse(res, null, `Invalid Zone IDs: ${invalidZoneIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
-//         return;
-//       }
-//     }
-
-//     //Validate categories as ObjectIds
-//     if (categories && categories.length > 0) {
-//       const validCategories = await Category.find({ _id: { $in: categories } }).select("_id").lean();
-//       const validCategoryIds = validCategories.map((c) => c._id.toString());
-//       const invalidCategoryIds = categories.filter((c: string) => !validCategoryIds.includes(c));
-//       if (invalidCategoryIds.length > 0) {
-//         sendResponse(res, null, `Invalid Category IDs: ${invalidCategoryIds.join(", ")}`, STATUS_CODES.BAD_REQUEST);
-//         return;
-//       }
-//     }
-
-//     //Apply valid updates
-//     Object.assign(employee, req.body);
-//     await employee.save();
-
-//     sendResponse(res, employee, "Employee updated successfully", STATUS_CODES.OK);
-//   } catch (error) {
-//     next(error);
-//   }
-// };
 
 // Delete employee
 export const deleteEmployee = async (
