@@ -4,6 +4,7 @@ dotenv.config();
 
 export const config = {
   PORT: process.env.PORT || "5005",
+  JWT_SECRET: process.env.JWT_SECRET, //Add this line
   MONGO_URI: process.env.MONGO_URI,
   ACCESS_TOKEN_SECRET: "your_access_secret_key",
   REFRESH_TOKEN_SECRET: "your_refresh_secret_key",

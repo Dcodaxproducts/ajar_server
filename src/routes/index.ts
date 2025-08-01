@@ -1,6 +1,5 @@
 import express from "express";
 import userRoutes from "./user.routes";
-import chatRoutes from "./chat.routes";
 import zoneRoutes from "./zone.routes";
 import categoryRoutes from "./category.routes";
 import formRoutes from "./forms.routes";
@@ -19,6 +18,7 @@ import faqRoutes from "./faq.routes";
 import employeeRoleRoutes from "./employeeRole.routes";
 import helpSupportRoutes from "./helpSupport.routes";   
 import contactUsRoutes from "./contactUs.routes";
+import chatRoutes from "./chat.routes";
 
 
 const router = express.Router();
@@ -43,5 +43,6 @@ router.use("/faqs", faqRoutes);
 router.use("/employee-roles", employeeRoleRoutes);
 router.use("/help-support", helpSupportRoutes);
 router.use("/contact-us", contactUsRoutes);
+router.use("/chat", chatRoutes);
 
 export default router;
