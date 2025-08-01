@@ -2,6 +2,7 @@ import express from "express";
 import { validateRequest } from "../middlewares/validateRequest";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import {
+  addSubCategoriesToZone,
   createZone,
   deleteZone,
   getAllZones,
@@ -37,6 +38,9 @@ router.patch(
   asyncHandler(languageTranslationMiddleware(Zone)),
   updateZone
 );
+
+router.patch("/:id/subcategories", addSubCategoriesToZone);
+
 
 router.delete("/:id", deleteZone);
 export default router;
