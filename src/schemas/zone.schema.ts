@@ -28,15 +28,27 @@ export const zoneSchema = z.object({
     .min(2, "Language must be at least 2 characters")
     .optional(),
 
-  polygons: z
-    .array(
+    polygons: z
+  .array(
+    z.array(
       z.object({
         lat: z.number(),
         lng: z.number(),
       })
     )
-    .min(1, "At least one polygon coordinate is required")
-    .optional(),
+  )
+  .min(1, "At least one polygon path is required")
+  .optional(),
+
+  // polygons: z
+  //   .array(
+  //     z.object({
+  //       lat: z.number(),
+  //       lng: z.number(),
+  //     })
+  //   )
+  //   .min(1, "At least one polygon coordinate is required")
+  //   .optional(),
 
   languages: z
     .array(
