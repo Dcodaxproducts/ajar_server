@@ -3,6 +3,7 @@ import mongoose, { Schema, Document } from "mongoose";
 export interface IRefundManagement extends Document {
   booking: mongoose.Types.ObjectId;
   reason: string;
+  user: mongoose.Types.ObjectId;
   deduction: number;
   totalRefundAmount: number;
   card: "MasterCard" | "Visa" | "DebitCard";
@@ -28,6 +29,7 @@ export interface IRefundManagement extends Document {
     businessLicense: string;
   };
   selectTime: string;
+  refundWindow: "full" | "partial" | "custom";
   zone: mongoose.Types.ObjectId;
   subCategory: mongoose.Types.ObjectId;
   allowFund: boolean;
@@ -55,6 +57,10 @@ const refundManagementSchema = new Schema<IRefundManagement>(
       type: String,
       
     },
+  user: {
+  type: Schema.Types.ObjectId,
+  ref: "User",
+},
     deduction: {
       type: Number,
       default: 0,
@@ -91,6 +97,11 @@ const refundManagementSchema = new Schema<IRefundManagement>(
     },
     selectTime: {
       type: String,
+    },
+    refundWindow: {
+      type: String,
+      enum: ["full", "partial", "custom"],
+      default: "full",
     },
     zone: {
       type: Schema.Types.ObjectId,
