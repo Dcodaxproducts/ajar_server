@@ -22,7 +22,18 @@ const ZoneSchema = new Schema(
     subCategories: [{ type: mongoose.Schema.Types.ObjectId, ref: "SubCategory" }],
     currency: { type: String, required: true, trim: true },
     language: { type: String, default: "en" }, 
-    polygons: [{ type: [{ lat: Number, lng: Number }], default: [] }],
+    polygons: {
+  type: [
+    [
+      {
+        lat: { type: Number, required: true },
+        lng: { type: Number, required: true },
+      },
+    ],
+  ],
+  default: [],
+},
+    // polygons: [{ type: [{ lat: Number, lng: Number }], default: [] }],
     languages: [
   {
     locale: { type: String },
