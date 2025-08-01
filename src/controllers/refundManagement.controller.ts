@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import asyncHandler from "express-async-handler";
 import { Booking } from "../models/booking.model";
 import { paginateQuery } from "../utils/paginate";
+import { AuthRequest } from "../middlewares/auth.middleware";
 
 // Helper function to check if ObjectId is valid and exists
 const isValidObjectIdAndExists = async (
@@ -18,15 +19,26 @@ const isValidObjectIdAndExists = async (
 //Create Refund Settings (Admin)
 export const createRefundSettings = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
-    const {
-      zone,
-      subCategory,
-      allowFund,
-      cutoffTime,
-      flatFee,
-      time,
-      note,
-    } = req.body;
+    const allowedAdminFields = [
+      "zone",
+      "subCategory",
+      "allowFund",
+      "cutoffTime",
+      "flatFee",
+      "time",
+      "note",
+      "refundWindow"
+    ];
+
+    // Remove disallowed fields
+    const sanitizedBody: any = {};
+    allowedAdminFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        sanitizedBody[field] = req.body[field];
+      }
+    });
+
+    const { zone, subCategory } = sanitizedBody;
 
     if (!(await isValidObjectIdAndExists(zone, Zone))) {
       res.status(400).json({ message: "Invalid zone ID" });
@@ -38,23 +50,18 @@ export const createRefundSettings = asyncHandler(
       return;
     }
 
-    const refundSettings = await RefundManagement.create({
-      zone: zone,
-      subCategory,
-      allowFund,
-      cutoffTime,
-      flatFee,
-      time,
-      note,
-    });
+    const refundSettings = await RefundManagement.create(sanitizedBody);
+
+     const { status, ...dataWithoutStatus } = refundSettings.toObject();
 
     res.status(201).json({
       success: true,
       message: "Refund settings created successfully",
-      data: refundSettings,
+      data: dataWithoutStatus,
     });
   }
 );
+
 
 //Get All Refund Settings (Admin)
 export const getAllRefundSettings = asyncHandler(
@@ -68,9 +75,15 @@ export const getAllRefundSettings = asyncHandler(
 
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
 
+     // Remove 'status' field from each document
+    const sanitizedData = data.map((item: any) => {
+      const { status, ...rest } = item.toObject();
+      return rest;
+    });
+
     res.status(200).json({
       success: true,
-      data,
+      data: sanitizedData,
       total,
       page,
       limit,
@@ -90,6 +103,7 @@ export const updateRefundSettings = asyncHandler(
       flatFee,
       time,
       note,
+      refundWindow
     } = req.body;
 
     const refund = await RefundManagement.findById(id);
@@ -115,6 +129,8 @@ export const updateRefundSettings = asyncHandler(
     refund.flatFee = flatFee ?? refund.flatFee;
     refund.time = time || refund.time;
     refund.note = note || refund.note;
+    refund.refundWindow = refundWindow || refund.refundWindow; 
+
 
     await refund.save();
 
@@ -147,17 +163,27 @@ export const deleteRefundSettings = asyncHandler(
 //for leaser
 // Create Refund Request (User)
 export const createRefundRequest = asyncHandler(
-  async (req: Request, res: Response): Promise<void> => {
-    const {
-      booking,
-      reason,
-      card,
-      cardDetails,
-      profile,
-      idVerification,
-      businessVerification,
-      selectTime,
-    } = req.body;
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    const allowedUserFields = [
+      "booking",
+      "reason",
+      "card",
+      "cardDetails",
+      "profile",
+      "idVerification",
+      "businessVerification",
+      "selectTime",
+      
+    ];
+
+    const sanitizedBody: any = {};
+    allowedUserFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        sanitizedBody[field] = req.body[field];
+      }
+    });
+
+    const { booking } = sanitizedBody;
 
     if (!(await isValidObjectIdAndExists(booking, Booking))) {
       res.status(400).json({ message: "Invalid booking ID" });
@@ -175,7 +201,6 @@ export const createRefundRequest = asyncHandler(
     const zone = listing.zone;
     const subCategory = listing.subCategory;
 
-    // Fetch refund policy
     const policy = await RefundManagement.findOne({ zone, subCategory });
 
     if (!policy || !policy.allowFund) {
@@ -185,39 +210,28 @@ export const createRefundRequest = asyncHandler(
 
     const checkInDate = new Date(bookingData.dates.checkIn);
     const now = new Date();
-
     const msUntilCheckIn = checkInDate.getTime() - now.getTime();
     const hoursUntilCheckIn = msUntilCheckIn / (1000 * 60 * 60);
 
     const cutoffHours = (policy.cutoffTime.days || 0) * 24 + (policy.cutoffTime.hours || 0);
     const flatFee = policy.flatFee || 0;
-
     const totalPrice = bookingData.priceDetails.totalPrice || 0;
 
     let deduction = 0;
     let totalRefundAmount = 0;
 
     if (hoursUntilCheckIn > cutoffHours) {
-      // Allow refund minus flatFee
       deduction = flatFee;
       totalRefundAmount = totalPrice - deduction;
     } else {
-      // No refund
       deduction = totalPrice;
       totalRefundAmount = 0;
     }
 
     const refund = await RefundManagement.create({
-      booking,
-      reason,
+      ...sanitizedBody,
       deduction,
       totalRefundAmount,
-      card,
-      cardDetails,
-      profile,
-      idVerification,
-      businessVerification,
-      selectTime,
       zone,
       subCategory,
       allowFund: policy.allowFund,
@@ -225,6 +239,7 @@ export const createRefundRequest = asyncHandler(
       flatFee: policy.flatFee,
       time: policy.time,
       note: policy.note,
+      // user: req.user.id,
     });
 
     res.status(201).json({
@@ -234,7 +249,6 @@ export const createRefundRequest = asyncHandler(
     });
   }
 );
-
 
 //Update Refund Request (User)
 export const updateRefundRequest = asyncHandler(
@@ -314,34 +328,64 @@ export const getRefundRequestById = asyncHandler(
 
 // Get All Refund Requests (User Only)
 export const getMyRefundRequests = asyncHandler(
-  async (req: Request, res: Response) => {
+  async (req: AuthRequest, res: Response) => {
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-    const baseQuery = RefundManagement.find()
+    const isAdmin = req.user?.role === "admin";
+    const filter: any = isAdmin ? {} : { user: req.user?.id };
+
+    const baseQuery = RefundManagement.find(filter)
       .populate("zone", "zoneName")
       .populate("subCategory", "categoryName")
       .populate("booking");
 
-    // Paginate
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
 
-    // Calculate counts by status from DB
     const [pendingRequests, rejectedRequests, acceptedRequests] = await Promise.all([
-      RefundManagement.countDocuments({ status: "pending" }),
-      RefundManagement.countDocuments({ status: "reject" }),
-      RefundManagement.countDocuments({ status: "accept" }),
+      RefundManagement.countDocuments({ ...filter, status: "pending" }),
+      RefundManagement.countDocuments({ ...filter, status: "reject" }),
+      RefundManagement.countDocuments({ ...filter, status: "accept" }),
     ]);
 
     res.status(200).json({
       success: true,
       data,
-      totalRequests: total, 
+      totalRequests: total,
       pendingRequests,
       rejectedRequests,
       acceptedRequests,
       page,
       limit,
+    });
+  }
+);
+
+
+// Update Refund Request Status (Admin Only)
+export const updateRefundStatus = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!["pending", "accept", "reject"].includes(status)) {
+      res.status(400).json({ message: "Invalid status value" });
+      return;
+    }
+
+    const refund = await RefundManagement.findById(id);
+    if (!refund) {
+      res.status(404).json({ message: "Refund request not found" });
+      return;
+    }
+
+    refund.status = status;
+    await refund.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Refund request status updated to '${status}'`,
+      data: refund,
     });
   }
 );
