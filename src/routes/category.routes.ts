@@ -1,13 +1,15 @@
 import express from "express";
 import { validateRequest } from "../middlewares/validateRequest";
 import { authMiddleware } from "../middlewares/auth.middleware";
-import upload from "../utils/multer";
+import upload, { uploadFiles } from "../utils/multer";
 import { categorySchema } from "../schemas/category.schema";
 import {
   createNewCategory,
   deleteCategory,
   getAllCategories,
   getCategoryDetails,
+  getCategoryNamesAndIds,
+  getCategoryWithSubcategories,
   updateCategory,
   updateCategoryThumbnail,
 } from "../controllers/category.controller";
@@ -17,12 +19,16 @@ import { languageTranslationMiddleware } from "../middlewares/languageTranslatio
 const router = express.Router();
 
 router.get("/", getAllCategories);
+router.get("/list", getCategoryNamesAndIds);
 router.get("/:id", getCategoryDetails);
+router.get("/:id/subcategories", getCategoryWithSubcategories);
+
+
 
 router.post(
   "/",
   authMiddleware,
-  upload.single("thumbnail"),
+   uploadFiles(['thumbnail', 'icon', 'image']),
   validateRequest({ body: categorySchema }),
   createNewCategory
 );
@@ -35,7 +41,7 @@ function asyncHandler(fn: any) {
 
 router.patch(
   "/:id",
-   upload.single("thumbnail"),
+     uploadFiles(['thumbnail', 'icon', 'image']),
   asyncHandler(languageTranslationMiddleware(Category)),
   updateCategory
 );

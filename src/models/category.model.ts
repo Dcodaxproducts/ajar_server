@@ -15,6 +15,7 @@ interface ICategory extends Document {
   thumbnail?: string;
   type: "category" | "subCategory";
   category?: mongoose.Types.ObjectId;
+  subcategories?: ICategory[];
   language?: string;
   languages?: ILanguageTranslation[];
   createdAt: Date;
@@ -37,6 +38,7 @@ const BaseCategorySchema = new Schema<ICategory>(
       default: "category",
     },
     category: { type: Schema.Types.ObjectId, ref: "Category" },
+    
     languages: [
       {
         locale: { type: String, required: true },
@@ -44,7 +46,16 @@ const BaseCategorySchema = new Schema<ICategory>(
       },
     ],
   },
-  { timestamps: true, discriminatorKey: "type" }
+  { timestamps: true, discriminatorKey: "type",  toJSON: {
+      virtuals: false,
+      versionKey: false,
+      transform: function (doc, ret) {
+        delete ret.id; // remove `id` field
+        return ret;
+      },
+    },
+    id: false, //this disables the automatic creation of `id`
+   }
 );
 
 BaseCategorySchema.pre("validate", function (next) {
@@ -63,7 +74,14 @@ BaseCategorySchema.virtual("subcategories", {
   foreignField: "category",
 });
 
-BaseCategorySchema.set("toJSON", { virtuals: true });
+BaseCategorySchema.set("toJSON", {
+   virtuals: false,         // Don't include virtuals in JSON output
+  versionKey: false,       // Remove __v field
+  transform: function (doc, ret) {
+    ret.id && delete ret.id; // Remove `id` if present
+    return ret;
+  },
+});
 BaseCategorySchema.set("toObject", { virtuals: true });
 
 const Category = mongoose.model<ICategory>("Category", BaseCategorySchema);
