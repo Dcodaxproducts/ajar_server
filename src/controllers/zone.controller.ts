@@ -19,12 +19,14 @@ export const getAllZones = async (
     const languageHeader = req.headers["language"];
     const locale = languageHeader?.toString() || null;
 
-    // const baseQuery = Zone.find();
     const baseQuery = Zone.find().populate("subCategories");
     const { data, total } = await paginateQuery(baseQuery, {
       page: Number(page),
       limit: Number(limit),
     });
+
+    // Get the total count of all zones (unfiltered by pagination)
+    const totalCount = await Zone.countDocuments();
 
     let filteredData = data;
 
@@ -56,7 +58,7 @@ export const getAllZones = async (
       res,
       {
         zones: filteredData,
-        total: filteredData.length,
+        total: totalCount, 
         page: Number(page),
         limit: Number(limit),
       },
@@ -67,6 +69,66 @@ export const getAllZones = async (
     next(error);
   }
 };
+
+
+// export const getAllZones = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const { page = 1, limit = 10 } = req.query;
+//     const languageHeader = req.headers["language"];
+//     const locale = languageHeader?.toString() || null;
+
+//     // const baseQuery = Zone.find();
+//     const baseQuery = Zone.find().populate("subCategories");
+//     const { data, total } = await paginateQuery(baseQuery, {
+//       page: Number(page),
+//       limit: Number(limit),
+//     });
+
+//     let filteredData = data;
+
+//     if (locale) {
+//       filteredData = data
+//         .filter((zone: any) =>
+//           zone.languages?.some((lang: any) => lang.locale === locale)
+//         )
+//         .map((zone: any) => {
+//           const matchedLang = zone.languages.find(
+//             (lang: any) => lang.locale === locale
+//           );
+
+//           const zoneObj = zone.toObject();
+
+//           if (matchedLang && matchedLang.translations) {
+//             zoneObj.name = matchedLang.translations.name || zoneObj.name;
+//             zoneObj.adminNotes =
+//               matchedLang.translations.adminNotes || zoneObj.adminNotes;
+//           }
+
+//           delete zoneObj.languages;
+
+//           return zoneObj;
+//         });
+//     }
+
+//     sendResponse(
+//       res,
+//       {
+//         zones: filteredData,
+//         total: filteredData.length,
+//         page: Number(page),
+//         limit: Number(limit),
+//       },
+//       `Zones fetched successfully${locale ? ` for locale: ${locale}` : ""}`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 // GET Zone by ID with Locale-based Translations
 export const getZoneDetails = async (
