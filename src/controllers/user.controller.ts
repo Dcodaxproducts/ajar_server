@@ -467,7 +467,24 @@ export const resetPassword = async (
 };
 
 // Get all users and user statistics in a single API.
- 
+
+// Embedded pagination logic directly inside the controller
+const paginateQuery = async <T>(
+  query: import("mongoose").Query<T[], any>,
+  options: { page?: number; limit?: number } = {}
+): Promise<{ data: T[]; total: number; page: number; limit: number }> => {
+  const page = Math.max(1, options.page || 1);
+  const limit = Math.max(1, options.limit || 10);
+  const skip = (page - 1) * limit;
+
+  const [data, total] = await Promise.all([
+    query.clone().skip(skip).limit(limit).exec(),
+    query.clone().countDocuments().exec(),
+  ]);
+
+  return { data, total, page, limit };
+};
+
 export const getAllUsersWithStats = async (
   req: AuthRequest,
   res: Response,
@@ -484,28 +501,30 @@ export const getAllUsersWithStats = async (
       filter.role = role;
     }
 
-    // const users = await User.find(filter).lean().select("email name role");
-    const users = await User.find({ ...filter, role: { $ne: "admin" } }).lean().select("email name phone status");
+    // Apply filtering and exclude admins in user query
+    const userQuery = User.find({ ...filter, role: { $ne: "admin" } })
+      .lean()
+      .select("email name phone status");
 
+    // Apply pagination logic
+    const { data: users, total } = await paginateQuery(userQuery, { page, limit });
 
     // User statistics
     const totalUsers = await User.countDocuments();
     const totalAdmins = await User.countDocuments({ role: "admin" });
     const totalNormalUsers = await User.countDocuments({ role: "user" });
-    const total = totalAdmins + totalNormalUsers;
 
-     //Added status statistics
+    // Status-based statistics
     const totalActiveUsers = await User.countDocuments({ status: "active" });
     const totalInactiveUsers = await User.countDocuments({ status: "inactive" });
     const totalBlockedUsers = await User.countDocuments({ status: "blocked" });
     const totalUnblockedUsers = await User.countDocuments({ status: "Unblocked" });
 
-
     sendResponse(
       res,
       {
         users,
-         pagination: {
+        pagination: {
           total,
           page,
           limit,
@@ -527,6 +546,7 @@ export const getAllUsersWithStats = async (
     next(error);
   }
 };
+
 
 export const updateUserProfile = async (
   req: AuthRequest,
@@ -849,6 +869,35 @@ export const updateUserStatus = async (
     await user.save();
 
     sendResponse(res, user, "User status updated successfully", STATUS_CODES.OK);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+//delete user 
+export const deleteUser = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    // Only admin can delete users
+    if (typeof req.user?.role === "string" && req.user.role !== "admin") {
+      sendResponse(res, null, "Forbidden: Admins only", STATUS_CODES.FORBIDDEN);
+      return;
+    }
+
+    const { userId } = req.params;
+
+    const user = await User.findByIdAndDelete(userId);
+
+    if (!user) {
+      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    sendResponse(res, null, "User deleted successfully", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
