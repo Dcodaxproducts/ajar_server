@@ -485,6 +485,7 @@ const paginateQuery = async <T>(
   return { data, total, page, limit };
 };
 
+
 export const getAllUsersWithStats = async (
   req: AuthRequest,
   res: Response,
@@ -501,42 +502,42 @@ export const getAllUsersWithStats = async (
       filter.role = role;
     }
 
-    // Apply filtering and exclude admins in user query
-    const userQuery = User.find({ ...filter, role: { $ne: "admin" } })
+    // Exclude admin from the user list (but not from global stats)
+    const userFilter = { ...filter, role: { $ne: "admin" } };
+
+    const userQuery = User.find(userFilter)
       .lean()
       .select("email name phone status");
 
-    // Apply pagination logic
-    const { data: users, total } = await paginateQuery(userQuery, { page, limit });
+    const { data: users } = await paginateQuery(userQuery, { page, limit });
 
-    // User statistics
+    // Filtered total for pagination (not global)
+    const filteredTotal = await User.countDocuments(userFilter);
+
+    // Global user statistics
     const totalUsers = await User.countDocuments();
     const totalAdmins = await User.countDocuments({ role: "admin" });
-    const totalNormalUsers = await User.countDocuments({ role: "user" });
-
-    // Status-based statistics
+  
     const totalActiveUsers = await User.countDocuments({ status: "active" });
     const totalInactiveUsers = await User.countDocuments({ status: "inactive" });
     const totalBlockedUsers = await User.countDocuments({ status: "blocked" });
-    const totalUnblockedUsers = await User.countDocuments({ status: "Unblocked" });
+    
 
     sendResponse(
       res,
       {
         users,
         pagination: {
-          total,
+          total: filteredTotal,
           page,
           limit,
         },
         stats: {
           totalUsers,
           totalAdmins,
-          totalNormalUsers,
           totalActiveUsers,
           totalInactiveUsers,
           totalBlockedUsers,
-          totalUnblockedUsers,
         },
       },
       "Users and statistics fetched successfully",
@@ -580,7 +581,6 @@ export const updateUserProfile = async (
 };
 
 // add dynamic form
-
 export const addForm = async (
   req: Request,
   res: Response,
