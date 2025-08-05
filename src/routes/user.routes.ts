@@ -2,6 +2,7 @@ import express from "express";
 import {
   addForm,
   createUser,
+  deleteUser,
   forgotPassword,
   getAllUsersWithStats,
   getDashboardStats,
@@ -85,5 +86,6 @@ router.patch(
   updateUserStatus
 );
 
+router.delete("/:userId", authMiddleware, deleteUser);
 
 export default router;
