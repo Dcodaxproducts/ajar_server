@@ -70,66 +70,6 @@ export const getAllZones = async (
   }
 };
 
-
-// export const getAllZones = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction
-// ): Promise<void> => {
-//   try {
-//     const { page = 1, limit = 10 } = req.query;
-//     const languageHeader = req.headers["language"];
-//     const locale = languageHeader?.toString() || null;
-
-//     // const baseQuery = Zone.find();
-//     const baseQuery = Zone.find().populate("subCategories");
-//     const { data, total } = await paginateQuery(baseQuery, {
-//       page: Number(page),
-//       limit: Number(limit),
-//     });
-
-//     let filteredData = data;
-
-//     if (locale) {
-//       filteredData = data
-//         .filter((zone: any) =>
-//           zone.languages?.some((lang: any) => lang.locale === locale)
-//         )
-//         .map((zone: any) => {
-//           const matchedLang = zone.languages.find(
-//             (lang: any) => lang.locale === locale
-//           );
-
-//           const zoneObj = zone.toObject();
-
-//           if (matchedLang && matchedLang.translations) {
-//             zoneObj.name = matchedLang.translations.name || zoneObj.name;
-//             zoneObj.adminNotes =
-//               matchedLang.translations.adminNotes || zoneObj.adminNotes;
-//           }
-
-//           delete zoneObj.languages;
-
-//           return zoneObj;
-//         });
-//     }
-
-//     sendResponse(
-//       res,
-//       {
-//         zones: filteredData,
-//         total: filteredData.length,
-//         page: Number(page),
-//         limit: Number(limit),
-//       },
-//       `Zones fetched successfully${locale ? ` for locale: ${locale}` : ""}`,
-//       STATUS_CODES.OK
-//     );
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
 // GET Zone by ID with Locale-based Translations
 export const getZoneDetails = async (
   req: Request,
@@ -285,7 +225,6 @@ export const createZone = async (
   }
 };
 
-
 //update zone
 export const updateZone = async (
   req: Request,
@@ -402,9 +341,7 @@ export const deleteZone = async (
   }
 };
 
-
 //add subb category to zone
-// Add subcategories to existing zone
 export const addSubCategoriesToZone = async (
   req: Request,
   res: Response,
