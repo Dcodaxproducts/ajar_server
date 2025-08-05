@@ -19,6 +19,7 @@ import employeeRoleRoutes from "./employeeRole.routes";
 import helpSupportRoutes from "./helpSupport.routes";   
 import contactUsRoutes from "./contactUs.routes";
 import chatRoutes from "./chat.routes";
+import favouritesRoutes from "./favourites.route";
 
 
 const router = express.Router();
@@ -44,5 +45,6 @@ router.use("/employee-roles", employeeRoleRoutes);
 router.use("/help-support", helpSupportRoutes);
 router.use("/contact-us", contactUsRoutes);
 router.use("/chat", chatRoutes);
+router.use("/favourites", favouritesRoutes);
 
 export default router;

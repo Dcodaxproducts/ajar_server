@@ -30,7 +30,12 @@ export const createUser = async (
     const { email, password, name, dob, nationality, user_type } = req.body;
     const user = await User.findOne({ email }).select("email").lean();
     if (user) {
-      sendResponse(res, req.body, "User already exists", STATUS_CODES.CONFLICT);
+      sendResponse(
+      res,
+      { email },
+      "User already exists",
+        STATUS_CODES.CONFLICT
+        );
       return;
     }
 
