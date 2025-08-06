@@ -10,6 +10,7 @@ import {
   getCategoryDetails,
   getCategoryNamesAndIds,
   getCategoryWithSubcategories,
+  getSubCategoryNamesAndIds,
   updateCategory,
   updateCategoryThumbnail,
 } from "../controllers/category.controller";
@@ -20,15 +21,14 @@ const router = express.Router();
 
 router.get("/", getAllCategories);
 router.get("/list", getCategoryNamesAndIds);
+router.get("/list/subcategories", getSubCategoryNamesAndIds);
 router.get("/:id", getCategoryDetails);
 router.get("/:id/subcategories", getCategoryWithSubcategories);
-
-
 
 router.post(
   "/",
   authMiddleware,
-   uploadFiles(['thumbnail', 'icon', 'image']),
+  uploadFiles(["thumbnail", "icon", "image"]),
   validateRequest({ body: categorySchema }),
   createNewCategory
 );
@@ -41,7 +41,7 @@ function asyncHandler(fn: any) {
 
 router.patch(
   "/:id",
-     uploadFiles(['thumbnail', 'icon', 'image']),
+  uploadFiles(["thumbnail", "icon", "image"]),
   asyncHandler(languageTranslationMiddleware(Category)),
   updateCategory
 );
