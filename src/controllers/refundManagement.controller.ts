@@ -27,7 +27,7 @@ export const createRefundSettings = asyncHandler(
       "flatFee",
       "time",
       "note",
-      "refundWindow"
+      "refundWindow",
     ];
 
     // Remove disallowed fields
@@ -52,7 +52,7 @@ export const createRefundSettings = asyncHandler(
 
     const refundSettings = await RefundManagement.create(sanitizedBody);
 
-     const { status, ...dataWithoutStatus } = refundSettings.toObject();
+    const { status, ...dataWithoutStatus } = refundSettings.toObject();
 
     res.status(201).json({
       success: true,
@@ -61,7 +61,6 @@ export const createRefundSettings = asyncHandler(
     });
   }
 );
-
 
 //Get All Refund Settings (Admin)
 export const getAllRefundSettings = asyncHandler(
@@ -75,7 +74,7 @@ export const getAllRefundSettings = asyncHandler(
 
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
 
-     // Remove 'status' field from each document
+    // Remove 'status' field from each document
     const sanitizedData = data.map((item: any) => {
       const { status, ...rest } = item.toObject();
       return rest;
@@ -103,7 +102,7 @@ export const updateRefundSettings = asyncHandler(
       flatFee,
       time,
       note,
-      refundWindow
+      refundWindow,
     } = req.body;
 
     const refund = await RefundManagement.findById(id);
@@ -117,7 +116,10 @@ export const updateRefundSettings = asyncHandler(
       return;
     }
 
-    if (subCategory && !(await isValidObjectIdAndExists(subCategory, Category))) {
+    if (
+      subCategory &&
+      !(await isValidObjectIdAndExists(subCategory, Category))
+    ) {
       res.status(400).json({ message: "Invalid subCategory ID" });
       return;
     }
@@ -129,8 +131,7 @@ export const updateRefundSettings = asyncHandler(
     refund.flatFee = flatFee ?? refund.flatFee;
     refund.time = time || refund.time;
     refund.note = note || refund.note;
-    refund.refundWindow = refundWindow || refund.refundWindow; 
-
+    refund.refundWindow = refundWindow || refund.refundWindow;
 
     await refund.save();
 
@@ -173,7 +174,6 @@ export const createRefundRequest = asyncHandler(
       "idVerification",
       "businessVerification",
       "selectTime",
-      
     ];
 
     const sanitizedBody: any = {};
@@ -190,7 +190,9 @@ export const createRefundRequest = asyncHandler(
       return;
     }
 
-    const bookingData = await Booking.findById(booking).populate("marketplaceListingId");
+    const bookingData = await Booking.findById(booking).populate(
+      "marketplaceListingId"
+    );
 
     if (!bookingData || !bookingData.marketplaceListingId) {
       res.status(404).json({ message: "Booking or listing not found" });
@@ -213,7 +215,8 @@ export const createRefundRequest = asyncHandler(
     const msUntilCheckIn = checkInDate.getTime() - now.getTime();
     const hoursUntilCheckIn = msUntilCheckIn / (1000 * 60 * 60);
 
-    const cutoffHours = (policy.cutoffTime.days || 0) * 24 + (policy.cutoffTime.hours || 0);
+    const cutoffHours =
+      (policy.cutoffTime.days || 0) * 24 + (policy.cutoffTime.hours || 0);
     const flatFee = policy.flatFee || 0;
     const totalPrice = bookingData.priceDetails.totalPrice || 0;
 
@@ -264,7 +267,10 @@ export const updateRefundRequest = asyncHandler(
     const updates = req.body;
 
     // Optional: validate booking if being updated
-    if (updates.booking && !(await isValidObjectIdAndExists(updates.booking, Booking))) {
+    if (
+      updates.booking &&
+      !(await isValidObjectIdAndExists(updates.booking, Booking))
+    ) {
       res.status(400).json({ message: "Invalid booking ID" });
       return;
     }
@@ -297,7 +303,6 @@ export const deleteRefundRequest = asyncHandler(
     });
   }
 );
-
 
 // Get Refund Request by ID (User/Admin)
 export const getRefundRequestById = asyncHandler(
@@ -342,11 +347,12 @@ export const getMyRefundRequests = asyncHandler(
 
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
 
-    const [pendingRequests, rejectedRequests, acceptedRequests] = await Promise.all([
-      RefundManagement.countDocuments({ ...filter, status: "pending" }),
-      RefundManagement.countDocuments({ ...filter, status: "reject" }),
-      RefundManagement.countDocuments({ ...filter, status: "accept" }),
-    ]);
+    const [pendingRequests, rejectedRequests, acceptedRequests] =
+      await Promise.all([
+        RefundManagement.countDocuments({ ...filter, status: "pending" }),
+        RefundManagement.countDocuments({ ...filter, status: "reject" }),
+        RefundManagement.countDocuments({ ...filter, status: "accept" }),
+      ]);
 
     res.status(200).json({
       success: true,
@@ -360,7 +366,6 @@ export const getMyRefundRequests = asyncHandler(
     });
   }
 );
-
 
 // Update Refund Request Status (Admin Only)
 export const updateRefundStatus = asyncHandler(
