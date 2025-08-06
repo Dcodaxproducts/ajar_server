@@ -20,7 +20,7 @@ const ZoneSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     subCategories: [
-      { type: mongoose.Schema.Types.ObjectId, ref: "SubCategory" },
+      { type: mongoose.Schema.Types.ObjectId, ref: "subCategory" },
     ],
     currency: { type: String, required: true, trim: true },
     language: { type: String, default: "en" },
