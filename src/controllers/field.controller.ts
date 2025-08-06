@@ -68,7 +68,57 @@ export const getAllFields = async (
   }
 };
 
+export const getAllFieldsWithoutPagination = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const languageHeader = req.headers["language"];
+    const locale = languageHeader?.toString() || null;
 
+    const fields = await Field.find();
+
+    let filteredData = fields;
+
+    if (locale) {
+      filteredData = fields
+        .filter((field: any) =>
+          field.languages?.some((lang: any) => lang.locale === locale)
+        )
+        .map((field: any) => {
+          const matchedLang = field.languages.find(
+            (lang: any) => lang.locale === locale
+          );
+
+          const fieldObj = field.toObject();
+
+          if (matchedLang?.translations) {
+            fieldObj.name = matchedLang.translations.name || fieldObj.name;
+            fieldObj.label = matchedLang.translations.label || fieldObj.label;
+            fieldObj.placeholder =
+              matchedLang.translations.placeholder || fieldObj.placeholder;
+          }
+
+          delete fieldObj.languages;
+
+          return fieldObj;
+        });
+    }
+
+    sendResponse(
+      res,
+      {
+        fields: filteredData,
+        // total: filteredData.length,
+      },
+      `Fields fetched successfully${locale ? ` for locale: ${locale}` : ""}`,
+      STATUS_CODES.OK
+    );
+  } catch (error) {
+    next(error);
+  }
+};
 
 // GET field by ID
 export const getFieldDetails = async (
@@ -107,7 +157,7 @@ export const getFieldDetails = async (
           ...translations,
         };
 
-        delete translatedField.languages; 
+        delete translatedField.languages;
 
         sendResponse(
           res,
@@ -117,7 +167,6 @@ export const getFieldDetails = async (
         );
         return;
       } else {
-       
         sendResponse(
           res,
           null,
@@ -139,7 +188,6 @@ export const getFieldDetails = async (
   }
 };
 
-
 // CREATE new field
 export const createNewField = async (
   req: Request,
@@ -148,7 +196,7 @@ export const createNewField = async (
 ): Promise<void> => {
   try {
     const fieldData = req.body;
-     
+
     const newField = new Field(fieldData);
     await newField.save();
 
@@ -197,13 +245,16 @@ export const updateField = async (
       return;
     }
 
-    sendResponse(res, updatedField, "Field updated successfully", STATUS_CODES.OK);
+    sendResponse(
+      res,
+      updatedField,
+      "Field updated successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
 };
-
-
 
 // DELETE field
 export const deleteField = async (
