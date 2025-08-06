@@ -277,39 +277,6 @@ export const getUserDetails = async (
   }
 };
 
-// export const getUserDetails = async (
-//   req: AuthRequest,
-//   res: Response,
-//   next: NextFunction
-// ): Promise<void> => {
-//   try {
-//     console.log({ user: req.user });
-//     const userId = req.user?.id;
-
-//     const user = await User.findById(userId).select("email name role").lean();
-//     if (!user) {
-//       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
-//       return;
-//     }
-
-//     const docsAttached = await UserDocument.find({
-//       user: userId,
-//     }).lean();
-
-//     sendResponse(
-//       res,
-//       {
-//         user,
-//         documents: docsAttached,
-//       },
-//       "User details fetched successfully",
-//       STATUS_CODES.OK
-//     );
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
 export const resendOtp = async (
   req: Request,
   res: Response,
