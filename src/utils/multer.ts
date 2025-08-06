@@ -25,27 +25,26 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only .jpeg, .jpg, .png, and .webp formats allowed'));
+      cb(new Error("Only .jpeg, .jpg, .png, and .webp formats allowed"));
     }
-  }
+  },
 });
 
 // Generic single file upload middleware
 export const uploadFile = (fieldName: string) => upload.single(fieldName);
 
 // Generic multiple files upload middleware
-export const uploadFiles = (fieldNames: string[]) => upload.fields(
-  fieldNames.map(name => ({ name, maxCount: 1 }))
-);
+export const uploadFiles = (fieldNames: string[]) =>
+  upload.fields(fieldNames.map((name) => ({ name, maxCount: 10 })));
 
 export default upload;

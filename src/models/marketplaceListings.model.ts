@@ -35,7 +35,7 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
     },
     subCategory: {
       type: Schema.Types.ObjectId,
-      ref: "SubCategory",
+      ref: "subCategory",
       required: true,
     },
     zone: {
@@ -62,11 +62,6 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
         translations: { type: Schema.Types.Mixed },
       },
     ],
-    status: {
-      type: String,
-      enum: ["pending", "accepted", "rejected", "cancelled"],
-      default: "pending",
-    },
   },
   { timestamps: true, strict: false } // allows dynamic fields
 );

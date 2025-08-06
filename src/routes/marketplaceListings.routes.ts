@@ -2,13 +2,16 @@ import express from "express";
 import { validateRequest } from "../middlewares/validateRequest";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { marketplaceListingSchema } from "../schemas/marketplaceListings.Schema";
-import { createMarketplaceListing, getAllMarketplaceListings,
+import {
+  createMarketplaceListing,
+  getAllMarketplaceListings,
   getMarketplaceListingById,
   updateMarketplaceListing,
-  deleteMarketplaceListing,} from "../controllers/marketplaceListings.controller";
+  deleteMarketplaceListing,
+} from "../controllers/marketplaceListings.controller";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
-import upload from "../utils/multer";
+import upload, { uploadFiles } from "../utils/multer";
 
 const router = express.Router();
 
@@ -17,7 +20,7 @@ router.get("/:id", getMarketplaceListingById);
 
 router.post(
   "/",
-  upload.single("image"),
+  uploadFiles(["image"]),
   authMiddleware,
   validateRequest({ body: marketplaceListingSchema }),
   createMarketplaceListing
@@ -30,9 +33,10 @@ function asyncHandler(fn: any) {
 }
 
 router.patch(
-  "/:id", 
-   upload.single("image"),authMiddleware,
-   asyncHandler(languageTranslationMiddleware(MarketplaceListing)),
+  "/:id",
+  uploadFiles(["image"]),
+  authMiddleware,
+  asyncHandler(languageTranslationMiddleware(MarketplaceListing)),
   updateMarketplaceListing
 );
 

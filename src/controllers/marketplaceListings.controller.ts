@@ -15,14 +15,16 @@ export const createMarketplaceListing = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const {
-      subCategory,
-      zone,
-    } = req.body;
+    const { subCategory, zone } = req.body;
 
     // Validate required fields
     if (!subCategory || !zone) {
-      sendResponse(res, null, "`subCategory` and `zone` are required", STATUS_CODES.BAD_REQUEST);
+      sendResponse(
+        res,
+        null,
+        "`subCategory` and `zone` are required",
+        STATUS_CODES.BAD_REQUEST
+      );
       return;
     }
 
@@ -34,8 +36,11 @@ export const createMarketplaceListing = async (
     }
 
     // Check if subCategory is part of zone.subCategories
-    const isSubCategoryInZone = Array.isArray(zoneDoc.subCategories) &&
-      zoneDoc.subCategories.map((id: any) => String(id)).includes(String(subCategory));
+    const isSubCategoryInZone =
+      Array.isArray(zoneDoc.subCategories) &&
+      zoneDoc.subCategories
+        .map((id: any) => String(id))
+        .includes(String(subCategory));
 
     if (!isSubCategoryInZone) {
       sendResponse(
@@ -54,18 +59,38 @@ export const createMarketplaceListing = async (
       return;
     }
 
+    //Handle uploaded image(s)
+    const images: string[] = [];
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    if (files?.image) {
+      for (const file of files.image) {
+        images.push(`/uploads/${file.filename}`);
+      }
+    }
+
     // Save everything from req.body + user
     const newListing = new MarketplaceListing({
       ...req.body,
-      leaser: req.user?.id, 
+      leaser: req.user?.id,
+      images,
     });
 
     const saved = await newListing.save();
 
-    sendResponse(res, saved, "Marketplace listing created successfully", STATUS_CODES.CREATED);
+    sendResponse(
+      res,
+      saved,
+      "Marketplace listing created successfully",
+      STATUS_CODES.CREATED
+    );
   } catch (err: any) {
     console.error("Error creating listing:", err);
-    sendResponse(res, null, err.message || "Internal server error", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    sendResponse(
+      res,
+      null,
+      err.message || "Internal server error",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
@@ -84,7 +109,12 @@ export const getAllMarketplaceListings = async (
     //Apply role-based access
     if (req.user?.role !== "admin") {
       if (!zone) {
-        sendResponse(res, null, "`zone` is required for users", STATUS_CODES.BAD_REQUEST);
+        sendResponse(
+          res,
+          null,
+          "`zone` is required for users",
+          STATUS_CODES.BAD_REQUEST
+        );
         return;
       }
 
@@ -117,7 +147,8 @@ export const getAllMarketplaceListings = async (
       //Translate description by language
       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
       if (listingLang?.translations) {
-        obj.description = listingLang.translations.description || obj.description;
+        obj.description =
+          listingLang.translations.description || obj.description;
       }
       delete obj.languages;
 
@@ -126,7 +157,9 @@ export const getAllMarketplaceListings = async (
 
     const uniqueUserIds = await MarketplaceListing.distinct("leaser", filter);
     const totalUsersWithListings = uniqueUserIds.length;
-    const totalMarketplaceListings = await MarketplaceListing.countDocuments(filter);
+    const totalMarketplaceListings = await MarketplaceListing.countDocuments(
+      filter
+    );
 
     sendResponse(
       res,
@@ -180,14 +213,16 @@ export const getMarketplaceListingById = async (
     }
     delete (doc as any).languages;
 
-
     //EXISTING: Translate subCategory
     const subCategoryObj = doc.subCategory as any;
     if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
-      const match = subCategoryObj.languages.find((l: any) => l.locale === locale);
+      const match = subCategoryObj.languages.find(
+        (l: any) => l.locale === locale
+      );
       if (match?.translations) {
         subCategoryObj.name = match.translations.name || subCategoryObj.name;
-        subCategoryObj.description = match.translations.description || subCategoryObj.description;
+        subCategoryObj.description =
+          match.translations.description || subCategoryObj.description;
       }
       delete subCategoryObj.languages;
     }
@@ -207,35 +242,56 @@ export const updateMarketplaceListing = async (
   try {
     const { id } = req.params;
 
+    //Validate ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    // Find the listing
+    //Find existing listing
     const existingListing = await MarketplaceListing.findById(id);
     if (!existingListing) {
       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    //Ensure only the listing's leaser can update it
+    //Authorization: only leaser can update
     if (String(existingListing.leaser) !== String(req.user?.id)) {
-      sendResponse(res, null, "Forbidden: You are not the owner of this listing", STATUS_CODES.FORBIDDEN);
+      sendResponse(
+        res,
+        null,
+        "Forbidden: You are not the owner of this listing",
+        STATUS_CODES.FORBIDDEN
+      );
       return;
     }
 
-    //Perform update
-    const updated = await MarketplaceListing.findByIdAndUpdate(id, req.body, {
-      new: true,
-    });
+    //Handle uploaded image files
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    let newImages: string[] = [];
 
-    sendResponse(res, updated, "Listing updated", STATUS_CODES.OK);
-  } catch (err) {
-    next(err);
+    if (files?.image && Array.isArray(files.image)) {
+      newImages = files.image.map((file) => `/uploads/${file.filename}`);
+    }
+
+    //Merge or replace images
+    const updatedFields = {
+      ...req.body,
+      images: newImages.length > 0 ? newImages : existingListing.images,
+    };
+
+    //Update document
+    const updatedListing = await MarketplaceListing.findByIdAndUpdate(
+      id,
+      updatedFields,
+      { new: true }
+    );
+
+    sendResponse(res, updatedListing, "Listing updated", STATUS_CODES.OK);
+  } catch (error) {
+    next(error);
   }
 };
-
 
 // DELETE
 export const deleteMarketplaceListing = async (
