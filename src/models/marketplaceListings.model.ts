@@ -9,21 +9,21 @@ export interface IMarketplaceListing extends Document {
   leaser: mongoose.Schema.Types.ObjectId;
   subCategory: mongoose.Types.ObjectId;
   zone: mongoose.Types.ObjectId;
-  
-  ratings: {  
+
+  ratings: {
     count: number;
     average: number;
   };
-  name?: string; 
-  images?: string[]; 
+  name?: string;
+  images?: string[];
   description: string;
-  address: string
+  address: string;
   currency?: string;
   price: number;
   isActive?: boolean;
   language?: string;
   languages?: ILanguageTranslation[];
-  [key: string]: any; 
+  [key: string]: any;
 }
 
 const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
@@ -48,8 +48,8 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
       count: { type: Number, default: 0 },
       average: { type: Number, default: 0 },
     },
-    name: { type: String }, 
-    images: [{ type: String }], 
+    name: { type: String },
+    images: [{ type: String }],
     description: { type: String, required: true },
     address: { type: String, required: true },
     currency: { type: String },
@@ -62,6 +62,11 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
         translations: { type: Schema.Types.Mixed },
       },
     ],
+    status: {
+      type: String,
+      enum: ["pending", "accepted", "rejected", "cancelled"],
+      default: "pending",
+    },
   },
   { timestamps: true, strict: false } // allows dynamic fields
 );

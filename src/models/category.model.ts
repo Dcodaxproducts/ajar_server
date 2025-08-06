@@ -3,7 +3,7 @@ import slugify from "slugify";
 
 interface ILanguageTranslation {
   locale: string;
-  translations: Record<string, any>; 
+  translations: Record<string, any>;
 }
 
 interface ICategory extends Document {
@@ -38,24 +38,27 @@ const BaseCategorySchema = new Schema<ICategory>(
       default: "category",
     },
     category: { type: Schema.Types.ObjectId, ref: "Category" },
-    
+
     languages: [
       {
         locale: { type: String, required: true },
-        translations: { type: Schema.Types.Mixed }, 
+        translations: { type: Schema.Types.Mixed },
       },
     ],
   },
-  { timestamps: true, discriminatorKey: "type",  toJSON: {
+  {
+    timestamps: true,
+    discriminatorKey: "type",
+    toJSON: {
       virtuals: false,
       versionKey: false,
       transform: function (doc, ret) {
-        delete ret.id; // remove `id` field
+        delete ret.id;
         return ret;
       },
     },
-    id: false, //this disables the automatic creation of `id`
-   }
+    id: false,
+  }
 );
 
 BaseCategorySchema.pre("validate", function (next) {
@@ -75,10 +78,10 @@ BaseCategorySchema.virtual("subcategories", {
 });
 
 BaseCategorySchema.set("toJSON", {
-   virtuals: false,         // Don't include virtuals in JSON output
-  versionKey: false,       // Remove __v field
+  virtuals: false,
+  versionKey: false,
   transform: function (doc, ret) {
-    ret.id && delete ret.id; // Remove `id` if present
+    ret.id && delete ret.id;
     return ret;
   },
 });

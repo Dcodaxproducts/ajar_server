@@ -3,7 +3,7 @@ import cors from "cors";
 import morgan from "morgan";
 import http from "http";
 import { Server } from "socket.io";
-import path from "path"; 
+import path from "path";
 
 import routes from "./routes";
 import { errorHandler } from "./middlewares/errorHandler";
@@ -14,7 +14,11 @@ const app = express();
 
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://192.168.18.89:3000", "https://test-ajar.vercel.app"],
+    origin: [
+      "http://localhost:3000",
+      "http://192.168.18.89:3000",
+      "https://test-ajar.vercel.app",
+    ],
     credentials: true,
   })
 );
@@ -23,20 +27,20 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(express.static("public"));
 app.use(morgan("dev"));
-app.use(globalRateLimiter);
+// app.use(globalRateLimiter);
 
 // Add the uploads route handler here (before API routes)
 app.get("/uploads/:filename", (req, res) => {
   const { filename } = req.params;
   const filePath = path.join(__dirname, "../public/uploads", filename);
-  
+
   // Set proper caching headers (optional but recommended)
-  res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 year cache
-  
+  res.setHeader("Cache-Control", "public, max-age=31536000");
+
   res.sendFile(filePath, (err) => {
     if (err) {
-      console.error('Error sending file:', err);
-      res.status(404).send('File not found');
+      console.error("Error sending file:", err);
+      res.status(404).send("File not found");
     }
   });
 });
@@ -64,5 +68,3 @@ const io = new Server(server, {
 setupChatSocket(io);
 
 export { server };
-
-
