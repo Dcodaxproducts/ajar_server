@@ -1,8 +1,14 @@
 import express from "express";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
-
-import { createNewForm, getAllForms, getFormDetails,getFormByZoneAndSubCategory,deleteForm } from "../controllers/forms.controller";
+import {
+  createNewForm,
+  getAllForms,
+  getFormDetails,
+  getFormByZoneAndSubCategory,
+  deleteForm,
+  updateForm,
+} from "../controllers/forms.controller";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 import { Form } from "../models/form.model";
 import upload from "../utils/multer";
@@ -23,7 +29,12 @@ function asyncHandler(fn: any) {
   };
 }
 
-router.patch("/:id", upload.single("thumbnail"), asyncHandler(languageTranslationMiddleware(Form)));
+router.patch(
+  "/:id",
+  upload.single("thumbnail"),
+  asyncHandler(languageTranslationMiddleware(Form)),
+  asyncHandler(updateForm)
+);
 
 router.delete("/:id", authMiddleware, deleteForm);
 

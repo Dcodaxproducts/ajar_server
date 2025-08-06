@@ -2,8 +2,8 @@ import { Schema, model, Document, Types, models } from "mongoose";
 import slugify from "slugify";
 
 interface IZoneLanguage {
-   locale: string;
-  translations: Record<string, any>; 
+  locale: string;
+  translations: Record<string, any>;
 }
 
 // Setting interface
@@ -12,7 +12,7 @@ interface ISetting {
   leaserCommission: number;
   renterCommission: number;
   tax: number;
-  expiry: Date
+  expiry: Date;
 }
 
 interface IForm extends Document {
@@ -27,12 +27,11 @@ interface IForm extends Document {
   setting: ISetting;
 }
 
-
 const FormSchema = new Schema<IForm>(
   {
     subCategory: {
       type: Schema.Types.ObjectId,
-      ref: "SubCategory",
+      ref: "subCategory",
       required: true,
     },
     fields: [
@@ -62,14 +61,14 @@ const FormSchema = new Schema<IForm>(
       trim: true,
       required: true,
     },
-    language: { type: String, default: "en" }, 
-       languages: [
+    language: { type: String, default: "en" },
+    languages: [
       {
         locale: { type: String, required: true },
-        translations: { type: Schema.Types.Mixed }, 
+        translations: { type: Schema.Types.Mixed },
       },
     ],
- 
+
     setting: {
       commissionType: {
         type: String,
@@ -95,19 +94,20 @@ const FormSchema = new Schema<IForm>(
       expiry: {
         type: Date,
         required: true,
-      }
+      },
     },
   },
   {
     timestamps: true,
   }
-
 );
 
 // Generate slug before saving
 FormSchema.pre("validate", function (next) {
   if (this.isModified("name") || !this.slug) {
-    this.slug = this.name ? slugify(this.name, { lower: true, strict: true }) : undefined;
+    this.slug = this.name
+      ? slugify(this.name, { lower: true, strict: true })
+      : undefined;
   }
   next();
 });
