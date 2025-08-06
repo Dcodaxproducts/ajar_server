@@ -5,6 +5,7 @@ import {
   createNewField,
   updateField,
   deleteField,
+  getAllFieldsWithoutPagination,
 } from "../controllers/field.controller";
 import { validateRequest } from "../middlewares/validateRequest";
 import { fieldSchema } from "../schemas/field.schema";
@@ -15,6 +16,7 @@ import { Field } from "../models/field.model";
 const router = Router();
 
 router.get("/", getAllFields);
+router.get("/list", getAllFieldsWithoutPagination);
 router.get("/:id", getFieldDetails);
 router.post(
   "/",
