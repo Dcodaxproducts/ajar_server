@@ -76,16 +76,14 @@ const FormSchema = new Schema<IForm>(
         default: "fixed",
       },
       leaserCommission: {
-        type: Number,
-        min: 0,
-        max: 100,
-        default: 0,
+        value: { type: Number, min: 0, max: 100, default: 0 },
+        min: { type: Number, default: 0 },
+        max: { type: Number, default: 100 },
       },
       renterCommission: {
-        type: Number,
-        min: 0,
-        max: 100,
-        default: 0,
+        value: { type: Number, min: 0, max: 100, default: 0 },
+        min: { type: Number, default: 0 },
+        max: { type: Number, default: 100 },
       },
       tax: {
         type: Number,

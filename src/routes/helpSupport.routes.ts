@@ -23,12 +23,11 @@ router.post("/", authMiddleware, asyncHandler(createHelpSupport));
 router.patch("/:id", authMiddleware, asyncHandler(updateHelpSupportStatus));
 
 // Get user's own tickets
-router.get("/", authMiddleware, getMyHelpSupportTickets);
+router.get("/", authMiddleware, asyncHandler(getMyHelpSupportTickets));
 
-router.get("/:id", authMiddleware, asyncHandler(getHelpSupportById));
+router.get("/:id", asyncHandler(getHelpSupportById));
 
 // Delete ticket by ID
-router.delete("/:id", authMiddleware, asyncHandler(deleteHelpSupportById));
-
+router.delete("/:id", asyncHandler(deleteHelpSupportById));
 
 export default router;

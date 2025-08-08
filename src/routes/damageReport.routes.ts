@@ -1,7 +1,14 @@
 import express from "express";
-import { createDamageReport } from "../controllers/damageReport.controller";
+import {
+  createDamageReport,
+  deleteDamageReport,
+  getAllDamageReports,
+  getDamageReportById,
+  updateDamageReport,
+} from "../controllers/damageReport.controller";
 import upload from "../utils/multer";
-
+import { uploadFile, uploadFiles } from "../utils/multer";
+import { authMiddleware } from "../middlewares/auth.middleware";
 
 const router = express.Router();
 function asyncHandler(fn: any) {
@@ -10,6 +17,27 @@ function asyncHandler(fn: any) {
   };
 }
 
-router.post("/", upload.single("image"), asyncHandler(createDamageReport));
+router.post(
+  "/",
+  uploadFiles(["attachments"]),
+  authMiddleware,
+  asyncHandler(createDamageReport)
+);
+
+// Read all
+router.get("/", authMiddleware, asyncHandler(getAllDamageReports));
+
+// Read by ID
+router.get("/:id", asyncHandler(getDamageReportById));
+
+// Update
+router.patch(
+  "/:id",
+  uploadFiles(["attachments"]),
+  asyncHandler(updateDamageReport)
+);
+
+// Delete
+router.delete("/:id", asyncHandler(deleteDamageReport));
 
 export default router;
