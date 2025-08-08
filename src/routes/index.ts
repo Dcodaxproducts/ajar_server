@@ -16,11 +16,10 @@ import refundRoutes from "./refundManagement.routes";
 import reviewRoutes from "./review.routes";
 import faqRoutes from "./faq.routes";
 import employeeRoleRoutes from "./employeeRole.routes";
-import helpSupportRoutes from "./helpSupport.routes";   
+import helpSupportRoutes from "./helpSupport.routes";
 import contactUsRoutes from "./contactUs.routes";
 import chatRoutes from "./chat.routes";
 import favouritesRoutes from "./favourites.route";
-
 
 const router = express.Router();
 
@@ -35,14 +34,14 @@ router.use("/rent-service", routAService);
 router.use("/fields", fieldRoutes);
 router.use("/dropdowns", dropdownRoutes);
 router.use("/bookings", bookingRoutes);
-router.use("/damage-reports", damageReportRoutes); 
+router.use("/tickets", damageReportRoutes);
 router.use("/businessSetting", BusinessSetting);
 router.use("/employeeManagement", employeeManagementRoutes);
 router.use("/refunds", refundRoutes);
 router.use("/reviews", reviewRoutes);
 router.use("/faqs", faqRoutes);
 router.use("/employee-roles", employeeRoleRoutes);
-router.use("/help-support", helpSupportRoutes);
+router.use("/queries", helpSupportRoutes);
 router.use("/contact-us", contactUsRoutes);
 router.use("/chat", chatRoutes);
 router.use("/favourites", favouritesRoutes);

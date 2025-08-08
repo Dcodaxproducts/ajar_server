@@ -1,16 +1,18 @@
 import mongoose, { Schema, Document, model } from "mongoose";
 
 export interface IDamageReport extends Document {
-  bookingId: mongoose.Types.ObjectId;
+  booking: mongoose.Types.ObjectId;
   rentalText: string;
   issueType: string;
   additionalFees: number;
-  attachments: string[]; 
+  attachments: string[];
+  user: mongoose.Types.ObjectId;
+  status: "pending" | "resolved";
 }
 
 const DamageReportSchema = new Schema<IDamageReport>(
   {
-    bookingId: {
+    booking: {
       type: Schema.Types.ObjectId,
       ref: "Booking",
       required: true,
@@ -31,8 +33,21 @@ const DamageReportSchema = new Schema<IDamageReport>(
       type: [String],
       default: [],
     },
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ["pending", "resolved"],
+      default: "pending",
+    },
   },
   { timestamps: true }
 );
 
-export const DamageReport = model<IDamageReport>("DamageReport", DamageReportSchema);
+export const DamageReport = model<IDamageReport>(
+  "DamageReport",
+  DamageReportSchema
+);
