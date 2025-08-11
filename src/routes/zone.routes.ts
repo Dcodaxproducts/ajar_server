@@ -16,7 +16,7 @@ import { Zone } from "../models/zone.model";
 
 const router = express.Router();
 
-router.get("/", getAllZones);
+router.get("/", authMiddleware, getAllZones);
 router.get("/:id", getZoneDetails);
 router.post(
   "/",
@@ -40,7 +40,6 @@ router.patch(
 );
 
 router.patch("/:id/subcategories", addSubCategoriesToZone);
-
 
 router.delete("/:id", deleteZone);
 export default router;

@@ -15,7 +15,7 @@ const BusinessSettingSchema = new Schema<IBusinessSetting>(
   {
     pageName: {
       type: String,
-      required: true,
+
       enum: [
         "businessInfo",
         "paymentMethods",
@@ -30,7 +30,6 @@ const BusinessSettingSchema = new Schema<IBusinessSetting>(
     },
     pageSettings: {
       type: Schema.Types.Mixed,
-      required: true,
     },
     languages: [
       {
