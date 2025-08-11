@@ -38,8 +38,16 @@ const wrapTranslationMiddleware = (model: any) => {
 };
 
 // EMPLOYEE ROUTES (Admin only)
-router.get("/", authMiddleware, asyncHandler(employeeController.getAllEmployees));
-router.get("/:id", authMiddleware, asyncHandler(employeeController.getEmployeeById));
+router.get(
+  "/",
+  authMiddleware,
+  asyncHandler(employeeController.getAllEmployees)
+);
+router.get(
+  "/:id",
+  authMiddleware,
+  asyncHandler(employeeController.getEmployeeById)
+);
 
 router.post(
   "/",
@@ -56,7 +64,11 @@ router.patch(
   asyncHandler(employeeController.updateEmployee)
 );
 
-router.delete("/:id", authMiddleware, asyncHandler(employeeController.deleteEmployee));
+router.delete(
+  "/:id",
+  authMiddleware,
+  asyncHandler(employeeController.deleteEmployee)
+);
 
 // ZONE ROUTES (Zone Manager only)
 router.post(
@@ -74,9 +86,19 @@ router.patch(
   asyncHandler(zoneController.updateZone)
 );
 
-router.get("/zones", employeeAuthMiddleware("zone", "read"), asyncHandler(zoneController.getAllZones));
-router.get("/zones/:id", employeeAuthMiddleware("zone", "read"), asyncHandler(zoneController.getZoneDetails));
-router.delete("/zones/:id", employeeAuthMiddleware("zone", "delete"), asyncHandler(zoneController.deleteZone));
+router.get("/zones", authMiddleware, asyncHandler(zoneController.getAllZones));
+
+// router.get("/zones", employeeAuthMiddleware("zone", "read"), asyncHandler(zoneController.getAllZones));
+router.get(
+  "/zones/:id",
+  employeeAuthMiddleware("zone", "read"),
+  asyncHandler(zoneController.getZoneDetails)
+);
+router.delete(
+  "/zones/:id",
+  employeeAuthMiddleware("zone", "delete"),
+  asyncHandler(zoneController.deleteZone)
+);
 
 // CATEGORY ROUTES (Categories Manager only)
 router.post(
@@ -103,11 +125,23 @@ router.patch(
 );
 
 // Public read access to categories
-router.get("/categories", employeeAuthMiddleware("categories", "read"), asyncHandler(categoryController.getAllCategories));
+router.get(
+  "/categories",
+  employeeAuthMiddleware("categories", "read"),
+  asyncHandler(categoryController.getAllCategories)
+);
 
 // Manager-only category endpoints
-router.get("/categories/:id", employeeAuthMiddleware("categories", "read"), asyncHandler(categoryController.getCategoryDetails));
-router.delete("/categories/:id", employeeAuthMiddleware("categories", "delete"), asyncHandler(categoryController.deleteCategory));
+router.get(
+  "/categories/:id",
+  employeeAuthMiddleware("categories", "read"),
+  asyncHandler(categoryController.getCategoryDetails)
+);
+router.delete(
+  "/categories/:id",
+  employeeAuthMiddleware("categories", "delete"),
+  asyncHandler(categoryController.deleteCategory)
+);
 
 // FIELD ROUTES (Field Manager only)
 router.post(
@@ -124,51 +158,70 @@ router.patch(
   asyncHandler(fieldController.updateField)
 );
 
-router.get("/fields", employeeAuthMiddleware("field", "read"), asyncHandler(fieldController.getAllFields));
-router.get("/fields/:id", employeeAuthMiddleware("field", "read"), asyncHandler(fieldController.getFieldDetails));
-router.delete("/fields/:id", employeeAuthMiddleware("field", "delete"), asyncHandler(fieldController.deleteField));
+router.get(
+  "/fields",
+  employeeAuthMiddleware("field", "read"),
+  asyncHandler(fieldController.getAllFields)
+);
+router.get(
+  "/fields/:id",
+  employeeAuthMiddleware("field", "read"),
+  asyncHandler(fieldController.getFieldDetails)
+);
+router.delete(
+  "/fields/:id",
+  employeeAuthMiddleware("field", "delete"),
+  asyncHandler(fieldController.deleteField)
+);
 
 // CROSS-ROLE ACCESS ROUTES (For employees with multiple staffRoles)
-router.get("/my-resources", 
+router.get(
+  "/my-resources",
   employeeAuthMiddleware("zone", "categories", "field"),
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const employee = (req as any).employee;
-    
+
     const resources: any = {};
-    
+
     if (employee.staffRoles.includes("zone")) {
       const mockNext = () => {};
       const mockReq = { ...req, query: {} } as Request;
       const mockRes = {
-        json: (data: any) => { resources.zones = data; },
-        status: () => mockRes
+        json: (data: any) => {
+          resources.zones = data;
+        },
+        status: () => mockRes,
       } as unknown as Response;
-      
+
       await zoneController.getAllZones(mockReq, mockRes, mockNext);
     }
-    
+
     if (employee.staffRoles.includes("categories")) {
       const mockNext = () => {};
       const mockReq = { ...req, query: {} } as Request;
       const mockRes = {
-        json: (data: any) => { resources.categories = data; },
-        status: () => mockRes
+        json: (data: any) => {
+          resources.categories = data;
+        },
+        status: () => mockRes,
       } as unknown as Response;
-      
+
       await categoryController.getAllCategories(mockReq, mockRes, mockNext);
     }
-    
+
     if (employee.staffRoles.includes("field")) {
       const mockNext = () => {};
       const mockReq = { ...req, query: {} } as Request;
       const mockRes = {
-        json: (data: any) => { resources.fields = data; },
-        status: () => mockRes
+        json: (data: any) => {
+          resources.fields = data;
+        },
+        status: () => mockRes,
       } as unknown as Response;
-      
+
       await fieldController.getAllFields(mockReq, mockRes, mockNext);
     }
-    
+
     sendResponse(res, resources, "Employee resources fetched", STATUS_CODES.OK);
   })
 );
