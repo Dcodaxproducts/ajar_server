@@ -20,7 +20,7 @@ router.get("/:id", getMarketplaceListingById);
 
 router.post(
   "/",
-  uploadFiles(["image"]),
+  uploadFiles(["images"]),
   authMiddleware,
   validateRequest({ body: marketplaceListingSchema }),
   createMarketplaceListing
@@ -34,7 +34,7 @@ function asyncHandler(fn: any) {
 
 router.patch(
   "/:id",
-  uploadFiles(["image"]),
+  uploadFiles(["images"]),
   authMiddleware,
   asyncHandler(languageTranslationMiddleware(MarketplaceListing)),
   updateMarketplaceListing

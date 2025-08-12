@@ -18,12 +18,9 @@ export const marketplaceListingSchema = z.object({
       message: "Invalid SubCategory ID",
     }),
 
-  zone: z
-    .string()
-    .refine((val) => mongoose.Types.ObjectId.isValid(val), {
-      message: "Invalid Zone ID",
-    }),
-
+  zone: z.string().refine((val) => mongoose.Types.ObjectId.isValid(val), {
+    message: "Invalid Zone ID",
+  }),
 
   ratings: z
     .object({
@@ -34,7 +31,7 @@ export const marketplaceListingSchema = z.object({
 
   description: z.string().min(1, "Description is required"),
 
-  price: z.number().nonnegative("Price must be positive"),
+  price: z.coerce.number().nonnegative("Price must be positive"),
 
   language: z.string().default("en").optional(),
 
