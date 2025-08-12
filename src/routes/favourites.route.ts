@@ -1,6 +1,12 @@
 import express from "express";
 import { authMiddleware } from "../middlewares/auth.middleware";
-import { addFavourite, checkIsFavourited, getUserFavourites, removeFavourite } from "../controllers/toggleFavouriteController";
+import {
+  addFavourite,
+  checkIsFavourited,
+  getAllFavourites,
+  getUserFavourites,
+  removeFavourite,
+} from "../controllers/toggleFavouriteController";
 
 const router = express.Router();
 
@@ -11,15 +17,25 @@ function asyncHandler(fn: any) {
 }
 
 // Add to favorites
-router.post("/favorites", authMiddleware, asyncHandler(addFavourite));
+router.post("/", authMiddleware, asyncHandler(addFavourite));
 
 // Remove from favorites
-router.delete("/:userId/favorites/:favoriteId", authMiddleware, asyncHandler(removeFavourite));
+router.patch("/", authMiddleware, asyncHandler(removeFavourite));
+
+router.get("/", authMiddleware, asyncHandler(getAllFavourites));
 
 // Get user's favorites
-router.get("/:userId/favorites", authMiddleware, asyncHandler(getUserFavourites));
+router.get(
+  "/:userId/favorites",
+  authMiddleware,
+  asyncHandler(getUserFavourites)
+);
 
 // Check if item is favorited
-router.get("/:userId/is-favorited", authMiddleware, asyncHandler(checkIsFavourited));
+router.get(
+  "/:userId/is-favorited",
+  authMiddleware,
+  asyncHandler(checkIsFavourited)
+);
 
 export default router;

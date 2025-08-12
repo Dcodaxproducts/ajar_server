@@ -62,8 +62,8 @@ export const createMarketplaceListing = async (
     //Handle uploaded image(s)
     const images: string[] = [];
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-    if (files?.image) {
-      for (const file of files.image) {
+    if (files?.images) {
+      for (const file of files.images) {
         images.push(`/uploads/${file.filename}`);
       }
     }
