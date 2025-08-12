@@ -85,8 +85,8 @@ export const removeFavourite = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Find and delete the favourite
-    const deletedFavourite = await FavouriteCheck.findOneAndDelete({
+    // Check if favourite already exists
+    const existingFavourite = await FavouriteCheck.findOne({
       user: userId,
       ...(listingId
         ? { listing: listingId }
@@ -95,16 +95,30 @@ export const removeFavourite = async (req: AuthRequest, res: Response) => {
         : {}),
     });
 
-    if (!deletedFavourite) {
-      return res.status(404).json({ message: "Favourite not found" });
-    }
+    if (existingFavourite) {
+      // Remove it
+      await existingFavourite.deleteOne();
+      return res.status(200).json({
+        message: "Removed from favourites successfully",
+        action: "removed",
+      });
+    } else {
+      // Add it
+      const newFavourite = new FavouriteCheck({
+        user: userId,
+        ...(listingId ? { listing: listingId } : { booking: bookingId }),
+      });
 
-    return res.status(200).json({
-      message: "Removed from favourites successfully",
-      removed: deletedFavourite,
-    });
+      await newFavourite.save();
+
+      return res.status(201).json({
+        message: "Added to favourites successfully",
+        action: "added",
+        favourite: newFavourite,
+      });
+    }
   } catch (error) {
-    console.error("Error removing favourite:", error);
+    console.error("Error toggling favourite:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -128,7 +142,7 @@ export const getAllFavourites = async (req: AuthRequest, res: Response) => {
 
     const favourites = await FavouriteCheck.find(query)
       .populate("user", "name email") // only admin will see this populated user info
-      .populate("listing", "title price location images")
+      .populate("listing", "title price location images name")
       .populate("booking", "bookingName startDate endDate status")
       .lean();
 
