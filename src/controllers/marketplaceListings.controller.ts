@@ -317,3 +317,48 @@ export const deleteMarketplaceListing = async (
     next(err);
   }
 };
+
+//Search
+export const searchMarketplaceListings = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { name } = req.query;
+
+    if (!name) {
+      return res.status(400).json({ message: "Name query is required" });
+    }
+
+    // Normalize input: lowercase + remove spaces
+    const normalizedSearch = (name as string).toLowerCase().replace(/\s+/g, "");
+
+    const results = await MarketplaceListing.aggregate([
+      {
+        $addFields: {
+          normalizedName: {
+            $replaceAll: {
+              input: { $toLower: "$name" },
+              find: " ",
+              replacement: "",
+            },
+          },
+        },
+      },
+      {
+        $match: {
+          normalizedName: { $regex: normalizedSearch, $options: "i" },
+        },
+      },
+      {
+        $project: {
+          normalizedName: 0, // remove helper field from output
+        },
+      },
+    ]);
+
+    res.json({ count: results.length, data: results });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error });
+  }
+};

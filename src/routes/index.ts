@@ -20,6 +20,7 @@ import helpSupportRoutes from "./helpSupport.routes";
 import contactUsRoutes from "./contactUs.routes";
 import chatRoutes from "./chat.routes";
 import favouritesRoutes from "./favourites.route";
+import analyticsRoutes from "./analytics.routes";
 
 const router = express.Router();
 
@@ -45,5 +46,6 @@ router.use("/queries", helpSupportRoutes);
 router.use("/contact-us", contactUsRoutes);
 router.use("/chat", chatRoutes);
 router.use("/favourites", favouritesRoutes);
+router.use("/analytics", analyticsRoutes);
 
 export default router;
