@@ -165,16 +165,7 @@ export const deleteRefundSettings = asyncHandler(
 // Create Refund Request (User)
 export const createRefundRequest = asyncHandler(
   async (req: AuthRequest, res: Response): Promise<void> => {
-    const allowedUserFields = [
-      "booking",
-      "reason",
-      "card",
-      "cardDetails",
-      "profile",
-      "idVerification",
-      "businessVerification",
-      "selectTime",
-    ];
+    const allowedUserFields = ["booking", "reason", "selectTime"];
 
     const sanitizedBody: any = {};
     allowedUserFields.forEach((field) => {
@@ -242,7 +233,7 @@ export const createRefundRequest = asyncHandler(
       flatFee: policy.flatFee,
       time: policy.time,
       note: policy.note,
-      // user: req.user.id,
+      user: req.user?.id, // now storing the user
     });
 
     res.status(201).json({
@@ -255,7 +246,7 @@ export const createRefundRequest = asyncHandler(
 
 //Update Refund Request (User)
 export const updateRefundRequest = asyncHandler(
-  async (req: Request, res: Response) => {
+  async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
     const refund = await RefundManagement.findById(id);
@@ -264,9 +255,16 @@ export const updateRefundRequest = asyncHandler(
       return;
     }
 
-    const updates = req.body;
+    // Only allow updating user-permitted fields
+    const allowedUserFields = ["booking", "reason", "selectTime", "note"];
+    const updates: any = {};
+    allowedUserFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        updates[field] = req.body[field];
+      }
+    });
 
-    // Optional: validate booking if being updated
+    // Optional: validate booking if updated
     if (
       updates.booking &&
       !(await isValidObjectIdAndExists(updates.booking, Booking))

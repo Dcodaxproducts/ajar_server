@@ -8,6 +8,7 @@ import {
   getMarketplaceListingById,
   updateMarketplaceListing,
   deleteMarketplaceListing,
+  searchMarketplaceListings,
 } from "../controllers/marketplaceListings.controller";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
@@ -15,6 +16,13 @@ import upload, { uploadFiles } from "../utils/multer";
 
 const router = express.Router();
 
+function asyncHandler(fn: any) {
+  return function (req: any, res: any, next: any) {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
+router.get("/search", asyncHandler(searchMarketplaceListings));
 router.get("/", authMiddleware, getAllMarketplaceListings);
 router.get("/:id", getMarketplaceListingById);
 
@@ -25,12 +33,6 @@ router.post(
   validateRequest({ body: marketplaceListingSchema }),
   createMarketplaceListing
 );
-
-function asyncHandler(fn: any) {
-  return function (req: any, res: any, next: any) {
-    Promise.resolve(fn(req, res, next)).catch(next);
-  };
-}
 
 router.patch(
   "/:id",
