@@ -21,6 +21,8 @@ import contactUsRoutes from "./contactUs.routes";
 import chatRoutes from "./chat.routes";
 import favouritesRoutes from "./favourites.route";
 import analyticsRoutes from "./analytics.routes";
+import refundPoliciesRoutes from "./refundPolicies.routes";
+import refundRequestsRoutes from "./refundRequests.routes";
 
 const router = express.Router();
 
@@ -39,6 +41,8 @@ router.use("/tickets", damageReportRoutes);
 router.use("/businessSetting", BusinessSetting);
 router.use("/employeeManagement", employeeManagementRoutes);
 router.use("/refunds", refundRoutes);
+router.use("/refund-policies", refundPoliciesRoutes);
+router.use("/refund-requests", refundRequestsRoutes);
 router.use("/reviews", reviewRoutes);
 router.use("/faqs", faqRoutes);
 router.use("/employee-roles", employeeRoleRoutes);

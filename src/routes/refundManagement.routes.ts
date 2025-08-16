@@ -20,6 +20,9 @@ router.get("/admin", authMiddleware, getAllRefundSettings);
 router.patch("/admin/:id", authMiddleware, updateRefundSettings);
 router.delete("/admin/:id", authMiddleware, deleteRefundSettings);
 router.patch("/admin/:id/status", authMiddleware, updateRefundStatus);
+router.patch("/admin/:id/status", authMiddleware, updateRefundStatus);
+// /zone/subcategory
+
 
 
 // for user
