@@ -4,16 +4,16 @@ export interface IRefundPolicy extends Document {
   zone: mongoose.Types.ObjectId;
   subCategory: mongoose.Types.ObjectId;
   allowFund: boolean;
-  cutoffTime: {
+  cancellationCutoffTime: {
     days: number;
     hours: number;
   };
-  flatFee: number;
-  time: {
-    days: number;
-    hours: number;
+  flatFee: {
+    amount: { type: Number; default: 0 };
+    days: { type: Number; default: 0 };
+    hours: { type: Number; default: 0 };
   };
-  note: string;
+  noteText: string;
   refundWindow: "full" | "partial" | "custom";
 }
 
@@ -33,19 +33,16 @@ const refundPolicySchema = new Schema<IRefundPolicy>(
       type: Boolean,
       default: false,
     },
-    cutoffTime: {
+    cancellationCutoffTime: {
       days: { type: Number, default: 0 },
       hours: { type: Number, default: 0 },
     },
     flatFee: {
-      type: Number,
-      default: 0,
-    },
-    time: {
+      amount: { type: Number, default: 0 },
       days: { type: Number, default: 0 },
       hours: { type: Number, default: 0 },
     },
-    note: String,
+    noteText: String,
     refundWindow: {
       type: String,
       enum: ["full", "partial", "custom"],
