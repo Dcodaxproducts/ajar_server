@@ -26,14 +26,14 @@ router.get("/", authMiddleware, asyncHandler(getAllFavourites));
 
 // Get user's favorites
 router.get(
-  "/:userId/favorites",
+  "/:userId/favourites",
   authMiddleware,
   asyncHandler(getUserFavourites)
 );
 
 // Check if item is favorited
 router.get(
-  "/:userId/is-favorited",
+  "/:userId/is-favourites",
   authMiddleware,
   asyncHandler(checkIsFavourited)
 );

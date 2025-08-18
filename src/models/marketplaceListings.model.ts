@@ -62,6 +62,13 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
         translations: { type: Schema.Types.Mixed },
       },
     ],
+
+    isAvailable: { type: Boolean, default: true },
+    currentBookingId: {
+      type: Schema.Types.ObjectId,
+      ref: "Booking",
+      default: null,
+    },
   },
   { timestamps: true, strict: false } // allows dynamic fields
 );

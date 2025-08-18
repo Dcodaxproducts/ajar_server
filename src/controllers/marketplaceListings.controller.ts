@@ -197,6 +197,7 @@ export const getMarketplaceListingById = async (
     const doc = await MarketplaceListing.findById(id)
       .populate("subCategory")
       .populate("zone")
+      .populate("leaser", "name _id")
       .lean();
 
     if (!doc) {

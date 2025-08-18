@@ -4,24 +4,60 @@ import { sendResponse } from "../utils/response";
 import mongoose from "mongoose";
 import { STATUS_CODES } from "../config/constants";
 import { paginateQuery } from "../utils/paginate";
-import { sendEmail } from "../helpers/node-mailer"; 
-import { User } from "../models/user.model"; 
+import { sendEmail } from "../helpers/node-mailer";
+import { User } from "../models/user.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 
+async function updateListingAvailability(listingId: mongoose.Types.ObjectId) {
+  // check if any accepted booking exists for this listing
+  const acceptedBooking = await Booking.findOne({
+    marketplaceListingId: listingId,
+    status: "accepted",
+  });
+
+  if (acceptedBooking) {
+    await MarketplaceListing.findByIdAndUpdate(listingId, {
+      isAvailable: false,
+      currentBookingId: acceptedBooking._id,
+    });
+  } else {
+    await MarketplaceListing.findByIdAndUpdate(listingId, {
+      isAvailable: true,
+      currentBookingId: null,
+    });
+  }
+}
+
 // CREATE
-export const createBooking = async (req: Request, res: Response, next: NextFunction) => {
+export const createBooking = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const user = (req as any).user;
 
     if (!user || !user.id) {
-      return sendResponse(res, null, "Unauthenticated", STATUS_CODES.UNAUTHORIZED);
+      return sendResponse(
+        res,
+        null,
+        "Unauthenticated",
+        STATUS_CODES.UNAUTHORIZED
+      );
     }
 
     const { marketplaceListingId } = req.body;
 
-    const listing = await MarketplaceListing.findById(marketplaceListingId).lean();
+    const listing = await MarketplaceListing.findById(
+      marketplaceListingId
+    ).lean();
     if (!listing) {
-      return sendResponse(res, null, "Marketplace listing not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(
+        res,
+        null,
+        "Marketplace listing not found",
+        STATUS_CODES.NOT_FOUND
+      );
     }
 
     const newBooking = await Booking.create({
@@ -33,13 +69,21 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
 
     console.log("Booking input body:", req.body);
 
-    sendResponse(res, newBooking.toObject(), "Booking created successfully", STATUS_CODES.CREATED);
+    // update listing availability after booking is created
+    await updateListingAvailability(newBooking.marketplaceListingId);
+
+    sendResponse(
+      res,
+      newBooking.toObject(),
+      "Booking created successfully",
+      STATUS_CODES.CREATED
+    );
   } catch (err) {
     next(err);
   }
 };
 
-// GET ALL BOOKINGS (Admin) 
+// GET ALL BOOKINGS (Admin)
 export const getAllBookings = async (
   req: Request,
   res: Response,
@@ -49,10 +93,21 @@ export const getAllBookings = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-     const status = req.query.status as "pending" | "accepted" | "rejected" | "cancelled" | "completed" | undefined;
+    const status = req.query.status as
+      | "pending"
+      | "accepted"
+      | "rejected"
+      | "cancelled"
+      | "completed"
+      | undefined;
 
     const filter: any = {};
-    if (status && ["pending", "accepted", "rejected", "cancelled", "completed"].includes(status)) {
+    if (
+      status &&
+      ["pending", "accepted", "rejected", "cancelled", "completed"].includes(
+        status
+      )
+    ) {
       filter.status = status;
     }
 
@@ -76,7 +131,7 @@ export const getAllBookings = async (
       createdAt: { $gte: oneYearAgo, $lte: now },
     });
 
-    const allBookings = await Booking.find(filter).lean(); 
+    const allBookings = await Booking.find(filter).lean();
 
     const totalEarning = allBookings.reduce((acc, booking) => {
       const price = booking.priceDetails?.totalPrice || 0;
@@ -112,7 +167,12 @@ export const getBookingsByUserIdForAdmin = async (
     const { userId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return sendResponse(res, null, "Invalid user ID", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "Invalid user ID",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
 
     const page = Number(req.query.page) || 1;
@@ -141,7 +201,11 @@ export const getBookingsByUserIdForAdmin = async (
 };
 
 // GET ONE
-export const getBookingById = async (req: Request, res: Response, next: NextFunction) => {
+export const getBookingById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const { id } = req.params;
     const languageHeader = req.headers["language"];
@@ -157,7 +221,10 @@ export const getBookingById = async (req: Request, res: Response, next: NextFunc
       return;
     }
 
-    const booking = await Booking.findById(id).populate("marketplaceListingId").populate("renter").lean();
+    const booking = await Booking.findById(id)
+      .populate("marketplaceListingId")
+      .populate("renter")
+      .lean();
 
     if (!booking) {
       sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
@@ -168,12 +235,18 @@ export const getBookingById = async (req: Request, res: Response, next: NextFunc
       const match = booking.languages.find((l: any) => l.locale === locale);
       if (match?.translations) {
         booking.roomType = match.translations.roomType || booking.roomType;
-        (booking as any).bookingNote = match.translations.bookingNote || (booking as any).bookingNote;
+        (booking as any).bookingNote =
+          match.translations.bookingNote || (booking as any).bookingNote;
       }
     }
     delete booking.languages;
 
-    sendResponse(res, booking, `Booking found (locale: ${locale})`, STATUS_CODES.OK);
+    sendResponse(
+      res,
+      booking,
+      `Booking found (locale: ${locale})`,
+      STATUS_CODES.OK
+    );
   } catch (err) {
     next(err);
   }
@@ -223,7 +296,11 @@ export const getBookingsByUser = async (
 };
 
 // UPDATE
-export const updateBooking = async (req: Request, res: Response, next: NextFunction) => {
+export const updateBooking = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const { id } = req.params;
     const user = (req as any).user; //Added to get current user info
@@ -257,14 +334,28 @@ export const updateBooking = async (req: Request, res: Response, next: NextFunct
 
     const updatedBooking = await booking.save(); //Save after manual update
 
-    sendResponse(res, updatedBooking, "Booking updated successfully", STATUS_CODES.OK);
+    sendResponse(
+      res,
+      updatedBooking,
+      "Booking updated successfully",
+      STATUS_CODES.OK
+    );
   } catch (err: any) {
-    sendResponse(res, null, err.message || "Failed to update booking", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    sendResponse(
+      res,
+      null,
+      err.message || "Failed to update booking",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
 // DELETE
-export const deleteBooking = async (req: Request, res: Response, next: NextFunction) => {
+export const deleteBooking = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const { id } = req.params;
     const deleted = await Booking.findByIdAndDelete(id);
@@ -291,37 +382,61 @@ export const updateBookingStatus = async (
 
     const allowedStatuses = ["accepted", "rejected", "completed", "cancelled"];
     if (!allowedStatuses.includes(status)) {
-      return sendResponse(res, null, "Invalid status", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "Invalid status",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
 
     const booking = await Booking.findById(id).populate("renter", "email name");
     if (!booking) {
-      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(
+        res,
+        null,
+        "Booking not found",
+        STATUS_CODES.NOT_FOUND
+      );
     }
 
     const isRenter =
-  typeof booking.renter === "object" && "_id" in booking.renter
-    ? user.id === (booking.renter as any)._id.toString()
-    : user.id === booking.renter.toString();
-
+      typeof booking.renter === "object" && "_id" in booking.renter
+        ? user.id === (booking.renter as any)._id.toString()
+        : user.id === booking.renter.toString();
 
     const isLeaser = user.id === booking.leaser?.toString(); // in case leaser is optional
 
     //Restriction Logic
     if (status === "cancelled") {
       if (!isRenter) {
-        return sendResponse(res, null, "Only renter can cancel the booking", STATUS_CODES.FORBIDDEN);
+        return sendResponse(
+          res,
+          null,
+          "Only renter can cancel the booking",
+          STATUS_CODES.FORBIDDEN
+        );
       }
     } else {
       if (!isLeaser) {
-        return sendResponse(res, null, "Only leaser can change the booking status", STATUS_CODES.FORBIDDEN);
+        return sendResponse(
+          res,
+          null,
+          "Only leaser can change the booking status",
+          STATUS_CODES.FORBIDDEN
+        );
       }
     }
 
     const bookingToUpdate = await Booking.findById(id); // Fetch again to update
 
     if (!bookingToUpdate) {
-      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(
+        res,
+        null,
+        "Booking not found",
+        STATUS_CODES.NOT_FOUND
+      );
     }
 
     bookingToUpdate.status = status as any;
@@ -342,33 +457,62 @@ export const updateBookingStatus = async (
 
     await bookingToUpdate.save();
 
-    sendResponse(res, bookingToUpdate, `Booking status updated to ${status}`, STATUS_CODES.OK);
+    sendResponse(
+      res,
+      bookingToUpdate,
+      `Booking status updated to ${status}`,
+      STATUS_CODES.OK
+    );
   } catch (err) {
     next(err);
   }
 };
 
-//submit booking pin 
-export const submitBookingPin = async (req: Request, res: Response, next: NextFunction) => {
+//submit booking pin
+export const submitBookingPin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const { id } = req.params;
     const { otp } = req.body;
 
     if (!otp) {
-      return sendResponse(res, null, "PIN is required", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "PIN is required",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "Invalid booking ID",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
 
     const booking = await Booking.findById(id).populate("renter", "email name");
     if (!booking) {
-      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(
+        res,
+        null,
+        "Booking not found",
+        STATUS_CODES.NOT_FOUND
+      );
     }
 
     if (booking.otp !== otp) {
-      return sendResponse(res, null, "Invalid or Expire PIN", STATUS_CODES.UNAUTHORIZED);
+      return sendResponse(
+        res,
+        null,
+        "Invalid or Expire PIN",
+        STATUS_CODES.UNAUTHORIZED
+      );
     }
 
     booking.otp = "";
