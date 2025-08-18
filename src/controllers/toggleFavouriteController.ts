@@ -142,7 +142,14 @@ export const getAllFavourites = async (req: AuthRequest, res: Response) => {
 
     const favourites = await FavouriteCheck.find(query)
       .populate("user", "name email") // only admin will see this populated user info
-      .populate("listing", "title price location images name")
+      .populate({
+        path: "listing",
+        select: "title price location images name description subCategory",
+        populate: {
+          path: "subCategory",
+          select: "name description", // you can add translations if needed
+        },
+      })
       .populate("booking", "bookingName startDate endDate status")
       .lean();
 
