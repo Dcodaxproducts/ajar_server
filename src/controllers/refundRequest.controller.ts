@@ -41,15 +41,18 @@ export const createRefundRequest = asyncHandler(
       (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
 
     const cutoffHours =
-      (policy.cutoffTime.days || 0) * 24 + (policy.cutoffTime.hours || 0);
-    const flatFee = policy.flatFee || 0;
-    const totalPrice = bookingData.priceDetails.totalPrice || 0;
+      (policy.cancellationCutoffTime?.days || 0) * 24 +
+      (policy.cancellationCutoffTime?.hours || 0);
+
+    // Convert flatFee.amount to number safely
+    const flatFeeAmount = Number(policy.flatFee?.amount) || 0;
+    const totalPrice = bookingData.priceDetails?.totalPrice || 0;
 
     let deduction = 0;
     let totalRefundAmount = 0;
 
     if (hoursUntilCheckIn > cutoffHours) {
-      deduction = flatFee;
+      deduction = flatFeeAmount;
       totalRefundAmount = totalPrice - deduction;
     } else {
       deduction = totalPrice;
