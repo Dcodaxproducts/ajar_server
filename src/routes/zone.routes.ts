@@ -42,4 +42,52 @@ router.patch(
 router.patch("/:id/subcategories", addSubCategoriesToZone);
 
 router.delete("/:id", deleteZone);
+
+import {
+  updateSecurityDepositRules,
+  updateDamageLiabilityTerms,
+  updateRentalDurationLimits,
+  getSecurityDepositRules,
+  getDamageLiabilityTerms,
+  getRentalDurationLimits,
+} from "../controllers/rentalPolicies.controller";
+
+// GET each section
+router.get(
+  "/:zoneId/rental-policies/security-deposit-rules",
+  authMiddleware,
+  asyncHandler(getSecurityDepositRules)
+);
+
+router.get(
+  "/:zoneId/rental-policies/damage-liability-terms",
+  authMiddleware,
+  asyncHandler(getDamageLiabilityTerms)
+);
+
+router.get(
+  "/:zoneId/rental-policies/rental-duration-limits",
+  authMiddleware,
+  asyncHandler(getRentalDurationLimits)
+);
+
+//Update each section
+router.patch(
+  "/:zoneId/rental-policies/security-deposit-rules",
+  authMiddleware,
+  asyncHandler(updateSecurityDepositRules)
+);
+
+router.patch(
+  "/:zoneId/rental-policies/damage-liability-terms",
+  authMiddleware,
+  asyncHandler(updateDamageLiabilityTerms)
+);
+
+router.patch(
+  "/:zoneId/rental-policies/rental-duration-limits",
+  authMiddleware,
+  asyncHandler(updateRentalDurationLimits)
+);
+
 export default router;

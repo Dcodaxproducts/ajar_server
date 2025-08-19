@@ -18,44 +18,28 @@ export const zoneSchema = z.object({
       return val;
     }),
 
-  timeZone: z
-    .string()
-    .min(1, "Time zone must be specified")
-    .optional(),
+  timeZone: z.string().min(1, "Time zone must be specified").optional(),
 
   language: z
     .string()
     .min(2, "Language must be at least 2 characters")
     .optional(),
 
-    polygons: z
-  .array(
-    z.array(
-      z.object({
-        lat: z.number(),
-        lng: z.number(),
-      })
+  polygons: z
+    .array(
+      z.array(
+        z.object({
+          lat: z.number(),
+          lng: z.number(),
+        })
+      )
     )
-  )
-  .min(1, "At least one polygon path is required")
-  .optional(),
-
-  // polygons: z
-  //   .array(
-  //     z.object({
-  //       lat: z.number(),
-  //       lng: z.number(),
-  //     })
-  //   )
-  //   .min(1, "At least one polygon coordinate is required")
-  //   .optional(),
-
+    .min(1, "At least one polygon path is required")
+    .optional(),
   languages: z
     .array(
       z.object({
-        locale: z
-          .string()
-          .min(2, "Locale must be at least 2 characters"),
+        locale: z.string().min(2, "Locale must be at least 2 characters"),
         translations: z
           .object({
             name: z.string().optional(),
@@ -63,7 +47,7 @@ export const zoneSchema = z.object({
           .optional(),
       })
     )
-    .optional(), 
+    .optional(),
 
   createdAt: z.date().optional(),
   updatedAt: z.date().optional(),

@@ -69,16 +69,26 @@ export const getAllRefundPolicies = asyncHandler(
 export const getRefundPoliciesByZoneAndCategory = asyncHandler(
   async (req: Request, res: Response) => {
     const { zone, subCategory } = req.params;
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
 
-    const baseQuery = RefundPolicy.find({ zone, subCategory })
+    const policy = await RefundPolicy.findOne({
+      zone: new mongoose.Types.ObjectId(zone),
+      subCategory: new mongoose.Types.ObjectId(subCategory),
+    })
       .populate("zone", "zoneName")
       .populate("subCategory", "categoryName");
 
-    const { data, total } = await paginateQuery(baseQuery, { page, limit });
+    if (!policy) {
+      res.status(404).json({
+        success: false,
+        message: "No refund policy found for this zone and subCategory",
+      });
+      return;
+    }
 
-    res.status(200).json({ success: true, data, total, page, limit });
+    res.status(200).json({
+      success: true,
+      data: policy,
+    });
   }
 );
 

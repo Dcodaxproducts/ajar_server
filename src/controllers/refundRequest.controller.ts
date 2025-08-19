@@ -89,23 +89,66 @@ export const getMyRefundRequests = asyncHandler(
       .populate("policy")
       .populate("booking");
 
+    // Paginated results
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
 
-    const [pending, rejected, accepted] = await Promise.all([
+    // Status breakdown + total requests
+    const [pending, rejected, accepted, totalRequests] = await Promise.all([
       RefundRequest.countDocuments({ ...filter, status: "pending" }),
       RefundRequest.countDocuments({ ...filter, status: "reject" }),
       RefundRequest.countDocuments({ ...filter, status: "accept" }),
+      RefundRequest.countDocuments(filter),
     ]);
 
     res.status(200).json({
       success: true,
       data,
-      totalRequests: total,
+      totalRequests,
       pending,
       rejected,
       accepted,
+      total,
       page,
       limit,
+    });
+  }
+);
+
+// Get Refund Request by ID
+export const getRefundRequestById = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      res.status(400).json({ message: "Invalid refund request ID" });
+      return;
+    }
+
+    const refund = await RefundRequest.findById(id)
+      .populate({
+        path: "policy",
+        populate: [
+          { path: "zone", select: "zoneName" },
+          { path: "subCategory", select: "categoryName" },
+        ],
+      })
+      .populate({
+        path: "booking",
+        populate: {
+          path: "marketplaceListingId",
+          select: "name zone subCategory",
+        },
+      })
+      .populate("user", "name email");
+
+    if (!refund) {
+      res.status(404).json({ message: "Refund request not found" });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: refund,
     });
   }
 );

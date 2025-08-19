@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { IZone, Zone } from "../models/zone.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 import deleteFile from "../utils/deleteFile";
 import path from "path";
 import { SubCategory } from "../models/category.model";
@@ -261,6 +261,7 @@ export const updateZone = async (
       subCategories: rawSubCategoryIds,
     } = req.body;
 
+    // ✅ Handle polygons parsing
     let polygons = existingZone.polygons;
     if (rawPolygons) {
       try {
@@ -273,23 +274,37 @@ export const updateZone = async (
       }
     }
 
-    let subCategories = existingZone.subCategories.map((id) => id.toString());
+    // ✅ Handle subCategories properly as ObjectIds
+    let subCategories = existingZone.subCategories;
     if (rawSubCategoryIds) {
       try {
-        const parsedIds =
+        const parsedIds: string[] =
           typeof rawSubCategoryIds === "string"
             ? JSON.parse(rawSubCategoryIds)
             : rawSubCategoryIds;
 
+        // Validate format
+        const invalidObjectIds = parsedIds.filter(
+          (id) => !mongoose.Types.ObjectId.isValid(id)
+        );
+        if (invalidObjectIds.length > 0) {
+          sendResponse(
+            res,
+            null,
+            `Invalid MongoDB ObjectId(s): ${invalidObjectIds.join(", ")}`,
+            STATUS_CODES.BAD_REQUEST
+          );
+          return;
+        }
+
+        // Ensure they exist in SubCategory collection
         const validSubCategories = await SubCategory.find({
           _id: { $in: parsedIds },
           type: "subCategory",
         }).select("_id");
 
         const validIds = validSubCategories.map((cat) => cat._id.toString());
-        const invalidIds = parsedIds.filter(
-          (id: string) => !validIds.includes(id)
-        );
+        const invalidIds = parsedIds.filter((id) => !validIds.includes(id));
 
         if (invalidIds.length > 0) {
           sendResponse(
@@ -301,12 +316,14 @@ export const updateZone = async (
           return;
         }
 
-        subCategories = validIds;
+        // ✅ Assign ObjectIds, not strings
+        subCategories = validIds.map((id) => new Types.ObjectId(id));
       } catch {
-        subCategories = existingZone.subCategories.map((id) => id.toString());
+        subCategories = existingZone.subCategories;
       }
     }
 
+    // ✅ Apply updates
     existingZone.name = name || existingZone.name;
     existingZone.currency = currency || existingZone.currency;
     existingZone.language = language || existingZone.language;
@@ -326,7 +343,6 @@ export const updateZone = async (
     next(error);
   }
 };
-
 //delete zone
 export const deleteZone = async (
   req: Request,
@@ -354,6 +370,95 @@ export const deleteZone = async (
 };
 
 //add subb category to zone
+// export const addSubCategoriesToZone = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   const zoneId = req.params.id;
+
+//   if (!mongoose.Types.ObjectId.isValid(zoneId)) {
+//     sendResponse(res, null, "Invalid Zone ID", STATUS_CODES.BAD_REQUEST);
+//     return;
+//   }
+
+//   try {
+//     const zone = await Zone.findById(zoneId);
+//     if (!zone) {
+//       sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
+//       return;
+//     }
+
+//     const { subCategories: rawSubCategoryIds } = req.body;
+
+//     if (!rawSubCategoryIds || !Array.isArray(rawSubCategoryIds)) {
+//       sendResponse(
+//         res,
+//         null,
+//         "subCategories must be an array",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//       return;
+//     }
+
+//     //Parse input if it's a string
+//     const parsedIds =
+//       typeof rawSubCategoryIds === "string"
+//         ? JSON.parse(rawSubCategoryIds)
+//         : rawSubCategoryIds;
+
+//     //Filter: invalid ObjectIds
+//     const invalidObjectIds = parsedIds.filter(
+//       (id: string) => !mongoose.Types.ObjectId.isValid(id)
+//     );
+
+//     if (invalidObjectIds.length > 0) {
+//       sendResponse(
+//         res,
+//         null,
+//         `Invalid MongoDB ObjectId(s): ${invalidObjectIds.join(", ")}`,
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//       return;
+//     }
+
+//     //Fetch only existing subcategories with type = "subCategory"
+//     const existingSubCategories = await SubCategory.find({
+//       _id: { $in: parsedIds },
+//       type: "subCategory",
+//     }).select("_id");
+
+//     const existingIds = existingSubCategories.map((cat) => cat._id.toString());
+
+//     const nonExistentIds = parsedIds.filter(
+//       (id: string) => !existingIds.includes(id)
+//     );
+
+//     if (nonExistentIds.length > 0) {
+//       sendResponse(
+//         res,
+//         null,
+//         `SubCategory ID(s) not found in DB: ${nonExistentIds.join(", ")}`,
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//       return;
+//     }
+
+//     //All good — replace the array
+//     zone.subCategories = existingIds;
+//     await zone.save();
+
+//     sendResponse(
+//       res,
+//       zone,
+//       "Subcategories updated successfully",
+//       STATUS_CODES.OK
+//     );
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 export const addSubCategoriesToZone = async (
   req: Request,
   res: Response,
@@ -375,27 +480,25 @@ export const addSubCategoriesToZone = async (
 
     const { subCategories: rawSubCategoryIds } = req.body;
 
-    if (!rawSubCategoryIds || !Array.isArray(rawSubCategoryIds)) {
+    if (!rawSubCategoryIds) {
       sendResponse(
         res,
         null,
-        "subCategories must be an array",
+        "subCategories is required",
         STATUS_CODES.BAD_REQUEST
       );
       return;
     }
 
-    //Parse input if it's a string
-    const parsedIds =
+    const parsedIds: string[] =
       typeof rawSubCategoryIds === "string"
         ? JSON.parse(rawSubCategoryIds)
         : rawSubCategoryIds;
 
-    //Filter: invalid ObjectIds
+    // Validate ObjectIds
     const invalidObjectIds = parsedIds.filter(
-      (id: string) => !mongoose.Types.ObjectId.isValid(id)
+      (id) => !mongoose.Types.ObjectId.isValid(id)
     );
-
     if (invalidObjectIds.length > 0) {
       sendResponse(
         res,
@@ -406,17 +509,14 @@ export const addSubCategoriesToZone = async (
       return;
     }
 
-    //Fetch only existing subcategories with type = "subCategory"
+    // Check DB for valid SubCategories
     const existingSubCategories = await SubCategory.find({
       _id: { $in: parsedIds },
       type: "subCategory",
     }).select("_id");
 
     const existingIds = existingSubCategories.map((cat) => cat._id.toString());
-
-    const nonExistentIds = parsedIds.filter(
-      (id: string) => !existingIds.includes(id)
-    );
+    const nonExistentIds = parsedIds.filter((id) => !existingIds.includes(id));
 
     if (nonExistentIds.length > 0) {
       sendResponse(
@@ -428,8 +528,8 @@ export const addSubCategoriesToZone = async (
       return;
     }
 
-    //All good — replace the array
-    zone.subCategories = existingIds;
+    // Save ObjectIds
+    zone.subCategories = existingIds.map((id) => new Types.ObjectId(id));
     await zone.save();
 
     sendResponse(
