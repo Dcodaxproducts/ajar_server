@@ -5,13 +5,16 @@ import {
   updateRefundRequest,
   deleteRefundRequest,
   updateRefundStatus,
+  getRefundRequestById,
 } from "../controllers/refundRequest.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
+// import { getRefundRequestById } from "../controllers/refundManagement.controller";
 
 const router = express.Router();
 
 router.post("/", authMiddleware, createRefundRequest);
 router.get("/", getMyRefundRequests);
+router.get("/:id", getRefundRequestById);
 router.patch("/:id", authMiddleware, updateRefundRequest);
 router.delete("/:id", authMiddleware, deleteRefundRequest);
 
