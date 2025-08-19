@@ -31,11 +31,11 @@ export const createUser = async (
     const user = await User.findOne({ email }).select("email").lean();
     if (user) {
       sendResponse(
-      res,
-      { email },
-      "User already exists",
+        res,
+        { email },
+        "User already exists",
         STATUS_CODES.CONFLICT
-        );
+      );
       return;
     }
 
@@ -96,7 +96,9 @@ export const loginUser = async (
   try {
     if (role === "staff") {
       // Staff login using Employee model with plain password
-      const employee = await Employee.findOne({ email }).select("email password roles").lean();
+      const employee = await Employee.findOne({ email })
+        .select("email password roles")
+        .lean();
 
       if (!employee) {
         sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
@@ -104,11 +106,19 @@ export const loginUser = async (
       }
 
       if (employee.password !== password) {
-        sendResponse(res, null, "Invalid email or password", STATUS_CODES.UNAUTHORIZED);
+        sendResponse(
+          res,
+          null,
+          "Invalid email or password",
+          STATUS_CODES.UNAUTHORIZED
+        );
         return;
       }
 
-      const accessToken = generateAccessToken({ id: employee._id, role: "staff" });
+      const accessToken = generateAccessToken({
+        id: employee._id,
+        role: "staff",
+      });
 
       sendResponse(
         res,
@@ -119,10 +129,11 @@ export const loginUser = async (
         "Login successful (staff)",
         STATUS_CODES.OK
       );
-
     } else if (role === "user" || role === "admin") {
       // User/Admin login using User model with bcrypt
-      const user = await User.findOne({ email, role }).select("email password role").lean();
+      const user = await User.findOne({ email, role })
+        .select("email password role")
+        .lean();
 
       if (!user) {
         sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
@@ -131,11 +142,19 @@ export const loginUser = async (
 
       const isPasswordValid = await bcrypt.compare(password, user.password);
       if (!isPasswordValid) {
-        sendResponse(res, null, "Invalid email or password", STATUS_CODES.UNAUTHORIZED);
+        sendResponse(
+          res,
+          null,
+          "Invalid email or password",
+          STATUS_CODES.UNAUTHORIZED
+        );
         return;
       }
 
-      const accessToken = generateAccessToken({ id: user._id, role: user.role });
+      const accessToken = generateAccessToken({
+        id: user._id,
+        role: user.role,
+      });
 
       sendResponse(
         res,
@@ -147,13 +166,17 @@ export const loginUser = async (
         STATUS_CODES.OK
       );
     } else {
-      sendResponse(res, null, "Invalid role provided", STATUS_CODES.BAD_REQUEST);
+      sendResponse(
+        res,
+        null,
+        "Invalid role provided",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
   } catch (error) {
     next(error);
   }
 };
-
 
 export const refreshToken = async (
   req: Request,
@@ -202,7 +225,7 @@ export const logout = async (
   next: NextFunction
 ): Promise<void> => {
   const { refreshToken } = req.body;
-  refreshTokens.delete(refreshToken); 
+  refreshTokens.delete(refreshToken);
 
   sendResponse(res, null, "Logged out successfully", STATUS_CODES.OK);
 };
@@ -225,7 +248,12 @@ export const getUserDetails = async (
     const role = req.user?.role;
 
     if (!userId || !role) {
-      sendResponse(res, null, "User not authenticated", STATUS_CODES.UNAUTHORIZED);
+      sendResponse(
+        res,
+        null,
+        "User not authenticated",
+        STATUS_CODES.UNAUTHORIZED
+      );
       return;
     }
 
@@ -405,26 +433,28 @@ export const resetPassword = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { resetToken, password } = req.body;
-    const user = await User.findOne({
-      "otp.resetToken": resetToken,
-      "otp.resetTokenExpiry": { $gt: Date.now() },
-    });
+    const { password } = req.body;
+    const userId = (req as any).user?.id;
+
+    if (!userId) {
+      sendResponse(res, null, "Unauthorized", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
+    const user = await User.findById(userId);
 
     if (!user) {
-      sendResponse(
-        res,
-        null,
-        "Invalid or expired reset token",
-        STATUS_CODES.BAD_REQUEST
-      );
+      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     user.password = hashedPassword;
+
+    // clear reset OTP fields (optional if you use OTP flow)
     user.otp.resetToken = "";
     user.otp.resetTokenExpiry = new Date(0);
+
     await user.save();
 
     sendResponse(res, null, "Password reset successfully", STATUS_CODES.OK);
@@ -451,7 +481,6 @@ const paginateQuery = async <T>(
 
   return { data, total, page, limit };
 };
-
 
 export const getAllUsersWithStats = async (
   req: AuthRequest,
@@ -484,11 +513,12 @@ export const getAllUsersWithStats = async (
     // Global user statistics
     const totalUsers = await User.countDocuments();
     const totalAdmins = await User.countDocuments({ role: "admin" });
-  
+
     const totalActiveUsers = await User.countDocuments({ status: "active" });
-    const totalInactiveUsers = await User.countDocuments({ status: "inactive" });
+    const totalInactiveUsers = await User.countDocuments({
+      status: "inactive",
+    });
     const totalBlockedUsers = await User.countDocuments({ status: "blocked" });
-    
 
     sendResponse(
       res,
@@ -514,7 +544,6 @@ export const getAllUsersWithStats = async (
     next(error);
   }
 };
-
 
 export const updateUserProfile = async (
   req: AuthRequest,
@@ -567,7 +596,6 @@ export const addForm = async (
     });
 
     await form.save();
-
   } catch (error) {
     next(error);
   }
@@ -691,7 +719,15 @@ export const getDashboardStats = async (
     if (filter === "year") {
       for (let i = 11; i >= 0; i--) {
         const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const end = new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59, 999);
+        const end = new Date(
+          start.getFullYear(),
+          start.getMonth() + 1,
+          0,
+          23,
+          59,
+          59,
+          999
+        );
 
         const [users, bookings] = await Promise.all([
           User.countDocuments({ createdAt: { $gte: start, $lte: end } }),
@@ -705,7 +741,10 @@ export const getDashboardStats = async (
         }, 0);
 
         userRecords.push({ value: `${12 - i}`, totalUsers: users });
-        earningRecords.push({ value: `${12 - i}`, totalEarning: monthlyEarning });
+        earningRecords.push({
+          value: `${12 - i}`,
+          totalEarning: monthlyEarning,
+        });
       }
 
       // Calculate current vs previous year total
@@ -734,13 +773,24 @@ export const getDashboardStats = async (
         return acc + price + extension;
       }, 0);
 
-      const currTotalUsers = userRecords.reduce((acc, cur) => acc + cur.totalUsers, 0);
-      const currTotalEarning = earningRecords.reduce((acc, cur) => acc + cur.totalEarning, 0);
+      const currTotalUsers = userRecords.reduce(
+        (acc, cur) => acc + cur.totalUsers,
+        0
+      );
+      const currTotalEarning = earningRecords.reduce(
+        (acc, cur) => acc + cur.totalEarning,
+        0
+      );
 
       const calcTrend = (current: number, previous: number) => {
         const diff = current - previous;
         const trend = diff >= 0 ? "up" : "down";
-        const percentage = previous === 0 ? (current > 0 ? 100 : 0) : Math.abs(Math.round((diff / previous) * 100));
+        const percentage =
+          previous === 0
+            ? current > 0
+              ? 100
+              : 0
+            : Math.abs(Math.round((diff / previous) * 100));
         return { value: `${percentage}`, trend };
       };
 
@@ -750,7 +800,12 @@ export const getDashboardStats = async (
       const calcTrend = (current: number, previous: number) => {
         const diff = current - previous;
         const trend = diff >= 0 ? "up" : "down";
-        const percentage = previous === 0 ? (current > 0 ? 100 : 0) : Math.abs(Math.round((diff / previous) * 100));
+        const percentage =
+          previous === 0
+            ? current > 0
+              ? 100
+              : 0
+            : Math.abs(Math.round((diff / previous) * 100));
         return { value: `${percentage}`, trend };
       };
 
@@ -835,14 +890,18 @@ export const updateUserStatus = async (
     user.status = status;
     await user.save();
 
-    sendResponse(res, user, "User status updated successfully", STATUS_CODES.OK);
+    sendResponse(
+      res,
+      user,
+      "User status updated successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
 };
 
-
-//delete user 
+//delete user
 export const deleteUser = async (
   req: AuthRequest,
   res: Response,

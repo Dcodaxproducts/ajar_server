@@ -61,6 +61,7 @@ router.post(
 
 router.post(
   "/reset-password",
+  authMiddleware,
   validateRequest({ body: resetPasswordSchema }),
   resetPassword
 );
@@ -68,6 +69,7 @@ router.post(
 router.get("/details", authMiddleware, getUserDetails);
 
 router.get("/all", authMiddleware, getAllUsersWithStats);
+router.patch("/status/:userId", authMiddleware, updateUserStatus);
 
 router.post("/form", addForm);
 
@@ -80,11 +82,6 @@ router.put(
 );
 
 router.get("/stats", authMiddleware, getDashboardStats);
-
-router.patch(
-  "/status/:userId", authMiddleware ,
-  updateUserStatus
-);
 
 router.delete("/:userId", authMiddleware, deleteUser);
 
