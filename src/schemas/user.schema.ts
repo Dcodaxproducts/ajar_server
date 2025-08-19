@@ -2,10 +2,7 @@ import mongoose from "mongoose";
 import { z } from "zod";
 
 export const createUserSchema = z.object({
-  name: z
-    .string()
-    .min(3)
-    .max(50).optional(),
+  name: z.string().min(3).max(50).optional(),
   email: z
     .string({
       required_error: "email is required",
@@ -18,13 +15,11 @@ export const createUserSchema = z.object({
     })
     .min(6, { message: "Password is too short" }),
 
-  dob: z
-    .string()
-    .min(6, { message: "dob is too short" }).optional(),
+  dob: z.string().min(6, { message: "dob is too short" }).optional(),
   nationality: z
     .string()
-    .min(3, { message: "nationality is too short" }).optional(),
- 
+    .min(3, { message: "nationality is too short" })
+    .optional(),
 });
 
 export const loginUserSchema = z.object({
@@ -71,13 +66,9 @@ export const forgotPasswordSchema = z.object({
 });
 
 export const resetPasswordSchema = z.object({
- 
   password: z
     .string({ required_error: "Password is required" })
     .min(4, "Password must be at least 4 characters"),
-  resetToken: z
-    .string({ required_error: "Reset token is required" })
-    .min(6, "Reset token must be at least 6 characters"),
 });
 
 export const updateUserSchema = z.object({
