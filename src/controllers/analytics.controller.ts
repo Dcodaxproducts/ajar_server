@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import { Booking } from "../models/booking.model";
 import { RefundRequest } from "../models/refundRequest.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
+import { sendResponse } from "../utils/response";
+import { STATUS_CODES } from "../config/constants";
 
 type Granularity = "day" | "month" | "year";
 
@@ -237,25 +239,25 @@ export const getAdminAnalytics = async (
     // performance indicators
     const performanceIndicators = [
       {
-        label: "totalRevenue",
+        label: "Total Revenue",
         // value: Math.round(pct(currentRevenue, prevRevenue)),
         value: currentRevenue,
         change: calcTrend(currentRevenue, prevRevenue),
       },
       {
-        label: "platformCommission",
+        label: "Platform Commission",
         // value: Math.round(pct(currentCommission, prevCommission)),
         value: currentCommission,
         change: calcTrend(currentCommission, prevCommission),
       },
       {
-        label: "ownersPayouts",
+        label: "Owners Payouts",
         // value: Math.round(pct(currentOwnerPayout, prevOwnerPayout)),
         value: currentOwnerPayout,
         change: calcTrend(currentOwnerPayout, prevOwnerPayout),
       },
       {
-        label: "refundIssued",
+        label: "Refund Issued",
         // value: Math.round(pct(currentRefund, prevRefund)),
         value: currentRefund,
         change: calcTrend(currentRefund, prevRefund),
@@ -263,16 +265,21 @@ export const getAdminAnalytics = async (
     ];
 
     // final response
-    res.json({
-      success: true,
-      performanceIndicators,
-      charts: {
-        totalRevenue: { record: revenueRecords },
-        platformCommission: { record: commissionRecords },
-        ownersPayouts: { record: payoutRecords },
-        refundIssued: { record: refundRecords },
+    sendResponse(
+      res,
+      {
+        filter,
+        performanceIndicators,
+        charts: {
+          totalRevenue: { record: revenueRecords },
+          platformCommission: { record: commissionRecords },
+          ownersPayouts: { record: payoutRecords },
+          refundIssued: { record: refundRecords },
+        },
       },
-    });
+      "Admin analytics fetched successfully",
+      STATUS_CODES.OK
+    );
   } catch (err) {
     next(err);
   }
