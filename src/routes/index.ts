@@ -39,7 +39,7 @@ router.use("/dropdowns", dropdownRoutes);
 router.use("/bookings", bookingRoutes);
 router.use("/tickets", damageReportRoutes);
 router.use("/businessSetting", BusinessSetting);
-router.use("/employeeManagement", employeeManagementRoutes);
+router.use("/employee-management", employeeManagementRoutes);
 router.use("/refunds", refundRoutes);
 router.use("/refund-policies", refundPoliciesRoutes);
 router.use("/refund-requests", refundRequestsRoutes);

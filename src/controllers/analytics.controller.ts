@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
 import { Booking } from "../models/booking.model";
-import { RefundManagement } from "../models/refundManagement.model";
+import { RefundRequest } from "../models/refundRequest.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 
 type Granularity = "day" | "month" | "year";
@@ -12,19 +12,11 @@ const toObjectId = (v?: string) =>
     : undefined;
 
 const parseDate = (v?: string) => (v ? new Date(v) : undefined);
-
-const addMonths = (d: Date, n: number) => {
-  const c = new Date(d);
-  c.setMonth(c.getMonth() + n);
-  return c;
-};
-
-// CHANGE: helper to add days
-const addDays = (d: Date, n: number) => {
-  const c = new Date(d);
-  c.setDate(c.getDate() + n);
-  return c;
-};
+const addMonths = (d: Date, n: number) =>
+  new Date(d.setMonth(d.getMonth() + n));
+const addDays = (d: Date, n: number) => new Date(d.setDate(d.getDate() + n));
+const startOfDay = (d: Date) => new Date(d.setHours(0, 0, 0, 0));
+const endOfDay = (d: Date) => new Date(d.setHours(23, 59, 59, 999));
 
 export const getAdminAnalytics = async (
   req: Request,
@@ -32,58 +24,49 @@ export const getAdminAnalytics = async (
   next: NextFunction
 ) => {
   try {
-    // -------- inputs
+    // inputs
     const zoneId = toObjectId(req.query.zone as string);
     const subCategoryId = toObjectId(req.query.subCategory as string);
-    const granularity: Granularity =
-      (req.query.granularity as Granularity) || "month";
-
-    // CHANGE: new optional filter filter
     const filter = (req.query.filter as string)?.toLowerCase(); // 'week', 'month', 'year'
 
-    // date range (default: last 12 months)
     let dateTo = parseDate(req.query.dateTo as string) || new Date();
     let dateFrom =
       parseDate(req.query.dateFrom as string) ||
       addMonths(new Date(dateTo), -12);
 
-    // CHANGE: override dateFrom/dateTo if filter is specified
-    if (filter === "week") {
-      dateFrom = addDays(new Date(dateTo), -7);
-    } else if (filter === "month") {
-      dateFrom = addMonths(new Date(dateTo), -1);
-    } else if (filter === "year") {
-      dateFrom = addMonths(new Date(dateTo), -12);
-    }
+    if (filter === "week") dateFrom = addDays(new Date(dateTo), -7);
+    else if (filter === "month") dateFrom = addMonths(new Date(dateTo), -1);
+    else if (filter === "year") dateFrom = addMonths(new Date(dateTo), -12);
 
-    // previous filter for growth
     const msRange = dateTo.getTime() - dateFrom.getTime();
     const prevTo = new Date(dateFrom.getTime() - 1);
     const prevFrom = new Date(prevTo.getTime() - msRange);
 
-    // common booking match
-    const bookingMatch: any = {
-      createdAt: { $gte: dateFrom, $lte: dateTo },
-      status: { $in: ["accepted", "completed"] },
-    };
-
-    // join filters through MarketplaceListing
+    // listing filter
+    let listingIds: mongoose.Types.ObjectId[] = [];
     if (zoneId || subCategoryId) {
-      const listingMatch: any = {};
-      if (zoneId) listingMatch.zone = zoneId;
-      if (subCategoryId) listingMatch.subCategory = subCategoryId;
-
-      const listingIds = await MarketplaceListing.find(listingMatch)
+      const match: any = {};
+      if (zoneId) match.zone = zoneId;
+      if (subCategoryId) match.subCategory = subCategoryId;
+      listingIds = await MarketplaceListing.find(match)
         .select("_id")
         .lean()
-        .then((docs) => docs.map((d) => d._id));
-
-      bookingMatch.marketplaceListingId = {
-        $in: listingIds.length ? listingIds : [null],
-      };
+        .then((docs) => docs.map((d) => d._id as mongoose.Types.ObjectId));
     }
 
-    // helper addFields expression
+    let filterBookingIds: mongoose.Types.ObjectId[] | undefined;
+    if (zoneId || subCategoryId) {
+      filterBookingIds = await Booking.find({
+        marketplaceListingId: {
+          $in: listingIds.length ? listingIds : [null],
+        },
+      })
+        .select("_id")
+        .lean()
+        .then((docs) => docs.map((d) => d._id as mongoose.Types.ObjectId));
+    }
+
+    // expressions
     const revenueExpr = {
       $add: [
         { $ifNull: ["$priceDetails.totalPrice", 0] },
@@ -97,173 +80,198 @@ export const getAdminAnalytics = async (
       ],
     };
 
-    // -------- current filter aggregations (bookings)
-    const [currentAgg] = await Booking.aggregate([
-      { $match: bookingMatch },
-      { $addFields: { revenue: revenueExpr, commission: commissionExpr } },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: "$revenue" },
-          platformCommission: { $sum: "$commission" },
-        },
-      },
-      { $project: { _id: 0 } },
-    ]);
-
-    const currentRevenue = currentAgg?.totalRevenue || 0;
-    const currentCommission = currentAgg?.platformCommission || 0;
-
-    // -------- refunds in current filter
-    const refundMatch: any = {
-      createdAt: { $gte: dateFrom, $lte: dateTo },
-      status: "accept",
+    // base matches
+    const bookingMatch = (from: Date, to: Date) => {
+      const m: any = {
+        createdAt: { $gte: from, $lte: to },
+        status: { $in: ["accepted", "completed"] },
+      };
+      if (zoneId || subCategoryId) {
+        m.marketplaceListingId = {
+          $in: listingIds.length ? listingIds : [null],
+        };
+      }
+      return m;
     };
 
-    if (zoneId) refundMatch.zone = zoneId;
-    if (subCategoryId) refundMatch.subCategory = subCategoryId;
+    const refundMatch = (from: Date, to: Date) => {
+      const m: any = { createdAt: { $gte: from, $lte: to }, status: "accept" };
+      if (zoneId || subCategoryId) {
+        m.booking = {
+          $in: (filterBookingIds && filterBookingIds.length
+            ? filterBookingIds
+            : [null]) as any,
+        };
+      }
+      return m;
+    };
 
-    const [currentRefundAgg] = await RefundManagement.aggregate([
-      { $match: refundMatch },
-      {
-        $group: {
-          _id: null,
-          refundIssued: { $sum: { $ifNull: ["$totalRefundAmount", 0] } },
+    // aggregate helpers
+    const aggBookings = async (from: Date, to: Date) => {
+      const [agg] = await Booking.aggregate([
+        { $match: bookingMatch(from, to) },
+        { $addFields: { revenue: revenueExpr, commission: commissionExpr } },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: "$revenue" },
+            platformCommission: { $sum: "$commission" },
+          },
         },
-      },
-      { $project: { _id: 0 } },
-    ]);
-    const currentRefund = currentRefundAgg?.refundIssued || 0;
+      ]);
+      return {
+        totalRevenue: agg?.totalRevenue || 0,
+        platformCommission: agg?.platformCommission || 0,
+      };
+    };
 
+    const aggRefunds = async (from: Date, to: Date) => {
+      const [agg] = await RefundRequest.aggregate([
+        { $match: refundMatch(from, to) },
+        {
+          $group: {
+            _id: null,
+            refundIssued: { $sum: { $ifNull: ["$totalRefundAmount", 0] } },
+          },
+        },
+      ]);
+      return agg?.refundIssued || 0;
+    };
+
+    // totals
+    const curBk = await aggBookings(dateFrom, dateTo);
+    const prevBk = await aggBookings(prevFrom, prevTo);
+
+    const currentRevenue = curBk.totalRevenue;
+    const currentCommission = curBk.platformCommission;
+    const currentRefund = await aggRefunds(dateFrom, dateTo);
     const currentOwnerPayout = Math.max(
       currentRevenue - currentCommission - currentRefund,
       0
     );
 
-    // -------- previous filter for growth
-    const prevBookingMatch = {
-      ...bookingMatch,
-      createdAt: { $gte: prevFrom, $lte: prevTo },
-    };
-    const [prevAgg] = await Booking.aggregate([
-      { $match: prevBookingMatch },
-      { $addFields: { revenue: revenueExpr, commission: commissionExpr } },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: "$revenue" },
-          platformCommission: { $sum: "$commission" },
-        },
-      },
-      { $project: { _id: 0 } },
-    ]);
-    const prevRevenue = prevAgg?.totalRevenue || 0;
-    const prevCommission = prevAgg?.platformCommission || 0;
-
-    const prevRefundMatch = {
-      ...refundMatch,
-      createdAt: { $gte: prevFrom, $lte: prevTo },
-    };
-    const [prevRefundAgg] = await RefundManagement.aggregate([
-      { $match: prevRefundMatch },
-      {
-        $group: {
-          _id: null,
-          refundIssued: { $sum: { $ifNull: ["$totalRefundAmount", 0] } },
-        },
-      },
-      { $project: { _id: 0 } },
-    ]);
-    const prevRefund = prevRefundAgg?.refundIssued || 0;
+    const prevRevenue = prevBk.totalRevenue;
+    const prevCommission = prevBk.platformCommission;
+    const prevRefund = await aggRefunds(prevFrom, prevTo);
     const prevOwnerPayout = Math.max(
       prevRevenue - prevCommission - prevRefund,
       0
     );
 
+    // helpers
     const pct = (cur: number, prev: number) =>
       prev > 0 ? ((cur - prev) / prev) * 100 : cur > 0 ? 100 : 0;
 
-    // -------- trend series
-    const dateFormat =
-      granularity === "day"
-        ? "%Y-%m-%d"
-        : granularity === "year"
-        ? "%Y"
-        : "%Y-%m";
-
-    const trend = await Booking.aggregate([
-      { $match: bookingMatch },
-      {
-        $addFields: {
-          revenue: revenueExpr,
-          filter: { $dateToString: { date: "$createdAt", format: dateFormat } },
-        },
-      },
-      { $group: { _id: "$filter", revenue: { $sum: "$revenue" } } },
-      { $project: { _id: 0, filter: "$_id", revenue: 1 } },
-      { $sort: { filter: 1 } },
-    ]);
-
-    // -------- category pie
-    const categoryPie = await Booking.aggregate([
-      { $match: bookingMatch },
-      { $addFields: { revenue: revenueExpr } },
-      {
-        $lookup: {
-          from: "marketplacelistings",
-          localField: "marketplaceListingId",
-          foreignField: "_id",
-          as: "listing",
-        },
-      },
-      { $unwind: "$listing" },
-      {
-        $lookup: {
-          from: "subcategories",
-          localField: "listing.subCategory",
-          foreignField: "_id",
-          as: "subcat",
-        },
-      },
-      { $unwind: "$subcat" },
-      {
-        $group: {
-          _id: "$subcat._id",
-          label: { $first: "$subcat.name" },
-          value: { $sum: "$revenue" },
-        },
-      },
-      { $project: { _id: 0, label: 1, value: 1 } },
-      { $sort: { value: -1 } },
-      { $limit: 8 },
-    ]);
-
-    // -------- breakdown bars
-    const breakdown = {
-      commission: currentCommission,
-      ownerPayout: currentOwnerPayout,
-      refund: currentRefund,
+    const calcTrend = (cur: number, prev: number) => {
+      const diff = cur - prev;
+      const trend = diff >= 0 ? "up" : "down";
+      const perc =
+        prev === 0
+          ? cur > 0
+            ? 100
+            : 0
+          : Math.abs(Math.round((diff / prev) * 100));
+      return { value: `${perc}`, trend };
     };
 
-    // -------- response
+    // chart records
+    const revenueRecords: { value: string; amount: number }[] = [];
+    const commissionRecords: { value: string; amount: number }[] = [];
+    const refundRecords: { value: string; amount: number }[] = [];
+    const payoutRecords: { value: string; amount: number }[] = [];
+
+    const base = new Date(dateTo);
+
+    if (filter === "week") {
+      for (let i = 6; i >= 0; i--) {
+        const start = startOfDay(addDays(base, -i));
+        const end = endOfDay(start);
+        const b = await aggBookings(start, end);
+        const r = await aggRefunds(start, end);
+        const p = Math.max(b.totalRevenue - b.platformCommission - r, 0);
+
+        const idx = `${7 - i}`;
+        revenueRecords.push({ value: idx, amount: b.totalRevenue });
+        commissionRecords.push({ value: idx, amount: b.platformCommission });
+        refundRecords.push({ value: idx, amount: r });
+        payoutRecords.push({ value: idx, amount: p });
+      }
+    } else if (filter === "month") {
+      for (let i = 3; i >= 0; i--) {
+        const start = startOfDay(addDays(base, -i * 7));
+        const end = endOfDay(addDays(start, 6));
+        const b = await aggBookings(start, end);
+        const r = await aggRefunds(start, end);
+        const p = Math.max(b.totalRevenue - b.platformCommission - r, 0);
+
+        const idx = `${4 - i}`;
+        revenueRecords.push({ value: idx, amount: b.totalRevenue });
+        commissionRecords.push({ value: idx, amount: b.platformCommission });
+        refundRecords.push({ value: idx, amount: r });
+        payoutRecords.push({ value: idx, amount: p });
+      }
+    } else if (filter === "year") {
+      for (let i = 11; i >= 0; i--) {
+        const start = new Date(base.getFullYear(), base.getMonth() - i, 1);
+        const end = new Date(
+          start.getFullYear(),
+          start.getMonth() + 1,
+          0,
+          23,
+          59,
+          59,
+          999
+        );
+        const b = await aggBookings(start, end);
+        const r = await aggRefunds(start, end);
+        const p = Math.max(b.totalRevenue - b.platformCommission - r, 0);
+
+        const idx = `${12 - i}`;
+        revenueRecords.push({ value: idx, amount: b.totalRevenue });
+        commissionRecords.push({ value: idx, amount: b.platformCommission });
+        refundRecords.push({ value: idx, amount: r });
+        payoutRecords.push({ value: idx, amount: p });
+      }
+    }
+
+    // performance indicators
+    const performanceIndicators = [
+      {
+        label: "totalRevenue",
+        // value: Math.round(pct(currentRevenue, prevRevenue)),
+        value: currentRevenue,
+        change: calcTrend(currentRevenue, prevRevenue),
+      },
+      {
+        label: "platformCommission",
+        // value: Math.round(pct(currentCommission, prevCommission)),
+        value: currentCommission,
+        change: calcTrend(currentCommission, prevCommission),
+      },
+      {
+        label: "ownersPayouts",
+        // value: Math.round(pct(currentOwnerPayout, prevOwnerPayout)),
+        value: currentOwnerPayout,
+        change: calcTrend(currentOwnerPayout, prevOwnerPayout),
+      },
+      {
+        label: "refundIssued",
+        // value: Math.round(pct(currentRefund, prevRefund)),
+        value: currentRefund,
+        change: calcTrend(currentRefund, prevRefund),
+      },
+    ];
+
+    // final response
     res.json({
       success: true,
-      range: { dateFrom, dateTo, prevFrom, prevTo, granularity, filter }, // CHANGE: added filter
-      performanceIndicators: {
-        totalRevenue: currentRevenue,
-        platformCommission: currentCommission,
-        ownersPayouts: currentOwnerPayout,
-        refundIssued: currentRefund,
-        growth: {
-          totalRevenuePct: pct(currentRevenue, prevRevenue),
-          platformCommissionPct: pct(currentCommission, prevCommission),
-          ownersPayoutsPct: pct(currentOwnerPayout, prevOwnerPayout),
-          refundIssuedPct: pct(currentRefund, prevRefund),
-        },
+      performanceIndicators,
+      charts: {
+        totalRevenue: { record: revenueRecords },
+        platformCommission: { record: commissionRecords },
+        ownersPayouts: { record: payoutRecords },
+        refundIssued: { record: refundRecords },
       },
-      trend,
-      breakdown,
-      byCategory: categoryPie,
     });
   } catch (err) {
     next(err);
