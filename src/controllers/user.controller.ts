@@ -54,8 +54,14 @@ export const createUser = async (
     const stripeCustomer = await createCustomer(email, name);
     userData.stripe.customerId = stripeCustomer.id;
 
+    // if (profilePicture) {
+    //   userData.profilePicture = `/uploads/${profilePicture.filename}`;
+    // }
+
     if (profilePicture) {
-      userData.profilePicture = `/uploads/${profilePicture.filename}`;
+      userData.profilePicture = `${req.protocol}://${req.get("host")}/uploads/${
+        profilePicture.filename
+      }`;
     }
 
     const userObj = userData.toObject();

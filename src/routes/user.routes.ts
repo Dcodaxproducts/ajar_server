@@ -34,7 +34,7 @@ const router = express.Router();
 
 router.post(
   "/signup",
-  upload.single("image"),
+  upload.single("profilePicture"),
   validateRequest({ body: createUserSchema }),
   createUser
 );
