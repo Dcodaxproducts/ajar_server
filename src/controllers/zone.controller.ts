@@ -9,13 +9,95 @@ import { SubCategory } from "../models/category.model";
 import { paginateQuery } from "../utils/paginate";
 
 // Get All Zones
+// export const getAllZones = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const { page = 1, limit = 10 } = req.query;
+//     const languageHeader = req.headers["language"];
+//     const locale = languageHeader?.toString() || null;
+
+//     const baseQuery = Zone.find().populate("subCategories");
+//     const { data, total } = await paginateQuery(baseQuery, {
+//       page: Number(page),
+//       limit: Number(limit),
+//     });
+
+//     // Get the total count of all zones (unfiltered by pagination)
+//     const totalCount = await Zone.countDocuments();
+
+//     let filteredData = data;
+
+//     if (locale) {
+//       filteredData = data
+//         .filter((zone: any) =>
+//           zone.languages?.some((lang: any) => lang.locale === locale)
+//         )
+//         .map((zone: any) => {
+//           const matchedLang = zone.languages.find(
+//             (lang: any) => lang.locale === locale
+//           );
+
+//           const zoneObj = zone.toObject();
+
+//           if (matchedLang && matchedLang.translations) {
+//             zoneObj.name = matchedLang.translations.name || zoneObj.name;
+//             zoneObj.adminNotes =
+//               matchedLang.translations.adminNotes || zoneObj.adminNotes;
+//           }
+
+//           delete zoneObj.languages;
+
+//           return zoneObj;
+//         });
+//     }
+
+//     sendResponse(
+//       res,
+//       {
+//         zones: filteredData,
+//         total: totalCount,
+//         page: Number(page),
+//         limit: Number(limit),
+//       },
+//       `Zones fetched successfully${locale ? ` for locale: ${locale}` : ""}`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+// helper for polygon check
+const isPointInPolygon = (
+  point: { lat: number; lng: number },
+  polygon: { lat: number; lng: number }[]
+): boolean => {
+  let inside = false;
+  const { lat, lng } = point;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lng,
+      yi = polygon[i].lat;
+    const xj = polygon[j].lng,
+      yj = polygon[j].lat;
+
+    const intersect =
+      yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+};
+
 export const getAllZones = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, lat, lng } = req.query;
     const languageHeader = req.headers["language"];
     const locale = languageHeader?.toString() || null;
 
@@ -30,8 +112,9 @@ export const getAllZones = async (
 
     let filteredData = data;
 
+    // Apply locale translations (already working)
     if (locale) {
-      filteredData = data
+      filteredData = filteredData
         .filter((zone: any) =>
           zone.languages?.some((lang: any) => lang.locale === locale)
         )
@@ -49,9 +132,47 @@ export const getAllZones = async (
           }
 
           delete zoneObj.languages;
-
           return zoneObj;
         });
+    }
+
+    // Apply lat/lng filter (supports bounding box OR polygon)
+    if (lat && lng) {
+      const point = { lat: Number(lat), lng: Number(lng) };
+
+      filteredData = filteredData.filter((zone: any) =>
+        zone.polygons?.some((polygon: any) => {
+          if (!polygon || polygon.length < 1) return false;
+
+          // If only 1 point → treat as marker (exact match)
+          if (polygon.length === 1) {
+            const p = polygon[0];
+            return (
+              Number(p.lat).toFixed(4) === Number(point.lat).toFixed(4) &&
+              Number(p.lng).toFixed(4) === Number(point.lng).toFixed(4)
+            );
+          }
+
+          // If 2 points → treat as bounding box
+          if (polygon.length === 2) {
+            const [sw, ne] = polygon;
+            const minLat = Math.min(sw.lat, ne.lat);
+            const maxLat = Math.max(sw.lat, ne.lat);
+            const minLng = Math.min(sw.lng, ne.lng);
+            const maxLng = Math.max(sw.lng, ne.lng);
+
+            return (
+              point.lat >= minLat &&
+              point.lat <= maxLat &&
+              point.lng >= minLng &&
+              point.lng <= maxLng
+            );
+          }
+
+          // If 3+ points → treat as polygon
+          return isPointInPolygon(point, polygon);
+        })
+      );
     }
 
     sendResponse(
@@ -261,7 +382,7 @@ export const updateZone = async (
       subCategories: rawSubCategoryIds,
     } = req.body;
 
-    // ✅ Handle polygons parsing
+    //Handle polygons parsing
     let polygons = existingZone.polygons;
     if (rawPolygons) {
       try {
@@ -274,7 +395,7 @@ export const updateZone = async (
       }
     }
 
-    // ✅ Handle subCategories properly as ObjectIds
+    //Handle subCategories properly as ObjectIds
     let subCategories = existingZone.subCategories;
     if (rawSubCategoryIds) {
       try {
@@ -316,14 +437,14 @@ export const updateZone = async (
           return;
         }
 
-        // ✅ Assign ObjectIds, not strings
+        //Assign ObjectIds, not strings
         subCategories = validIds.map((id) => new Types.ObjectId(id));
       } catch {
         subCategories = existingZone.subCategories;
       }
     }
 
-    // ✅ Apply updates
+    //Apply updates
     existingZone.name = name || existingZone.name;
     existingZone.currency = currency || existingZone.currency;
     existingZone.language = language || existingZone.language;
@@ -343,6 +464,7 @@ export const updateZone = async (
     next(error);
   }
 };
+
 //delete zone
 export const deleteZone = async (
   req: Request,
@@ -368,96 +490,6 @@ export const deleteZone = async (
     next(error);
   }
 };
-
-//add subb category to zone
-// export const addSubCategoriesToZone = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction
-// ): Promise<void> => {
-//   const zoneId = req.params.id;
-
-//   if (!mongoose.Types.ObjectId.isValid(zoneId)) {
-//     sendResponse(res, null, "Invalid Zone ID", STATUS_CODES.BAD_REQUEST);
-//     return;
-//   }
-
-//   try {
-//     const zone = await Zone.findById(zoneId);
-//     if (!zone) {
-//       sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
-//       return;
-//     }
-
-//     const { subCategories: rawSubCategoryIds } = req.body;
-
-//     if (!rawSubCategoryIds || !Array.isArray(rawSubCategoryIds)) {
-//       sendResponse(
-//         res,
-//         null,
-//         "subCategories must be an array",
-//         STATUS_CODES.BAD_REQUEST
-//       );
-//       return;
-//     }
-
-//     //Parse input if it's a string
-//     const parsedIds =
-//       typeof rawSubCategoryIds === "string"
-//         ? JSON.parse(rawSubCategoryIds)
-//         : rawSubCategoryIds;
-
-//     //Filter: invalid ObjectIds
-//     const invalidObjectIds = parsedIds.filter(
-//       (id: string) => !mongoose.Types.ObjectId.isValid(id)
-//     );
-
-//     if (invalidObjectIds.length > 0) {
-//       sendResponse(
-//         res,
-//         null,
-//         `Invalid MongoDB ObjectId(s): ${invalidObjectIds.join(", ")}`,
-//         STATUS_CODES.BAD_REQUEST
-//       );
-//       return;
-//     }
-
-//     //Fetch only existing subcategories with type = "subCategory"
-//     const existingSubCategories = await SubCategory.find({
-//       _id: { $in: parsedIds },
-//       type: "subCategory",
-//     }).select("_id");
-
-//     const existingIds = existingSubCategories.map((cat) => cat._id.toString());
-
-//     const nonExistentIds = parsedIds.filter(
-//       (id: string) => !existingIds.includes(id)
-//     );
-
-//     if (nonExistentIds.length > 0) {
-//       sendResponse(
-//         res,
-//         null,
-//         `SubCategory ID(s) not found in DB: ${nonExistentIds.join(", ")}`,
-//         STATUS_CODES.BAD_REQUEST
-//       );
-//       return;
-//     }
-
-//     //All good — replace the array
-//     zone.subCategories = existingIds;
-//     await zone.save();
-
-//     sendResponse(
-//       res,
-//       zone,
-//       "Subcategories updated successfully",
-//       STATUS_CODES.OK
-//     );
-//   } catch (error) {
-//     next(error);
-//   }
-// };
 
 export const addSubCategoriesToZone = async (
   req: Request,
