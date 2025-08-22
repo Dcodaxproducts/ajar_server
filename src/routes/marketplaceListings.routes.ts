@@ -28,10 +28,10 @@ router.get("/:id", getMarketplaceListingById);
 
 router.post(
   "/",
-  uploadFiles(["images"]),
+  uploadFiles(["images", "documents", "otherFileField"]),
   authMiddleware,
   validateRequest({ body: marketplaceListingSchema }),
-  createMarketplaceListing
+  asyncHandler(createMarketplaceListing)
 );
 
 router.patch(

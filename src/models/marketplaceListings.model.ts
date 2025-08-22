@@ -50,10 +50,10 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
     },
     name: { type: String },
     images: [{ type: String }],
-    description: { type: String, required: true },
-    address: { type: String, required: true },
+    description: { type: String },
+    address: { type: String },
     currency: { type: String },
-    price: { type: Number, required: true },
+    price: { type: Number },
     isActive: { type: Boolean, default: true },
     language: { type: String, default: "en" },
     languages: [

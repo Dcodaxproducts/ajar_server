@@ -29,9 +29,9 @@ export const marketplaceListingSchema = z.object({
     })
     .optional(),
 
-  description: z.string().min(1, "Description is required"),
+  description: z.string().min(1, "Description is required").optional(),
 
-  price: z.coerce.number().nonnegative("Price must be positive"),
+  price: z.coerce.number().nonnegative("Price must be positive").optional(),
 
   language: z.string().default("en").optional(),
 
