@@ -7,90 +7,113 @@ import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { Zone } from "../models/zone.model";
 import { SubCategory } from "../models/category.model";
+import { Form } from "../models/form.model";
+import { Field, IField } from "../models/field.model";
 
-// CREATE
-export const createMarketplaceListing = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+// controllers/marketplaceListings.controller.ts
+export const createMarketplaceListing = async (req: any, res: Response) => {
   try {
-    const { subCategory, zone } = req.body;
+    const { zone, subCategory } = req.body;
+    const leaser = req.user.id;
 
-    // Validate required fields
-    if (!subCategory || !zone) {
-      sendResponse(
-        res,
-        null,
-        "`subCategory` and `zone` are required",
-        STATUS_CODES.BAD_REQUEST
-      );
-      return;
+    // 1. Get Form for zone + subCategory
+    const form = await Form.findOne({
+      zone: zone,
+      subCategory: subCategory,
+    }).populate("fields");
+
+    if (!form) {
+      return res.status(400).json({
+        success: false,
+        message: "Form not found for this Zone and SubCategory",
+      });
     }
 
-    // Validate Zone existence
-    const zoneDoc = await Zone.findById(zone).lean();
-    if (!zoneDoc) {
-      sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
-      return;
-    }
+    // 👇 Cast to IField[]
+    const fields = form.fields as unknown as IField[];
+    const requestData: any = {};
 
-    // Check if subCategory is part of zone.subCategories
-    const isSubCategoryInZone =
-      Array.isArray(zoneDoc.subCategories) &&
-      zoneDoc.subCategories
-        .map((id: any) => String(id))
-        .includes(String(subCategory));
+    // 2. Validate dynamically
+    for (const field of fields) {
+      const value = req.body[field.name];
 
-    if (!isSubCategoryInZone) {
-      sendResponse(
-        res,
-        null,
-        "The provided subCategory does not belong to the selected zone.",
-        STATUS_CODES.BAD_REQUEST
-      );
-      return;
-    }
+      if (field.validation?.required && (value === undefined || value === "")) {
+        return res
+          .status(400)
+          .json({ success: false, message: `${field.label} is required` });
+      }
 
-    // Validate SubCategory existence
-    const subCategoryDoc = await SubCategory.findById(subCategory).lean();
-    if (!subCategoryDoc) {
-      sendResponse(res, null, "SubCategory not found", STATUS_CODES.NOT_FOUND);
-      return;
-    }
+      if (value !== undefined) {
+        if (field.options?.length && !field.options.includes(value)) {
+          return res.status(400).json({
+            success: false,
+            message: `${field.label} must be one of: ${field.options.join(
+              ", "
+            )}`,
+          });
+        }
 
-    //Handle uploaded image(s)
-    const images: string[] = [];
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-    if (files?.images) {
-      for (const file of files.images) {
-        images.push(`/uploads/${file.filename}`);
+        if (field.min !== undefined && value < field.min) {
+          return res.status(400).json({
+            success: false,
+            message: `${field.label} must be >= ${field.min}`,
+          });
+        }
+
+        if (field.max !== undefined && value > field.max) {
+          return res.status(400).json({
+            success: false,
+            message: `${field.label} must be <= ${field.max}`,
+          });
+        }
+
+        if (field.validation?.pattern) {
+          const regex = new RegExp(field.validation.pattern);
+          if (!regex.test(value)) {
+            return res.status(400).json({
+              success: false,
+              message: `${field.label} format is invalid`,
+            });
+          }
+        }
+
+        requestData[field.name] = value;
       }
     }
 
-    // Save everything from req.body + user
-    const newListing = new MarketplaceListing({
-      ...req.body,
-      leaser: req.user?.id,
-      images,
+    // 3. Handle uploaded files
+    if (req.files) {
+      for (const field of fields) {
+        if (field.type === "file" && req.files[field.name]) {
+          requestData[field.name] = (
+            req.files[field.name] as Express.Multer.File[]
+          ).map((file) => `/uploads/${file.filename}`);
+        }
+      }
+
+      if (req.files["images"]) {
+        requestData.images = (req.files["images"] as Express.Multer.File[]).map(
+          (file) => `/uploads/${file.filename}`
+        );
+      }
+    }
+
+    // 4. Save listing
+    const listing = new MarketplaceListing({
+      leaser,
+      zone,
+      subCategory,
+      ...requestData,
     });
 
-    const saved = await newListing.save();
+    await listing.save();
 
-    sendResponse(
-      res,
-      saved,
-      "Marketplace listing created successfully",
-      STATUS_CODES.CREATED
-    );
-  } catch (err: any) {
-    console.error("Error creating listing:", err);
-    sendResponse(
-      res,
-      null,
-      err.message || "Internal server error",
-      STATUS_CODES.INTERNAL_SERVER_ERROR
-    );
+    return res.status(201).json({ success: true, data: listing });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error", error });
   }
 };
 
@@ -106,7 +129,6 @@ export const getAllMarketplaceListings = async (
 
     const filter: any = {};
 
-    //Apply role-based access
     if (req.user?.role !== "admin") {
       if (!zone) {
         sendResponse(
@@ -117,21 +139,16 @@ export const getAllMarketplaceListings = async (
         );
         return;
       }
-
-      if (mongoose.Types.ObjectId.isValid(String(zone))) {
-        filter.zone = zone;
-      }
+      if (mongoose.Types.ObjectId.isValid(String(zone))) filter.zone = zone;
     } else {
-      if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+      if (zone && mongoose.Types.ObjectId.isValid(String(zone)))
         filter.zone = zone;
-      }
     }
 
     if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
       filter.subCategory = subCategory;
     }
 
-    //Adjusted population (removed full zone, limited fields from user & subCategory)
     const baseQuery = MarketplaceListing.find(filter)
       .populate("leaser", "_id name profilePicture phone createdAt updatedAt")
       .populate("subCategory", "_id name thumbnail createdAt updatedAt");
@@ -143,15 +160,12 @@ export const getAllMarketplaceListings = async (
 
     const final = data.map((doc: any) => {
       const obj = doc.toObject();
-
-      //Translate description by language
       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
       if (listingLang?.translations) {
         obj.description =
           listingLang.translations.description || obj.description;
       }
       delete obj.languages;
-
       return obj;
     });
 
@@ -181,7 +195,7 @@ export const getAllMarketplaceListings = async (
 
 // READ ONE BY ID
 export const getMarketplaceListingById = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
@@ -205,7 +219,6 @@ export const getMarketplaceListingById = async (
       return;
     }
 
-    // Translate listing content
     if (Array.isArray(doc.languages)) {
       const match = doc.languages.find((l: any) => l.locale === locale);
       if (match?.translations) {
@@ -214,7 +227,6 @@ export const getMarketplaceListingById = async (
     }
     delete (doc as any).languages;
 
-    //EXISTING: Translate subCategory
     const subCategoryObj = doc.subCategory as any;
     if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
       const match = subCategoryObj.languages.find(
@@ -243,45 +255,39 @@ export const updateMarketplaceListing = async (
   try {
     const { id } = req.params;
 
-    //Validate ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    //Find existing listing
     const existingListing = await MarketplaceListing.findById(id);
     if (!existingListing) {
       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    //Authorization: only leaser can update
     if (String(existingListing.leaser) !== String(req.user?.id)) {
       sendResponse(
         res,
         null,
-        "Forbidden: You are not the owner of this listing",
+        "Forbidden: You are not the owner",
         STATUS_CODES.FORBIDDEN
       );
       return;
     }
 
-    //Handle uploaded image files
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     let newImages: string[] = [];
 
-    if (files?.image && Array.isArray(files.image)) {
-      newImages = files.image.map((file) => `/uploads/${file.filename}`);
+    if (files?.images) {
+      newImages = files.images.map((file) => `/uploads/${file.filename}`);
     }
 
-    //Merge or replace images
     const updatedFields = {
       ...req.body,
       images: newImages.length > 0 ? newImages : existingListing.images,
     };
 
-    //Update document
     const updatedListing = await MarketplaceListing.findByIdAndUpdate(
       id,
       updatedFields,
@@ -296,7 +302,7 @@ export const updateMarketplaceListing = async (
 
 // DELETE
 export const deleteMarketplaceListing = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
@@ -307,13 +313,24 @@ export const deleteMarketplaceListing = async (
       return;
     }
 
-    const deleted = await MarketplaceListing.findByIdAndDelete(id);
-    if (!deleted) {
+    const existingListing = await MarketplaceListing.findById(id);
+    if (!existingListing) {
       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    sendResponse(res, deleted, "Listing deleted", STATUS_CODES.OK);
+    if (String(existingListing.leaser) !== String(req.user?.id)) {
+      sendResponse(
+        res,
+        null,
+        "Forbidden: You are not the owner",
+        STATUS_CODES.FORBIDDEN
+      );
+      return;
+    }
+
+    await existingListing.deleteOne();
+    sendResponse(res, existingListing, "Listing deleted", STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }

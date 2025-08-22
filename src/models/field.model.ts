@@ -1,6 +1,6 @@
 import { Schema, model, Document } from "mongoose";
 
-interface ILanguageTranslation {
+export interface ILanguageTranslation {
   locale: string;
   translations: {
     name?: string;
@@ -9,7 +9,7 @@ interface ILanguageTranslation {
   };
 }
 
-interface IField extends Document {
+export interface IField extends Document {
   name: string;
   type?: string;
   placeholder?: string;
