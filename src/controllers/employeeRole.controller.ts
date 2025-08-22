@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import Role from "../models/employeeRole.model";
+import { paginateQuery } from "../utils/paginate";
 
 // Create Role
 export const createRole = async (
@@ -36,12 +37,34 @@ export const getAllRoles = async (
   req: Request,
   res: Response,
   next: NextFunction
-): Promise<void> => {
+) => {
   try {
-    const roles = await Role.find();
-    sendResponse(res, roles, "Roles fetched", STATUS_CODES.OK);
-  } catch (err) {
-    next(err);
+    const { page = 1, limit = 10 } = req.query;
+
+    const baseQuery = Role.find().sort({ createdAt: -1 });
+
+    // Use pagination helper
+    const { data: roles, total } = await paginateQuery(baseQuery, {
+      page: Number(page),
+      limit: Number(limit),
+    });
+
+    // Convert to plain objects
+    const employeeRole = roles.map((role: any) => role.toObject());
+
+    sendResponse(
+      res,
+      {
+        employeeRole,
+        total,
+        page: Number(page),
+        limit: Number(limit),
+      },
+      "Employee roles fetched successfully",
+      STATUS_CODES.OK
+    );
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -65,7 +88,6 @@ export const getRoleById = async (
     next(err);
   }
 };
-
 
 // Update Role
 export const updateRole = async (
