@@ -50,12 +50,12 @@ export const getAllRoles = async (
     });
 
     // Convert to plain objects
-    const employeeRole = roles.map((role: any) => role.toObject());
+    const employeeRoles = roles.map((role: any) => role.toObject());
 
     sendResponse(
       res,
       {
-        employeeRole,
+        employeeRoles,
         total,
         page: Number(page),
         limit: Number(limit),
