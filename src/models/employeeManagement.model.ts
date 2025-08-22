@@ -10,23 +10,22 @@ interface IAccessPermission {
   operations: string[];
 }
 
-
 interface IEmployee extends Document {
-  firstName: string;
-  lastName: string;
+  name: string;
+  // lastName: string;
   email: string;
   phone: string;
   password: string;
   confirmPassword: string;
-  status: "active" | "inactive" | "blocked"; 
+  status: "active" | "inactive" | "blocked";
   role: string; // This can be used for a primary role if needed
   allowAccess: mongoose.Types.ObjectId;
   images: string[];
   address: string;
   language: string;
   languages?: ILanguageTranslation[];
-  zones: mongoose.Types.ObjectId[]; 
-  categories: mongoose.Types.ObjectId[]; 
+  zones: mongoose.Types.ObjectId[];
+  categories: mongoose.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,17 +42,21 @@ const AccessPermissionSchema = new Schema<IAccessPermission>(
   { _id: false }
 );
 
-
-
 const EmployeeSchema = new Schema<IEmployee>(
   {
-    firstName: { type: String, required: true, trim: true },
-    lastName: { type: String, required: true, trim: true },
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    name: { type: String, required: true, trim: true },
+    // lastName: { type: String, required: true, trim: true },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
     phone: { type: String, required: true, trim: true },
 
     password: { type: String, required: true },
-    confirmPassword: { type: String, required: true }, 
+    confirmPassword: { type: String, required: true },
     status: {
       type: String,
       enum: ["active", "inactive", "blocked"],
@@ -62,7 +65,7 @@ const EmployeeSchema = new Schema<IEmployee>(
     role: { type: String, default: "staff", trim: true },
     allowAccess: { type: Schema.Types.ObjectId, ref: "Role" },
 
-    images: [{ type: String, trim: true }], 
+    images: [{ type: String, trim: true }],
     address: { type: String, trim: true },
 
     language: { type: String, default: "en" },

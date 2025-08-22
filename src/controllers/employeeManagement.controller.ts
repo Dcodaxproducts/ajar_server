@@ -16,8 +16,7 @@ export const createEmployee = async (
 ) => {
   try {
     const {
-      firstName,
-      lastName,
+      name,
       email,
       phone,
       password,
@@ -90,8 +89,7 @@ export const createEmployee = async (
     }
 
     const newEmployee = new Employee({
-      firstName,
-      lastName,
+      name,
       email,
       phone,
       password,
@@ -154,10 +152,7 @@ export const getAllEmployees = async (
           const empObj = employee.toObject();
 
           if (matchedLang?.translations) {
-            empObj.firstName =
-              matchedLang.translations.firstName || empObj.firstName;
-            empObj.lastName =
-              matchedLang.translations.lastName || empObj.lastName;
+            empObj.name = matchedLang.translations.name || empObj.name;
           }
 
           delete empObj.languages;
@@ -186,6 +181,75 @@ export const getAllEmployees = async (
     next(error);
   }
 };
+
+// export const getAllEmployees = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     const { page = 1, limit = 10 } = req.query;
+//     const languageHeader = req.headers["language"];
+//     const locale = languageHeader?.toString() || null;
+
+//     const baseQuery = Employee.find()
+//       .sort({ createdAt: -1 })
+//       .populate("allowAccess", "name permissions");
+
+//     // Use pagination helper
+//     const { data: employees, total } = await paginateQuery(baseQuery, {
+//       page: Number(page),
+//       limit: Number(limit),
+//     });
+
+//     let filteredData = employees;
+
+//     // Apply locale translations
+//     if (locale && employees.some((emp: any) => emp.languages?.length)) {
+//       filteredData = employees
+//         .filter((employee: any) =>
+//           employee.languages?.some((lang: any) => lang.locale === locale)
+//         )
+//         .map((employee: any) => {
+//           const matchedLang = employee.languages.find(
+//             (lang: any) => lang.locale === locale
+//           );
+
+//           const empObj = employee.toObject();
+
+//           if (matchedLang?.translations) {
+//             empObj.firstName =
+//               matchedLang.translations.firstName || empObj.firstName;
+//             empObj.lastName =
+//               matchedLang.translations.lastName || empObj.lastName;
+//           }
+
+//           delete empObj.languages;
+//           return empObj;
+//         });
+//     } else {
+//       filteredData = employees.map((emp: any) => {
+//         const empObj = emp.toObject();
+//         delete empObj.languages;
+//         return empObj;
+//       });
+//     }
+
+//     sendResponse(
+//       res,
+//       {
+//         employees: filteredData,
+//         total,
+//         page: Number(page),
+//         limit: Number(limit),
+//       },
+//       `Employees fetched successfully${locale ? ` for locale: ${locale}` : ""}`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 // Get employee by ID
 export const getEmployeeById = async (
