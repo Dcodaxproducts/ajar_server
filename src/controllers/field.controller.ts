@@ -17,7 +17,9 @@ export const getAllFields = async (
     const languageHeader = req.headers["language"];
     const locale = languageHeader?.toString() || null;
 
-    const baseQuery = Field.find();
+    // 🔹 Added sort to show latest first
+    const baseQuery = Field.find().sort({ createdAt: -1 });
+
     const { data, total } = await paginateQuery(baseQuery, {
       page: Number(page),
       limit: Number(limit),
@@ -56,7 +58,7 @@ export const getAllFields = async (
       res,
       {
         fields: filteredData,
-        total: filteredData.length,
+        total,
         page: Number(page),
         limit: Number(limit),
       },
