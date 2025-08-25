@@ -81,27 +81,28 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       }
     }
 
-    // 3. Handle uploaded files
+    // 3. Handle uploaded files with full URL
     if (req.files) {
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+
       for (const field of fields) {
         if (field.type === "file" && req.files[field.name]) {
           requestData[field.name] = (
             req.files[field.name] as Express.Multer.File[]
-          ).map((file) => `/uploads/${file.filename}`);
+          ).map((file) => `${baseUrl}/uploads/${file.filename}`);
         }
       }
 
       if (req.files["images"]) {
         requestData.images = (req.files["images"] as Express.Multer.File[]).map(
-          (file) => `/uploads/${file.filename}`
+          (file) => `${baseUrl}/uploads/${file.filename}`
         );
       }
 
-      // ⬇️ NEW: rentalImages support
       if (req.files["rentalImages"]) {
         requestData.rentalImages = (
           req.files["rentalImages"] as Express.Multer.File[]
-        ).map((file) => `/uploads/${file.filename}`);
+        ).map((file) => `${baseUrl}/uploads/${file.filename}`);
       }
     }
 
@@ -136,20 +137,22 @@ export const getAllMarketplaceListings = async (
 
     const filter: any = {};
 
-    if (req.user?.role !== "admin") {
-      if (!zone) {
-        sendResponse(
-          res,
-          null,
-          "`zone` is required for users",
-          STATUS_CODES.BAD_REQUEST
-        );
-        return;
+    if (req.user) {
+      // Logged-in user
+      if (req.user.role === "admin") {
+        // admin → can filter by zone if provided
+        if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+          filter.zone = zone;
+        }
+      } else {
+        // normal logged-in user → only their own listings
+        filter.leaser = req.user.id;
       }
-      if (mongoose.Types.ObjectId.isValid(String(zone))) filter.zone = zone;
     } else {
-      if (zone && mongoose.Types.ObjectId.isValid(String(zone)))
+      // Guest user (no token) → all listings, but allow zone filter if given
+      if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
         filter.zone = zone;
+      }
     }
 
     if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
@@ -253,7 +256,7 @@ export const getMarketplaceListingById = async (
   }
 };
 
-// UPDATE
+// UPDATE LISTING
 export const updateMarketplaceListing = async (
   req: AuthRequest,
   res: Response,
@@ -284,17 +287,20 @@ export const updateMarketplaceListing = async (
     }
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+
     let newImages: string[] = [];
-    let newRentalImages: string[] = []; // ⬅️ NEW
+    let newRentalImages: string[] = [];
 
     if (files?.images) {
-      newImages = files.images.map((file) => `/uploads/${file.filename}`);
+      newImages = files.images.map(
+        (file) => `${baseUrl}/uploads/${file.filename}`
+      );
     }
 
-    // ⬇️ NEW: rentalImages support
     if (files?.rentalImages) {
       newRentalImages = files.rentalImages.map(
-        (file) => `/uploads/${file.filename}`
+        (file) => `${baseUrl}/uploads/${file.filename}`
       );
     }
 
@@ -304,7 +310,7 @@ export const updateMarketplaceListing = async (
       rentalImages:
         newRentalImages.length > 0
           ? newRentalImages
-          : existingListing.rentalImages, // ⬅️ NEW
+          : existingListing.rentalImages,
     };
 
     const updatedListing = await MarketplaceListing.findByIdAndUpdate(
@@ -318,7 +324,6 @@ export const updateMarketplaceListing = async (
     next(error);
   }
 };
-
 // DELETE
 export const deleteMarketplaceListing = async (
   req: AuthRequest,
