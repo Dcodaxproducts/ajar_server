@@ -13,6 +13,7 @@ import {
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 import upload, { uploadFiles } from "../utils/multer";
+import { optionalAuth } from "../middlewares/optionalAuthMiddleware";
 
 const router = express.Router();
 
@@ -23,7 +24,9 @@ function asyncHandler(fn: any) {
 }
 
 router.get("/search", asyncHandler(searchMarketplaceListings));
-router.get("/", authMiddleware, getAllMarketplaceListings);
+
+router.get("/", optionalAuth, getAllMarketplaceListings);
+
 router.get("/:id", getMarketplaceListingById);
 
 router.post(
