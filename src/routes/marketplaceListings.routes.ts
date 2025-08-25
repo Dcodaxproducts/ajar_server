@@ -28,7 +28,7 @@ router.get("/:id", getMarketplaceListingById);
 
 router.post(
   "/",
-  uploadFiles(["images", "documents", "otherFileField"]),
+  uploadFiles(["images", "rentalImages", "documents", "otherFileField"]),
   authMiddleware,
   validateRequest({ body: marketplaceListingSchema }),
   asyncHandler(createMarketplaceListing)
@@ -36,7 +36,7 @@ router.post(
 
 router.patch(
   "/:id",
-  uploadFiles(["images"]),
+  uploadFiles(["images", "rentalImages"]),
   authMiddleware,
   asyncHandler(languageTranslationMiddleware(MarketplaceListing)),
   updateMarketplaceListing

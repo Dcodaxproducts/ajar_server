@@ -21,6 +21,7 @@ interface IEmployee extends Document {
   role: string; // This can be used for a primary role if needed
   allowAccess: mongoose.Types.ObjectId;
   images: string[];
+  profileImage: string;
   address: string;
   language: string;
   languages?: ILanguageTranslation[];
@@ -56,7 +57,6 @@ const EmployeeSchema = new Schema<IEmployee>(
     phone: { type: String, required: true, trim: true },
 
     password: { type: String, required: true },
-    confirmPassword: { type: String, required: true },
     status: {
       type: String,
       enum: ["active", "inactive", "blocked"],
@@ -66,6 +66,7 @@ const EmployeeSchema = new Schema<IEmployee>(
     allowAccess: { type: Schema.Types.ObjectId, ref: "Role" },
 
     images: [{ type: String, trim: true }],
+    profileImage: { type: String, trim: true },
     address: { type: String, trim: true },
 
     language: { type: String, default: "en" },
@@ -75,9 +76,6 @@ const EmployeeSchema = new Schema<IEmployee>(
         translations: { type: Schema.Types.Mixed },
       },
     ],
-
-    zones: [{ type: Schema.Types.ObjectId, ref: "Zone" }],
-    categories: [{ type: Schema.Types.ObjectId, ref: "Category" }],
   },
   { timestamps: true }
 );

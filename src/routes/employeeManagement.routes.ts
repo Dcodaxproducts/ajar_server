@@ -52,14 +52,21 @@ router.get(
 router.post(
   "/",
   authMiddleware,
-  upload.array("images", 5),
+  // upload.array("images", 5),
+  upload.fields([
+    { name: "images", maxCount: 5 },
+    { name: "profileImage", maxCount: 1 },
+  ]),
   asyncHandler(employeeController.createEmployee)
 );
 
 router.patch(
   "/:id",
   authMiddleware,
-  upload.array("images", 5),
+  upload.fields([
+    { name: "images", maxCount: 5 },
+    { name: "profileImage", maxCount: 1 },
+  ]),
   wrapTranslationMiddleware(Employee),
   asyncHandler(employeeController.updateEmployee)
 );
