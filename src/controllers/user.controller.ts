@@ -103,7 +103,7 @@ export const loginUser = async (
     if (role === "staff") {
       // Staff login using Employee model with plain password
       const employee = await Employee.findOne({ email })
-        .select("email password roles")
+        .select("-__v") // fetch all except mongoose internal
         .lean();
 
       if (!employee) {
@@ -138,7 +138,7 @@ export const loginUser = async (
     } else if (role === "user" || role === "admin") {
       // User/Admin login using User model with bcrypt
       const user = await User.findOne({ email, role })
-        .select("email password role")
+        .select("-password") //Fetch all fields except password
         .lean();
 
       if (!user) {
@@ -146,7 +146,10 @@ export const loginUser = async (
         return;
       }
 
-      const isPasswordValid = await bcrypt.compare(password, user.password);
+      const isPasswordValid = await bcrypt.compare(
+        password,
+        (await User.findOne({ email, role }))?.password || ""
+      );
       if (!isPasswordValid) {
         sendResponse(
           res,
@@ -183,6 +186,98 @@ export const loginUser = async (
     next(error);
   }
 };
+
+// export const loginUser = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   const { email, password, role } = req.body;
+
+//   try {
+//     if (role === "staff") {
+//       // Staff login using Employee model with plain password
+//       const employee = await Employee.findOne({ email })
+//         .select("email password roles")
+//         .lean();
+
+//       if (!employee) {
+//         sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
+//         return;
+//       }
+
+//       if (employee.password !== password) {
+//         sendResponse(
+//           res,
+//           null,
+//           "Invalid email or password",
+//           STATUS_CODES.UNAUTHORIZED
+//         );
+//         return;
+//       }
+
+//       const accessToken = generateAccessToken({
+//         id: employee._id,
+//         role: "staff",
+//       });
+
+//       sendResponse(
+//         res,
+//         {
+//           token: accessToken,
+//           user: employee,
+//         },
+//         "Login successful (staff)",
+//         STATUS_CODES.OK
+//       );
+//     } else if (role === "user" || role === "admin") {
+//       // User/Admin login using User model with bcrypt
+//       const user = await User.findOne({ email, role })
+//         .select("email password role")
+//         .lean();
+
+//       if (!user) {
+//         sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+//         return;
+//       }
+
+//       const isPasswordValid = await bcrypt.compare(password, user.password);
+//       if (!isPasswordValid) {
+//         sendResponse(
+//           res,
+//           null,
+//           "Invalid email or password",
+//           STATUS_CODES.UNAUTHORIZED
+//         );
+//         return;
+//       }
+
+//       const accessToken = generateAccessToken({
+//         id: user._id,
+//         role: user.role,
+//       });
+
+//       sendResponse(
+//         res,
+//         {
+//           token: accessToken,
+//           user: user,
+//         },
+//         "Login successful",
+//         STATUS_CODES.OK
+//       );
+//     } else {
+//       sendResponse(
+//         res,
+//         null,
+//         "Invalid role provided",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//     }
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 export const refreshToken = async (
   req: Request,
