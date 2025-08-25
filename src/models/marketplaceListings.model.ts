@@ -16,6 +16,7 @@ export interface IMarketplaceListing extends Document {
   };
   name?: string;
   images?: string[];
+  rentalImages?: string[];
   description: string;
   address: string;
   currency?: string;
@@ -50,6 +51,7 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
     },
     name: { type: String },
     images: [{ type: String }],
+    rentalImages: [{ type: String }],
     description: { type: String },
     address: { type: String },
     currency: { type: String },

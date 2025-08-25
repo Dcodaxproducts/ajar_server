@@ -96,6 +96,13 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
           (file) => `/uploads/${file.filename}`
         );
       }
+
+      // ⬇️ NEW: rentalImages support
+      if (req.files["rentalImages"]) {
+        requestData.rentalImages = (
+          req.files["rentalImages"] as Express.Multer.File[]
+        ).map((file) => `/uploads/${file.filename}`);
+      }
     }
 
     // 4. Save listing
@@ -278,14 +285,26 @@ export const updateMarketplaceListing = async (
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     let newImages: string[] = [];
+    let newRentalImages: string[] = []; // ⬅️ NEW
 
     if (files?.images) {
       newImages = files.images.map((file) => `/uploads/${file.filename}`);
     }
 
+    // ⬇️ NEW: rentalImages support
+    if (files?.rentalImages) {
+      newRentalImages = files.rentalImages.map(
+        (file) => `/uploads/${file.filename}`
+      );
+    }
+
     const updatedFields = {
       ...req.body,
       images: newImages.length > 0 ? newImages : existingListing.images,
+      rentalImages:
+        newRentalImages.length > 0
+          ? newRentalImages
+          : existingListing.rentalImages, // ⬅️ NEW
     };
 
     const updatedListing = await MarketplaceListing.findByIdAndUpdate(
