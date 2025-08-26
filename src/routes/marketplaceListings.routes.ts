@@ -25,7 +25,9 @@ function asyncHandler(fn: any) {
 
 router.get("/search", asyncHandler(searchMarketplaceListings));
 
-router.get("/", optionalAuth, getAllMarketplaceListings);
+// router.get("/", optionalAuth, getAllMarketplaceListings);
+
+router.get("/", authMiddleware, getAllMarketplaceListings);
 
 router.get("/:id", getMarketplaceListingById);
 

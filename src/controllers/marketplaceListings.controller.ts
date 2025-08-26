@@ -126,6 +126,83 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
 };
 
 // Get All Marketplace Listings
+// export const getAllMarketplaceListings = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
+//     const { page = 1, limit = 10, zone, subCategory } = req.query;
+
+//     const filter: any = {};
+
+//     if (req.user) {
+//       // Logged-in user
+//       if (req.user.role === "admin") {
+//         // admin → can filter by zone if provided
+//         if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//           filter.zone = zone;
+//         }
+//       } else {
+//         // normal logged-in user → only their own listings
+//         filter.leaser = req.user.id;
+//       }
+//     } else {
+//       // Guest user (no token) → all listings, but allow zone filter if given
+//       if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//         filter.zone = zone;
+//       }
+//     }
+
+//     if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
+//       filter.subCategory = subCategory;
+//     }
+
+//     const baseQuery = MarketplaceListing.find(filter)
+//       .populate("leaser", "_id name profilePicture phone createdAt updatedAt")
+//       .populate("subCategory", "_id name thumbnail createdAt updatedAt");
+
+//     const { data, total } = await paginateQuery(baseQuery, {
+//       page: +page,
+//       limit: +limit,
+//     });
+
+//     const final = data.map((doc: any) => {
+//       const obj = doc.toObject();
+//       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
+//       if (listingLang?.translations) {
+//         obj.description =
+//           listingLang.translations.description || obj.description;
+//       }
+//       delete obj.languages;
+//       return obj;
+//     });
+
+//     const uniqueUserIds = await MarketplaceListing.distinct("leaser", filter);
+//     const totalUsersWithListings = uniqueUserIds.length;
+//     const totalMarketplaceListings = await MarketplaceListing.countDocuments(
+//       filter
+//     );
+
+//     sendResponse(
+//       res,
+//       {
+//         listings: final,
+//         total,
+//         page: +page,
+//         limit: +limit,
+//         totalUsersWithListings,
+//         totalMarketplaceListings,
+//       },
+//       `Fetched listings${locale !== "en" ? ` (locale: ${locale})` : ""}`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (err) {
+//     next(err);
+//   }
+// };
+// Get All Marketplace Listings
 export const getAllMarketplaceListings = async (
   req: AuthRequest,
   res: Response,
@@ -133,27 +210,39 @@ export const getAllMarketplaceListings = async (
 ): Promise<void> => {
   try {
     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
-    const { page = 1, limit = 10, zone, subCategory } = req.query;
+    const { page = 1, limit = 10, zone, subCategory, all } = req.query;
 
     const filter: any = {};
 
+    // ------------------ UPDATED LOGIC ------------------
     if (req.user) {
-      // Logged-in user
       if (req.user.role === "admin") {
-        // admin → can filter by zone if provided
+        // Admin → show all listings, optionally filter by zone
         if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
           filter.zone = zone;
         }
       } else {
-        // normal logged-in user → only their own listings
-        filter.leaser = req.user.id;
+        // Normal user
+        if (all === "true") {
+          // Show all listings → don't filter by leaser, only zone/subCategory
+          if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+            filter.zone = zone;
+          }
+        } else {
+          // Default → only user's own listings
+          filter.leaser = req.user.id;
+          if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+            filter.zone = zone;
+          }
+        }
       }
     } else {
-      // Guest user (no token) → all listings, but allow zone filter if given
+      // Guest user (no token) → all listings, optionally filter by zone
       if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
         filter.zone = zone;
       }
     }
+    // ---------------- END UPDATED LOGIC -----------------
 
     if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
       filter.subCategory = subCategory;
