@@ -1,27 +1,22 @@
-import express from "express";
+import express, { Application, Request, Response } from "express";
 import cors from "cors";
 import morgan from "morgan";
-import http from "http";
-import { Server } from "socket.io";
+import http, { Server as HTTPServer } from "http";
+import { Server as SocketIOServer } from "socket.io";
 import path from "path";
-
 import routes from "./routes";
 import { errorHandler } from "./middlewares/errorHandler";
 import { globalRateLimiter } from "./middlewares/ratelimites.middleware";
-import { setupChatSocket } from "./utils/chat.socket";
+import jwt, { JwtPayload } from "jsonwebtoken";
+import { allowedOrigins } from "./config/corsOrigins";
+import { config } from "./config/env";
+// import { setupChatSocket } from "./utils/socket";
 
-const app = express();
+const app: Application = express();
 
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "http://192.168.18.89:3000",
-      "https://ajar-dcodax.vercel.app",
-      "http://192.168.18.145:3000",
-      "https://test-ajar.vercel.app/en",
-      "https://test-ajar.vercel.app",
-    ],
+    origin: allowedOrigins,
     credentials: true,
   })
 );
@@ -32,12 +27,11 @@ app.use(express.static("public"));
 app.use(morgan("dev"));
 // app.use(globalRateLimiter);
 
-// Add the uploads route handler here (before API routes)
-app.get("/uploads/:filename", (req, res) => {
+// Static uploads route
+app.get("/uploads/:filename", (req: Request, res: Response) => {
   const { filename } = req.params;
   const filePath = path.join(__dirname, "../public/uploads", filename);
 
-  // Set proper caching headers (optional but recommended)
   res.setHeader("Cache-Control", "public, max-age=31536000");
 
   res.sendFile(filePath, (err) => {
@@ -48,32 +42,105 @@ app.get("/uploads/:filename", (req, res) => {
   });
 });
 
-// Then your API routes
+// API routes
 app.use("/api", routes);
 
-app.get("/", (req, res) => {
+// Root
+app.get("/", (req: Request, res: Response) => {
   console.log(`HTTP Version: ${req.httpVersion}`);
   res.send("server is running .... ");
 });
 
+// Error handler
 app.use(errorHandler);
 
-//Create and export HTTP + Socket.IO server
-const server = http.createServer(app);
+// Create HTTP server
+const server: HTTPServer = http.createServer(app);
 
-const io = new Server(server, {
+// Create Socket.IO server
+const io: SocketIOServer = new SocketIOServer(server, {
   cors: {
-    origin: [
-      "http://localhost:3000",
-      "http://192.168.18.89:3000",
-      "https://ajar-dcodax.vercel.app/",
-      "https://test-ajar.vercel.app/en",
-      "https://test-ajar.vercel.app",
-    ],
+    origin: allowedOrigins,
     credentials: true,
   },
+  // transports: ["websocket", "polling"],
 });
 
-setupChatSocket(io);
+// Attach socket events
+// setupChatSocket(io);
 
-export { server };
+const JWT_SECRET: string = config.ACCESS_TOKEN_SECRET as string;
+
+type Users = {
+  [key: string]: string;
+};
+const users: Users = {};
+export const getReceiverSocketId = (receiverId: string) => {
+  return users[receiverId];
+};
+
+io.on("connection", (socket) => {
+  console.log("New socket connection:", socket.id);
+  const token = socket.handshake.query.token;
+  console.log("Socket token:", token);
+  console.log(users);
+
+  if (!token) {
+    console.log("No token provided. Disconnecting socket.");
+    socket.disconnect();
+    return;
+  }
+  let userId;
+  try {
+    const decoded = jwt.verify(token as string, JWT_SECRET) as JwtPayload & {
+      id: string;
+    };
+    // console.log(decoded);
+    userId = decoded.id;
+  } catch (err) {
+    // console.log(err);
+
+    console.log("Invalid token. Disconnecting socket.");
+    socket.disconnect();
+    return;
+  }
+
+  if (userId) {
+    users[userId] = socket.id;
+    console.log(users);
+
+    io.emit("getOnlineUsers", Object.keys(users));
+  } else {
+    console.log("No userId found in token. Disconnecting socket.");
+    socket.disconnect();
+  }
+  //  socket.on("messageRead", async (messageId) => {
+  //     console.log("messageRead event received for:", messageId);
+  //     try {
+  //      const  message = await Message.findById(messageId);
+  //       if (message && !message.read && message.receiver.toString() === userId) {
+  //         await Message.findByIdAndUpdate(messageId, { read: true });
+  //         console.log(Message ${messageId} marked as read);
+
+  //     const senderSocketId = getReceiverSocketId(message.sender.toString());
+  //     if (senderSocketId) {
+  //       io.emit("messageReadStatusUpdated", {
+  //         messageId,
+  //       });
+  //     }
+  //   }
+  // } catch (error) {
+  //   console.error("Error updating message read status:", error);
+  // }
+  //   });
+
+  socket.on("disconnect", () => {
+    console.log("A user disconnected", socket.id);
+    if (userId) {
+      delete users[userId];
+      io.emit("getOnlineUsers", Object.keys(users));
+    }
+  });
+});
+
+export { app, server, io };
