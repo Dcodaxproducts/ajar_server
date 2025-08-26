@@ -20,6 +20,7 @@ app.use(
       "https://ajar-dcodax.vercel.app",
       "http://192.168.18.145:3000",
       "https://test-ajar.vercel.app/en",
+      "https://test-ajar.vercel.app",
     ],
     credentials: true,
   })
@@ -67,6 +68,7 @@ const io = new Server(server, {
       "http://192.168.18.89:3000",
       "https://ajar-dcodax.vercel.app/",
       "https://test-ajar.vercel.app/en",
+      "https://test-ajar.vercel.app",
     ],
     credentials: true,
   },
