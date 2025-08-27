@@ -28,7 +28,7 @@ const router = express.Router();
 
 router.use("/users", userRoutes);
 router.use("/messages", messageRoutes);
-router.use("/conversations", conversationRoutes);
+router.use("/chats", conversationRoutes);
 router.use("/payments", paymentRoutes);
 router.use("/zones", zoneRoutes);
 router.use("/categories", categoryRoutes);

@@ -1,6 +1,11 @@
-import { Response } from "express";
+import { Response, NextFunction } from "express";
 import { Conversation } from "../models/conversation.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
+import mongoose from "mongoose";
+import { Message } from "../models/message.model";
+import { paginateQuery } from "../utils/paginate";
+import { sendResponse } from "../utils/response";
+import { STATUS_CODES } from "../config/constants";
 
 // Create or get existing conversation
 export const createConversation = async (req: AuthRequest, res: Response) => {
@@ -23,6 +28,64 @@ export const createConversation = async (req: AuthRequest, res: Response) => {
     res.status(200).json(conversation);
   } catch (error) {
     res.status(500).json({ error: "Failed to create conversation" });
+  }
+};
+
+// Get all conversations for logged-in user with pagination
+export const getAllConversations = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const userId = new mongoose.Types.ObjectId(req.user!.id);
+
+    const baseQuery = Conversation.find({ participants: userId })
+      .populate("participants", "name email ")
+      .populate({
+        path: "lastMessage",
+        populate: [
+          { path: "sender", select: "name email profilePicture" },
+          { path: "receiver", select: "name email profilePicture" },
+        ],
+      })
+      .sort({ updatedAt: -1 });
+
+    const { data: conversations, total } = await paginateQuery(baseQuery, {
+      page: Number(page),
+      limit: Number(limit),
+    });
+
+    // Add unread count for each conversation
+    const conversationsWithUnread = await Promise.all(
+      conversations.map(async (conv) => {
+        const unreadCount = await Message.countDocuments({
+          conversationId: conv._id,
+          receiver: userId,
+          seen: false,
+        });
+
+        const convObj = conv.toObject() as any;
+        convObj.unreadCount = unreadCount;
+        return convObj;
+      })
+    );
+
+    sendResponse(
+      res,
+      {
+        chats: conversationsWithUnread,
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        // totalPages: Math.ceil(total / Number(limit)),
+      },
+      "Conversations fetched successfully",
+      STATUS_CODES.OK
+    );
+  } catch (error) {
+    next(error);
   }
 };
 
