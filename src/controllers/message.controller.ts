@@ -4,7 +4,7 @@ import { Conversation } from "../models/conversation.model";
 import { Message } from "../models/message.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 
-// ✅ Send message
+// Send message
 export const sendMessage = async (req: AuthRequest, res: Response) => {
   try {
     const { conversationId, receiver, text, attachments } = req.body;
