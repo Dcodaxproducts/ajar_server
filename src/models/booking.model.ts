@@ -15,40 +15,39 @@ interface IExtensionCharges {
 
 interface ILanguageTranslation {
   locale: string;
-  translations: Record<string, any>; 
+  translations: Record<string, any>;
 }
 
-
 export interface IBooking extends Document {
-   [key: string]: any; 
-    status: "pending" | "accepted" | "rejected" | "completed" | "cancelled"; 
+  [key: string]: any;
+  status: "pending" | "accepted" | "rejected" | "completed" | "cancelled";
 
-            renter: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
-    },
-   leaser?: mongoose.Types.ObjectId;
-   actualReturnedAt?: Date | null;
+  renter: {
+    type: mongoose.Schema.Types.ObjectId;
+    ref: "User";
+    required: true;
+  };
+  leaser?: mongoose.Types.ObjectId;
+  actualReturnedAt?: Date | null;
 
-    marketplaceListingId: mongoose.Types.ObjectId;
-        dates: {
-            checkIn: Date;
-            checkOut: Date;
-                };
-    noOfGuests: number;
-    roomType: string;
-    phone: string;
-    priceDetails: IPriceDetails;
-    extensionCharges?: IExtensionCharges;
-    language?: string;
-    languages?: ILanguageTranslation[];
-     otp?: string;
+  marketplaceListingId: mongoose.Types.ObjectId;
+  dates: {
+    checkIn: Date;
+    checkOut: Date;
+  };
+  noOfGuests: number;
+  roomType: string;
+  phone: string;
+  priceDetails: IPriceDetails;
+  extensionCharges?: IExtensionCharges;
+  language?: string;
+  languages?: ILanguageTranslation[];
+  otp?: string;
 }
 
 const BookingSchema = new Schema<IBooking>(
   {
-     status: {
+    status: {
       type: String,
       enum: ["pending", "accepted", "rejected", "completed", "cancelled"],
       default: "pending",
@@ -60,13 +59,13 @@ const BookingSchema = new Schema<IBooking>(
       required: true,
     },
     leaser: {
-  type: Schema.Types.ObjectId,
-  ref: "User",
-},
-actualReturnedAt: {
-  type: Date,
-  default: null,
-},
+      type: Schema.Types.ObjectId,
+      ref: "User",
+    },
+    actualReturnedAt: {
+      type: Date,
+      default: null,
+    },
 
     marketplaceListingId: {
       type: Schema.Types.ObjectId,
@@ -91,18 +90,18 @@ actualReturnedAt: {
       totalPrice: { type: Number },
     },
     language: { type: String, default: "en" },
-     languages: [
+    languages: [
       {
         locale: { type: String, required: true },
-        translations: { type: Schema.Types.Mixed }, 
+        translations: { type: Schema.Types.Mixed },
       },
     ],
-       otp: {
+    otp: {
       type: String,
       default: "",
     },
   },
-  { timestamps: true,strict: false, }
+  { timestamps: true, strict: false }
 );
 
 export const Booking = model<IBooking>("Booking", BookingSchema);

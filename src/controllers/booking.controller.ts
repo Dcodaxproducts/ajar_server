@@ -405,9 +405,9 @@ export const updateBookingStatus = async (
         ? user.id === (booking.renter as any)._id.toString()
         : user.id === booking.renter.toString();
 
-    const isLeaser = user.id === booking.leaser?.toString(); // in case leaser is optional
+    const isLeaser = user.id === booking.leaser?.toString();
 
-    //Restriction Logic
+    // Restriction logic
     if (status === "cancelled") {
       if (!isRenter) {
         return sendResponse(
@@ -428,8 +428,7 @@ export const updateBookingStatus = async (
       }
     }
 
-    const bookingToUpdate = await Booking.findById(id); // Fetch again to update
-
+    const bookingToUpdate = await Booking.findById(id);
     if (!bookingToUpdate) {
       return sendResponse(
         res,
@@ -441,7 +440,7 @@ export const updateBookingStatus = async (
 
     bookingToUpdate.status = status as any;
 
-    // If accepted → send OTP to renter
+    // If accepted → send OTP
     if (status === "accepted") {
       const pin = Math.floor(1000 + Math.random() * 9000).toString();
       bookingToUpdate.otp = pin;
@@ -456,6 +455,23 @@ export const updateBookingStatus = async (
     }
 
     await bookingToUpdate.save();
+
+    // Update listing availability + currentBookingId
+    const listing = await MarketplaceListing.findById(
+      bookingToUpdate.marketplaceListingId
+    );
+
+    if (listing) {
+      if (status === "accepted") {
+        listing.isAvailable = false;
+        listing.currentBookingId = bookingToUpdate._id;
+      } else {
+        // rejected / completed / cancelled
+        listing.isAvailable = true;
+        listing.currentBookingId = null;
+      }
+      await listing.save();
+    }
 
     sendResponse(
       res,

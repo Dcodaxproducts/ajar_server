@@ -9,6 +9,7 @@ import {
   updateMarketplaceListing,
   deleteMarketplaceListing,
   searchMarketplaceListings,
+  getBookingsForListing,
 } from "../controllers/marketplaceListings.controller";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
@@ -30,6 +31,12 @@ router.get("/search", asyncHandler(searchMarketplaceListings));
 router.get("/", authMiddleware, getAllMarketplaceListings);
 
 router.get("/:id", getMarketplaceListingById);
+
+router.get(
+  "/:id/bookings",
+  authMiddleware,
+  asyncHandler(getBookingsForListing)
+);
 
 router.post(
   "/",

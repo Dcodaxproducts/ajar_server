@@ -29,7 +29,7 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
     }
 
     // Create message
-    const message = await Message.create({
+    const newMessage = await Message.create({
       chatId: conversation._id,
       sender,
       receiver: receiverId,
@@ -39,13 +39,18 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
     });
 
     // Update lastMessage
-    conversation.lastMessage = message._id as mongoose.Types.ObjectId;
+    conversation.lastMessage = newMessage._id as mongoose.Types.ObjectId;
     await conversation.save();
+
+    // Populate sender and receiver before sending response
+    const populatedMessage = await Message.findById(newMessage._id)
+      .populate("sender", "name email profilePicture")
+      .populate("receiver", "name email profilePicture");
 
     res.status(201).json({
       success: true,
       message: "Message sent successfully",
-      data: message,
+      data: populatedMessage,
     });
   } catch (error) {
     console.error("Send message error:", error);
