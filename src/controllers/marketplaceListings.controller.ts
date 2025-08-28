@@ -9,6 +9,7 @@ import { Zone } from "../models/zone.model";
 import { SubCategory } from "../models/category.model";
 import { Form } from "../models/form.model";
 import { Field, IField } from "../models/field.model";
+import { Booking } from "../models/booking.model";
 
 // controllers/marketplaceListings.controller.ts
 export const createMarketplaceListing = async (req: any, res: Response) => {
@@ -264,6 +265,51 @@ export const getMarketplaceListingById = async (
     sendResponse(res, doc, "Listing fetched", STATUS_CODES.OK);
   } catch (err) {
     next(err);
+  }
+};
+
+// GET all bookings for a listing
+export const getBookingsForListing = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return sendResponse(
+        res,
+        null,
+        "Invalid listing ID",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
+
+    const listing = await MarketplaceListing.findById(id).lean();
+    if (!listing) {
+      return sendResponse(
+        res,
+        null,
+        "Listing not found",
+        STATUS_CODES.NOT_FOUND
+      );
+    }
+
+    const bookings = await Booking.find({ marketplaceListingId: id })
+      .populate("renter", "name email profilePicture")
+      .populate("leaser", "name email")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return sendResponse(
+      res,
+      { listing, bookings },
+      "Bookings for listing fetched successfully",
+      STATUS_CODES.OK
+    );
+  } catch (error) {
+    next(error);
   }
 };
 

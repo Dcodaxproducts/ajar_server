@@ -27,7 +27,7 @@ import refundRequestsRoutes from "./refundRequests.routes";
 const router = express.Router();
 
 router.use("/users", userRoutes);
-router.use("/messages", messageRoutes);
+// router.use("/messages", messageRoutes);
 router.use("/chats", conversationRoutes);
 router.use("/payments", paymentRoutes);
 router.use("/zones", zoneRoutes);
