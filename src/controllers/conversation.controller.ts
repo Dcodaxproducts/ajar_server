@@ -1,8 +1,8 @@
 import { Response, NextFunction } from "express";
-import { Conversation } from "../models/conversation.model";
-import { AuthRequest } from "../middlewares/auth.middleware";
 import mongoose from "mongoose";
+import { Conversation } from "../models/conversation.model";
 import { Message } from "../models/message.model";
+import { AuthRequest } from "../middlewares/auth.middleware";
 import { paginateQuery } from "../utils/paginate";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
@@ -10,9 +10,13 @@ import { STATUS_CODES } from "../config/constants";
 // Create or get existing conversation
 export const createConversation = async (req: AuthRequest, res: Response) => {
   try {
-    const senderId = req.user!.id; // logged-in user
-    const { receiverId, adId } = req.body;
+    const senderId = new mongoose.Types.ObjectId(req.user!.id);
+    const receiverId = new mongoose.Types.ObjectId(req.body.receiverId);
+    const adId = req.body.adId
+      ? new mongoose.Types.ObjectId(req.body.adId)
+      : undefined;
 
+    // Check if conversation already exists
     let conversation = await Conversation.findOne({
       participants: { $all: [senderId, receiverId] },
       adId: adId || null,
@@ -25,13 +29,24 @@ export const createConversation = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    res.status(200).json(conversation);
+    sendResponse(
+      res,
+      conversation,
+      "Conversation fetched/created successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
-    res.status(500).json({ error: "Failed to create conversation" });
+    console.error("Create conversation error:", error);
+    sendResponse(
+      res,
+      null,
+      "Failed to create conversation",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
-// Get all conversations for logged-in user with pagination
+// Get all conversations for logged-in user
 export const getAllConversations = async (
   req: AuthRequest,
   res: Response,
@@ -41,8 +56,8 @@ export const getAllConversations = async (
     const { page = 1, limit = 10 } = req.query;
     const userId = new mongoose.Types.ObjectId(req.user!.id);
 
-    const baseQuery = Conversation.find({ participants: userId })
-      .populate("participants", "name email ")
+    const baseQuery = Conversation.find({ participants: { $in: [userId] } })
+      .populate("participants", "name email profilePicture")
       .populate({
         path: "lastMessage",
         populate: [
@@ -61,11 +76,10 @@ export const getAllConversations = async (
     const conversationsWithUnread = await Promise.all(
       conversations.map(async (conv) => {
         const unreadCount = await Message.countDocuments({
-          conversationId: conv._id,
+          chatId: conv._id,
           receiver: userId,
           seen: false,
         });
-
         const convObj = conv.toObject() as any;
         convObj.unreadCount = unreadCount;
         return convObj;
@@ -79,7 +93,6 @@ export const getAllConversations = async (
         total,
         page: Number(page),
         limit: Number(limit),
-        // totalPages: Math.ceil(total / Number(limit)),
       },
       "Conversations fetched successfully",
       STATUS_CODES.OK
@@ -89,50 +102,92 @@ export const getAllConversations = async (
   }
 };
 
-// Get all conversations for logged-in user
-export const getUserConversations = async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.user!.id;
-
-    const conversations = await Conversation.find({
-      participants: userId,
-    })
-      .populate("participants", "name email")
-      .populate("lastMessage")
-      .sort({ updatedAt: -1 });
-
-    res.status(200).json(conversations);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch conversations" });
-  }
-};
-
 // Get conversation by ID
 export const getConversationById = async (
   req: AuthRequest,
-  res: Response
-): Promise<void> => {
+  res: Response,
+  next: NextFunction
+) => {
   try {
-    const { conversationId } = req.params;
-    const userId = req.user!.id;
+    const chatId = req.params.chatId;
+    const userId = new mongoose.Types.ObjectId(req.user!.id);
 
-    const conversation = await Conversation.findById(conversationId)
-      .populate("participants", "name email")
-      .populate("lastMessage");
+    const conversation = await Conversation.findOne({
+      _id: new mongoose.Types.ObjectId(chatId),
+      participants: { $in: [userId] },
+    })
+      .populate("participants", "name email profilePicture")
+      .populate({
+        path: "lastMessage",
+        populate: [
+          { path: "sender", select: "name email profilePicture" },
+          { path: "receiver", select: "name email profilePicture" },
+        ],
+      });
 
     if (!conversation) {
-      res.status(404).json({ error: "Conversation not found" });
-      return;
+      return sendResponse(
+        res,
+        null,
+        "Conversation not found or you are not a participant",
+        STATUS_CODES.NOT_FOUND
+      );
     }
 
-    // Ensure logged-in user is part of the conversation
-    if (!conversation.participants.some((id) => id.toString() === userId)) {
-      res.status(403).json({ error: "Access denied" });
-      return;
-    }
-
-    res.status(200).json(conversation);
+    sendResponse(
+      res,
+      conversation,
+      "Conversation fetched successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch conversation" });
+    next(error);
+  }
+};
+
+// Get all messages of a conversation
+export const getConversationMessages = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const chatId = req.params.chatId;
+    const { page = 1, limit = 20 } = req.query;
+    const userId = new mongoose.Types.ObjectId(req.user!.id);
+
+    // Check if user is a participant
+    const conversation = await Conversation.findOne({
+      _id: new mongoose.Types.ObjectId(chatId),
+      participants: { $in: [userId] },
+    });
+
+    if (!conversation) {
+      return sendResponse(
+        res,
+        null,
+        "Not authorised or conversation not found",
+        STATUS_CODES.FORBIDDEN
+      );
+    }
+
+    const baseQuery = Message.find({ chatId: conversation._id })
+      .populate("sender", "name email profilePicture")
+      .populate("receiver", "name email profilePicture")
+      .sort({ createdAt: -1 });
+
+    const { data: messages, total } = await paginateQuery(baseQuery, {
+      page: Number(page),
+      limit: Number(limit),
+    });
+
+    sendResponse(
+      res,
+      { messages, total, page: Number(page), limit: Number(limit) },
+      "Messages fetched successfully",
+      STATUS_CODES.OK
+    );
+  } catch (error) {
+    next(error);
   }
 };
