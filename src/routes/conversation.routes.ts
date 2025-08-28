@@ -1,27 +1,25 @@
 import { Router } from "express";
 import {
   createConversation,
-  getUserConversations,
-  getConversationById,
   getAllConversations,
+  getConversationById,
+  getConversationMessages,
 } from "../controllers/conversation.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
 const router = Router();
 
-// All conversation routes require authentication
+function asyncHandler(fn: any) {
+  return function (req: any, res: any, next: any) {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
 router.use(authMiddleware);
 
-// Create or get existing conversation
-router.post("/", createConversation);
-
-// Get all conversations for logged-in user
-router.get("/", getAllConversations);
-
-// Get all conversations for the logged-in user
-router.get("/", getUserConversations);
-
-// Get a single conversation by ID
-router.get("/:conversationId", getConversationById);
+router.post("/", asyncHandler(createConversation));
+router.get("/", asyncHandler(getAllConversations));
+router.get("/:chatId", asyncHandler(getConversationById));
+router.get("/:chatId/messages", asyncHandler(getConversationMessages));
 
 export default router;

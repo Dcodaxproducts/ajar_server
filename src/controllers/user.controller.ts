@@ -564,8 +564,6 @@ export const resetPassword = async (
   }
 };
 
-// Get all users and user statistics in a single API.
-
 // Embedded pagination logic directly inside the controller
 const paginateQuery = async <T>(
   query: import("mongoose").Query<T[], any>,
@@ -653,25 +651,38 @@ export const updateUserProfile = async (
 ): Promise<void> => {
   try {
     const userId = req.user?.id;
-    const { name, phone } = req.body;
-    const profilePicture = req.file;
 
-    const user = await User.findById(userId);
+    // Collect body data
+    const updates: any = { ...req.body };
+
+    // Handle file upload
+    if (req.file) {
+      updates.profilePicture = `${req.protocol}://${req.get("host")}/uploads/${
+        req.file.filename
+      }`;
+    }
+
+    // Find and update in one go
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
     if (!user) {
       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    if (profilePicture) {
-      user.profilePicture = `/uploads/${profilePicture.filename}`;
-    }
+    // Exclude password before sending back
+    const { password, ...userWithoutPassword } = user.toObject();
 
-    user.name = name || user.name;
-    user.phone = phone || user.phone;
-
-    await user.save();
-
-    sendResponse(res, user, "Profile updated successfully", STATUS_CODES.OK);
+    sendResponse(
+      res,
+      userWithoutPassword,
+      "Profile updated successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }

@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IMessage extends Document {
-  conversationId: mongoose.Types.ObjectId;
+  chatId: mongoose.Types.ObjectId;
   sender: mongoose.Types.ObjectId;
   receiver: mongoose.Types.ObjectId;
   text: string;
@@ -12,12 +12,11 @@ export interface IMessage extends Document {
   deletedAt?: Date;
   deletedBy?: mongoose.Types.ObjectId[];
   editedAt?: Date;
-  status: "sent" | "delivered" | "read" | "deleted";
 }
 
 const MessageSchema: Schema<IMessage> = new Schema(
   {
-    conversationId: {
+    chatId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Conversation",
       required: true,
