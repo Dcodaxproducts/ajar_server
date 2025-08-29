@@ -1,77 +1,66 @@
-import { Server, Socket } from "socket.io";
+import { Server as SocketIOServer } from "socket.io";
 import jwt, { JwtPayload } from "jsonwebtoken";
+import { allowedOrigins } from "../config/corsOrigins";
 import { config } from "../config/env";
-import { Message } from "../models/message.model";
 
-const JWT_SECRET: string = config.JWT_SECRET || "default_secret";
+const JWT_SECRET = config.ACCESS_TOKEN_SECRET as string;
 
-// Users map (online tracking)
-const users: Record<string, string> = {};
+// Users map
+type Users = { [key: string]: string };
+const users: Users = {};
 
-// Helper function
-export const getReceiverSocketId = (receiverId: string): string | undefined => {
-  return users[receiverId];
+let io: SocketIOServer; // not initialized immediately
+
+export const initSocket = (server: any) => {
+  io = new SocketIOServer(server, {
+    cors: {
+      origin: allowedOrigins,
+      credentials: true,
+    },
+  });
+
+  io.on("connection", (socket) => {
+    console.log("New socket connection:", socket.id);
+
+    const token = socket.handshake.query.token;
+    if (!token) {
+      socket.disconnect();
+      return;
+    }
+
+    try {
+      const decoded = jwt.verify(token as string, JWT_SECRET) as JwtPayload & {
+        id: string;
+      };
+      const userId = decoded.id;
+
+      console.log("User ID from token:", userId);
+
+      users[userId] = socket.id;
+      io.emit("getOnlineUsers", Object.keys(users));
+
+      socket.on("disconnect", () => {
+        delete users[userId];
+        io.emit("getOnlineUsers", Object.keys(users));
+      });
+    } catch {
+      socket.disconnect();
+    }
+  });
+
+  return io;
 };
 
-// // ✅ Setup function
-// export const setupChatSocket = (io: Server) => {
-//   // Auth middleware
-//   io.use((socket: AuthenticatedSocket, next) => {
-//     const token = socket.handshake.auth?.token;
-//     if (!token) return next(new Error("Unauthorized: No token"));
+// ✅ getter for io (safe to use after initSocket is called in server.ts)
+export const getIO = () => {
+  if (!io)
+    throw new Error(
+      "Socket.io not initialized! Call initSocket(server) first."
+    );
+  return io;
+};
 
-//     try {
-//       const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload & {
-//         id: string;
-//       };
-//       socket.data.user = { id: decoded.id };
-//       next();
-//     } catch {
-//       next(new Error("Unauthorized: Invalid token"));
-//     }
-//   });
-
-//   // Events
-//   io.on("connection", (socket: AuthenticatedSocket) => {
-//     const userId = socket.data.user?.id;
-//     console.log("✅ User connected:", userId, socket.id);
-
-//     if (userId) {
-//       users[userId] = socket.id;
-//       io.emit("getOnlineUsers", Object.keys(users));
-//     }
-
-//     // Send message
-//     socket.on(
-//       "sendMessage",
-//       async (data: {
-//         conversationId: string;
-//         text: string;
-//         receiver: string;
-//       }) => {
-//         const { conversationId, text, receiver } = data;
-
-//         const message = await Message.create({
-//           conversationId,
-//           sender: userId,
-//           receiver,
-//           text,
-//         });
-
-//         const receiverSocketId = getReceiverSocketId(receiver);
-//         if (receiverSocketId) {
-//           io.to(receiverSocketId).emit("newMessage", message);
-//         }
-//       }
-//     );
-
-//     // Disconnect
-//     socket.on("disconnect", () => {
-//       console.log("❌ Disconnected:", userId, socket.id);
-//       if (userId) {
-//         delete users[userId];
-//         io.emit("getOnlineUsers", Object.keys(users));
-//       }
-//     });
-//   });
-// };
+export const getReceiverSocketId = (receiverId: string) => {
+  console.log({ users });
+  return users[receiverId];
+};

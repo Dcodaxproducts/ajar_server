@@ -3,13 +3,14 @@ import mongoose from "mongoose";
 import { Conversation } from "../models/conversation.model";
 import { Message } from "../models/message.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
+import { getReceiverSocketId, getIO } from "../utils/socket";
 
 // Send message
 export const sendMessage = async (req: AuthRequest, res: Response) => {
   try {
     const { chatId, receiver, text, attachments } = req.body;
     const sender = new mongoose.Types.ObjectId(req.user!.id);
-    const receiverId = new mongoose.Types.ObjectId(receiver);
+    // const receiver = new mongoose.Types.ObjectId(receiver);
 
     // Ensure conversation exists
     const conversation = await Conversation.findById(chatId);
@@ -20,7 +21,7 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
     // Ensure sender or receiver is participant
     if (
       !conversation.participants.some(
-        (p) => p.equals(sender) || p.equals(receiverId)
+        (p) => p.equals(sender) || p.equals(receiver)
       )
     ) {
       return res
@@ -32,7 +33,7 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
     const newMessage = await Message.create({
       chatId: conversation._id,
       sender,
-      receiver: receiverId,
+      receiver,
       text,
       attachments,
       seen: false,
@@ -46,6 +47,12 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
     const populatedMessage = await Message.findById(newMessage._id)
       .populate("sender", "name email profilePicture")
       .populate("receiver", "name email profilePicture");
+
+    const receiverSocketId = getReceiverSocketId(receiver.toString());
+
+    if (receiverSocketId) {
+      getIO().to(receiverSocketId).emit("newMessage", populatedMessage);
+    }
 
     res.status(201).json({
       success: true,
