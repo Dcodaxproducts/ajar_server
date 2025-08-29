@@ -6,25 +6,26 @@ import { AuthRequest } from "../middlewares/auth.middleware";
 import { paginateQuery } from "../utils/paginate";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
+import { User } from "../models/user.model";
 
 // Create or get existing conversation
 export const createConversation = async (req: AuthRequest, res: Response) => {
   try {
-    const senderId = new mongoose.Types.ObjectId(req.user!.id);
-    const receiverId = new mongoose.Types.ObjectId(req.body.receiverId);
+    const sender = new mongoose.Types.ObjectId(req.user!.id);
+    const receiver = new mongoose.Types.ObjectId(req.body.receiver);
     const adId = req.body.adId
       ? new mongoose.Types.ObjectId(req.body.adId)
       : undefined;
 
     // Check if conversation already exists
     let conversation = await Conversation.findOne({
-      participants: { $all: [senderId, receiverId] },
+      participants: { $all: [sender, receiver] },
       adId: adId || null,
     });
 
     if (!conversation) {
       conversation = await Conversation.create({
-        participants: [senderId, receiverId],
+        participants: [sender, receiver],
         adId,
       });
     }
@@ -157,10 +158,7 @@ export const getConversationMessages = async (
     const userId = new mongoose.Types.ObjectId(req.user!.id);
 
     // Check if user is a participant
-    const conversation = await Conversation.findOne({
-      _id: new mongoose.Types.ObjectId(chatId),
-      participants: { $in: [userId] },
-    });
+    const conversation = await Conversation.findById(chatId);
 
     if (!conversation) {
       return sendResponse(
@@ -168,6 +166,33 @@ export const getConversationMessages = async (
         null,
         "Not authorised or conversation not found",
         STATUS_CODES.FORBIDDEN
+      );
+    }
+    const { participants = [] } = conversation;
+
+    const receiverId = participants.find(
+      (p: mongoose.Types.ObjectId) => p.toString() !== userId.toString()
+    );
+    if (!receiverId) {
+      return sendResponse(
+        res,
+        null,
+        "Not authorised or conversation not found",
+        STATUS_CODES.FORBIDDEN
+      );
+    }
+
+    // Fetch receiver details safely
+    const receiver = await User.findById(receiverId).select(
+      "name email profilePicture"
+    );
+
+    if (!receiver) {
+      return sendResponse(
+        res,
+        null,
+        "Receiver not found or deleted",
+        STATUS_CODES.NOT_FOUND
       );
     }
 
@@ -183,7 +208,7 @@ export const getConversationMessages = async (
 
     sendResponse(
       res,
-      { messages, total, page: Number(page), limit: Number(limit) },
+      { messages, receiver, total, page: Number(page), limit: Number(limit) },
       "Messages fetched successfully",
       STATUS_CODES.OK
     );
