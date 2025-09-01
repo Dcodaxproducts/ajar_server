@@ -1,7 +1,7 @@
 import { server } from "./app";
 import { connectDB } from "./config/db";
 import { config } from "./config/env";
-import { initSocket } from "./utils/socket";
+import { initSocket } from "./socket/socket";
 
 const PORT = config.PORT || 5001;
 
