@@ -1,7 +1,7 @@
 import { Server, Socket } from "socket.io";
 import mongoose from "mongoose";
 import { Message } from "../../models/message.model";
-import { getReceiverSocketId } from "../socket";
+import { UserSocketHelpers } from "..";
 
 /**
  * Registers message-related socket events for a connected user
@@ -10,8 +10,9 @@ export default function registerMessageEvents(
   io: Server,
   socket: Socket,
   userId: string,
-  users: { [key: string]: string }
+  helpers: UserSocketHelpers
 ) {
+  const { getUserSockets } = helpers;
   // On connect → bulk mark undelivered messages as delivered
   Message.updateMany(
     {
@@ -57,14 +58,14 @@ export default function registerMessageEvents(
           ];
 
           senderIds.forEach((sid) => {
-            const senderSocketId = getReceiverSocketId(sid);
-            if (senderSocketId) {
-              io.to(senderSocketId).emit("message:delivered", {
+            const senderSocketIds = getUserSockets(sid);
+            senderSocketIds.forEach((socketId) => {
+              io.to(socketId).emit("message:delivered", {
                 chatId,
                 messageIds,
                 deliveredAt: now,
               });
-            }
+            });
           });
         }
       } catch (err) {
@@ -109,14 +110,14 @@ export default function registerMessageEvents(
           ];
 
           senderIds.forEach((sid) => {
-            const senderSocketId = getReceiverSocketId(sid);
-            if (senderSocketId) {
-              io.to(senderSocketId).emit("message:read", {
+            const sockets = getUserSockets(sid);
+            sockets.forEach((socketId) => {
+              io.to(socketId).emit("message:read", {
                 chatId,
                 messageIds,
                 readAt: now,
               });
-            }
+            });
           });
         }
       } catch (error) {
