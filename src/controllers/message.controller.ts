@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import { Conversation } from "../models/conversation.model";
 import { Message } from "../models/message.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
-import { getReceiverSocketId, getIO } from "../socket/socket";
+import { getIO } from "../socket";
 
 // Send message
 export const sendMessage = async (req: AuthRequest, res: Response) => {
@@ -47,11 +47,8 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
       .populate("sender", "name email profilePicture")
       .populate("receiver", "name email profilePicture");
 
-    // 🔹 Emit with new event name
-    const receiverSocketId = getReceiverSocketId(receiver.toString());
-    if (receiverSocketId) {
-      getIO().to(receiverSocketId).emit("message:new", populatedMessage);
-    }
+    // 🔹 Emit directly to receiver’s room
+    getIO().to(`user:${receiver}`).emit("message:new", populatedMessage);
 
     res.status(201).json({
       success: true,
@@ -64,7 +61,6 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// Mark a message as delivered
 export const markMessageDelivered = async (req: AuthRequest, res: Response) => {
   try {
     const { messageId } = req.params;
@@ -85,15 +81,12 @@ export const markMessageDelivered = async (req: AuthRequest, res: Response) => {
       message.deliveredAt = new Date();
       await message.save();
 
-      // Notify sender
-      const senderSocketId = getReceiverSocketId(message.sender.toString());
-      if (senderSocketId) {
-        getIO().to(senderSocketId).emit("messageDelivered", {
-          messageId: message._id,
-          chatId: message.chatId,
-          deliveredAt: message.deliveredAt,
-        });
-      }
+      // ✅ Notify sender via their personal room
+      getIO().to(`user:${message.sender}`).emit("message:delivered", {
+        messageId: message._id,
+        chatId: message.chatId,
+        deliveredAt: message.deliveredAt,
+      });
     }
 
     res.status(200).json({
@@ -107,13 +100,12 @@ export const markMessageDelivered = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// Mark all unseen messages in a chat as seen/read
 export const markMessagesSeen = async (req: AuthRequest, res: Response) => {
   try {
     const { chatId } = req.params;
     const userId = new mongoose.Types.ObjectId(req.user!.id);
 
-    // Find only unseen messages
+    // Find unseen messages for this user
     const unseenMessages = await Message.find({
       chatId,
       receiver: userId,
@@ -126,23 +118,20 @@ export const markMessagesSeen = async (req: AuthRequest, res: Response) => {
         .json({ success: true, message: "No unseen messages" });
     }
 
-    // ✅ Update each unseen message
+    // ✅ Update all unseen messages
     const now = new Date();
     await Message.updateMany(
       { _id: { $in: unseenMessages.map((m) => m._id) } },
       { $set: { seen: true, readAt: now } }
     );
 
-    // ✅ Notify senders only for newly seen messages
+    // ✅ Notify each sender (looping is fine here, but could be batched later)
     unseenMessages.forEach((msg) => {
-      const senderSocketId = getReceiverSocketId(msg.sender.toString());
-      if (senderSocketId) {
-        getIO().to(senderSocketId).emit("messageSeen", {
-          messageId: msg._id,
-          chatId,
-          readAt: now,
-        });
-      }
+      getIO().to(`user:${msg.sender}`).emit("message:seen", {
+        messageId: msg._id,
+        chatId,
+        readAt: now,
+      });
     });
 
     res.status(200).json({
