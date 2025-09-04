@@ -15,6 +15,7 @@ export interface IMarketplaceListing extends Document {
     average: number;
   };
   name?: string;
+  subTitle: string;
   images?: string[];
   rentalImages?: string[];
   description: string;
@@ -49,13 +50,14 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
       count: { type: Number, default: 0 },
       average: { type: Number, default: 0 },
     },
-    name: { type: String },
+    name: { type: String, required: true },
+    subTitle: { type: String, required: true },
     images: [{ type: String }],
-    rentalImages: [{ type: String }],
+    rentalImages: [{ type: String, required: true }],
     description: { type: String },
     address: { type: String },
     currency: { type: String },
-    price: { type: Number },
+    price: { type: Number, required: true },
     isActive: { type: Boolean, default: true },
     language: { type: String, default: "en" },
     languages: [
