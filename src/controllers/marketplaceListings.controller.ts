@@ -765,6 +765,73 @@ export const getBookingsForListing = async (
 };
 
 // UPDATE LISTING
+// export const updateMarketplaceListing = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const { id } = req.params;
+
+//     if (!mongoose.Types.ObjectId.isValid(id)) {
+//       sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
+//       return;
+//     }
+
+//     const existingListing = await MarketplaceListing.findById(id);
+//     if (!existingListing) {
+//       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+//       return;
+//     }
+
+//     if (String(existingListing.leaser) !== String(req.user?.id)) {
+//       sendResponse(
+//         res,
+//         null,
+//         "Forbidden: You are not the owner",
+//         STATUS_CODES.FORBIDDEN
+//       );
+//       return;
+//     }
+
+//     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+//     const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+//     let newImages: string[] = [];
+//     let newRentalImages: string[] = [];
+
+//     if (files?.images) {
+//       newImages = files.images.map((file) => `/uploads/${file.filename}`);
+//     }
+
+//     if (files?.rentalImages) {
+//       newRentalImages = files.rentalImages.map(
+//         (file) => `/uploads/${file.filename}`
+//       );
+//     }
+
+//     const updatedFields = {
+//       ...req.body,
+//       images: newImages.length > 0 ? newImages : existingListing.images,
+//       rentalImages:
+//         newRentalImages.length > 0
+//           ? newRentalImages
+//           : existingListing.rentalImages,
+//     };
+
+//     const updatedListing = await MarketplaceListing.findByIdAndUpdate(
+//       id,
+//       updatedFields,
+//       { new: true }
+//     );
+
+//     sendResponse(res, updatedListing, "Listing updated", STATUS_CODES.OK);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+// UPDATE LISTING
 export const updateMarketplaceListing = async (
   req: AuthRequest,
   res: Response,
@@ -795,7 +862,6 @@ export const updateMarketplaceListing = async (
     }
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
 
     let newImages: string[] = [];
     let newRentalImages: string[] = [];
@@ -810,8 +876,40 @@ export const updateMarketplaceListing = async (
       );
     }
 
+    // ----------------------------
+    //Manual validation (like create)
+    if ("name" in req.body && !req.body.name) {
+      res.status(400).json({ success: false, message: "name is required" });
+      return;
+    }
+    if ("subTitle" in req.body && !req.body.subTitle) {
+      res.status(400).json({ success: false, message: "subTitle is required" });
+      return;
+    }
+    if ("price" in req.body && !req.body.price) {
+      res.status(400).json({ success: false, message: "price is required" });
+      return;
+    }
+    if ("rentalImages" in req.body && !files?.rentalImages) {
+      res
+        .status(400)
+        .json({ success: false, message: "rentalImages is required" });
+      return;
+    }
+    // ----------------------------
+
+    //Only allow updating fields that exist in schema
+    const allowedUpdates = Object.keys(existingListing.toObject());
+    const filteredBody: any = {};
+
+    for (const key of Object.keys(req.body)) {
+      if (allowedUpdates.includes(key)) {
+        filteredBody[key] = req.body[key];
+      }
+    }
+
     const updatedFields = {
-      ...req.body,
+      ...filteredBody,
       images: newImages.length > 0 ? newImages : existingListing.images,
       rentalImages:
         newRentalImages.length > 0
@@ -830,6 +928,7 @@ export const updateMarketplaceListing = async (
     next(error);
   }
 };
+
 // DELETE
 export const deleteMarketplaceListing = async (
   req: AuthRequest,
