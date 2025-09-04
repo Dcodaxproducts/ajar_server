@@ -58,10 +58,14 @@ export const createUser = async (
     //   userData.profilePicture = `/uploads/${profilePicture.filename}`;
     // }
 
+    // if (profilePicture) {
+    //   userData.profilePicture = `${req.protocol}://${req.get("host")}/uploads/${
+    //     profilePicture.filename
+    //   }`;
+    // }
+
     if (profilePicture) {
-      userData.profilePicture = `${req.protocol}://${req.get("host")}/uploads/${
-        profilePicture.filename
-      }`;
+      userData.profilePicture = `/uploads/${profilePicture.filename}`;
     }
 
     const userObj = userData.toObject();
@@ -103,7 +107,11 @@ export const loginUser = async (
     if (role === "staff") {
       // Staff login using Employee model with plain password
       const employee = await Employee.findOne({ email })
-        .select("-__v") // fetch all except mongoose internal
+        .populate({
+          path: "allowAccess",
+          select: "-__v",
+        })
+        .select("-__v")
         .lean();
 
       if (!employee) {
@@ -657,9 +665,7 @@ export const updateUserProfile = async (
 
     // Handle file upload
     if (req.file) {
-      updates.profilePicture = `${req.protocol}://${req.get("host")}/uploads/${
-        req.file.filename
-      }`;
+      updates.profilePicture = `/uploads/${req.file.filename}`;
     }
 
     // Find and update in one go

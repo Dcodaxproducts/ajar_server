@@ -12,17 +12,168 @@ import { Field, IField } from "../models/field.model";
 import { Booking } from "../models/booking.model";
 
 // controllers/marketplaceListings.controller.ts
+// export const createMarketplaceListing = async (req: any, res: Response) => {
+//   try {
+//     const { zone, subCategory } = req.body;
+//     const leaser = req.user.id;
+
+//     // 1. Get Form for zone + subCategory
+//     const form = await Form.findOne({
+//       zone: zone,
+//       subCategory: subCategory,
+//     }).populate("fields");
+
+//     if (!form) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Form not found for this Zone and SubCategory",
+//       });
+//     }
+
+//     // Cast to IField[]
+//     const fields = form.fields as unknown as IField[];
+//     const requestData: any = {};
+
+//     // 2. Validate dynamically
+//     for (const field of fields) {
+//       const value = req.body[field.name];
+
+//       if (field.validation?.required && (value === undefined || value === "")) {
+//         return res
+//           .status(400)
+//           .json({ success: false, message: `${field.label} is required` });
+//       }
+
+//       if (value !== undefined) {
+//         if (field.options?.length && !field.options.includes(value)) {
+//           return res.status(400).json({
+//             success: false,
+//             message: `${field.label} must be one of: ${field.options.join(
+//               ", "
+//             )}`,
+//           });
+//         }
+
+//         if (field.min !== undefined && value < field.min) {
+//           return res.status(400).json({
+//             success: false,
+//             message: `${field.label} must be >= ${field.min}`,
+//           });
+//         }
+
+//         if (field.max !== undefined && value > field.max) {
+//           return res.status(400).json({
+//             success: false,
+//             message: `${field.label} must be <= ${field.max}`,
+//           });
+//         }
+
+//         if (field.validation?.pattern) {
+//           const regex = new RegExp(field.validation.pattern);
+//           if (!regex.test(value)) {
+//             return res.status(400).json({
+//               success: false,
+//               message: `${field.label} format is invalid`,
+//             });
+//           }
+//         }
+
+//         requestData[field.name] = value;
+//       }
+//     }
+
+//     // 3. Extra manual validation for required fields
+//     if (!req.body.name) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Name is required" });
+//     }
+//     if (!req.body.subTitle) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Subtitle is required" });
+//     }
+//     if (!req.body.price) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Price is required" });
+//     }
+//     if (!req.files?.rentalImages) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "At least one rental image is required",
+//       });
+//     }
+
+//     // 3. Handle uploaded files with full URL
+//     if (req.files) {
+//       const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+//       for (const field of fields) {
+//         if (field.type === "file" && req.files[field.name]) {
+//           requestData[field.name] = (
+//             req.files[field.name] as Express.Multer.File[]
+//           ).map((file) => `/uploads/${file.filename}`);
+//         }
+//       }
+
+//       if (req.files["images"]) {
+//         requestData.images = (req.files["images"] as Express.Multer.File[]).map(
+//           (file) => `/uploads/${file.filename}`
+//         );
+//       }
+
+//       if (req.files["rentalImages"]) {
+//         requestData.rentalImages = (
+//           req.files["rentalImages"] as Express.Multer.File[]
+//         ).map((file) => `/uploads/${file.filename}`);
+//       }
+//     }
+
+//     // 4. Save listing
+//     const listing = new MarketplaceListing({
+//       leaser,
+//       zone,
+//       subCategory,
+//       name: req.body.name,
+//       subTitle: req.body.subTitle,
+//       price: req.body.price,
+//       ...requestData,
+//     });
+
+//     await listing.save();
+
+//     return res.status(201).json({ success: true, data: listing });
+//   } catch (error) {
+//     console.error(error);
+//     return res
+//       .status(500)
+//       .json({ success: false, message: "Server error", error });
+//   }
+// };
+
+//Utility to convert keys to camelCase
+const toCamelCase = (str: string) => {
+  return str
+    .replace(/([-_][a-z])/gi, (s) =>
+      s.toUpperCase().replace("-", "").replace("_", "")
+    )
+    .replace(/^[A-Z]/, (s) => s.toLowerCase());
+};
+
 export const createMarketplaceListing = async (req: any, res: Response) => {
   try {
     const { zone, subCategory } = req.body;
     const leaser = req.user.id;
 
-    // 1. Get Form for zone + subCategory
-    const form = await Form.findOne({
-      zone: zone,
-      subCategory: subCategory,
-    }).populate("fields");
+    // 🔹 Normalise all incoming keys to camelCase
+    const normalisedBody: any = {};
+    for (const key of Object.keys(req.body)) {
+      normalisedBody[toCamelCase(key)] = req.body[key];
+    }
 
+    // 1. Fetch form for zone + subCategory
+    const form = await Form.findOne({ zone, subCategory }).populate("fields");
     if (!form) {
       return res.status(400).json({
         success: false,
@@ -30,13 +181,13 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       });
     }
 
-    // Cast to IField[]
     const fields = form.fields as unknown as IField[];
     const requestData: any = {};
 
-    // 2. Validate dynamically
+    // 2. Dynamic validation from form fields
     for (const field of fields) {
-      const value = req.body[field.name];
+      const fieldName = toCamelCase(field.name); // enforce camelCase
+      const value = normalisedBody[fieldName];
 
       if (field.validation?.required && (value === undefined || value === "")) {
         return res
@@ -78,40 +229,64 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
           }
         }
 
-        requestData[field.name] = value;
+        requestData[fieldName] = value;
       }
     }
 
-    // 3. Handle uploaded files with full URL
-    if (req.files) {
-      const baseUrl = `${req.protocol}://${req.get("host")}`;
+    // 3. Manual validation for must-have fields
+    if (!normalisedBody.name) {
+      return res
+        .status(400)
+        .json({ success: false, message: "name is required" });
+    }
+    if (!normalisedBody.subTitle) {
+      return res
+        .status(400)
+        .json({ success: false, message: "subTitle is required" });
+    }
+    if (!normalisedBody.price) {
+      return res
+        .status(400)
+        .json({ success: false, message: "price is required" });
+    }
+    if (!req.files || !req.files.rentalImages) {
+      return res
+        .status(400)
+        .json({ success: false, message: "rentalImages is required" });
+    }
 
+    // 4. Handle uploaded files
+    if (req.files) {
       for (const field of fields) {
-        if (field.type === "file" && req.files[field.name]) {
-          requestData[field.name] = (
-            req.files[field.name] as Express.Multer.File[]
-          ).map((file) => `${baseUrl}/uploads/${file.filename}`);
+        const fieldName = toCamelCase(field.name);
+        if (field.type === "file" && req.files[fieldName]) {
+          requestData[fieldName] = (
+            req.files[fieldName] as Express.Multer.File[]
+          ).map((file) => `/uploads/${file.filename}`);
         }
       }
 
       if (req.files["images"]) {
         requestData.images = (req.files["images"] as Express.Multer.File[]).map(
-          (file) => `${baseUrl}/uploads/${file.filename}`
+          (file) => `/uploads/${file.filename}`
         );
       }
 
       if (req.files["rentalImages"]) {
         requestData.rentalImages = (
           req.files["rentalImages"] as Express.Multer.File[]
-        ).map((file) => `${baseUrl}/uploads/${file.filename}`);
+        ).map((file) => `/uploads/${file.filename}`);
       }
     }
 
-    // 4. Save listing
+    // 5. Save listing
     const listing = new MarketplaceListing({
       leaser,
       zone,
       subCategory,
+      name: normalisedBody.name,
+      subTitle: normalisedBody.subTitle,
+      price: normalisedBody.price,
       ...requestData,
     });
 
@@ -626,14 +801,12 @@ export const updateMarketplaceListing = async (
     let newRentalImages: string[] = [];
 
     if (files?.images) {
-      newImages = files.images.map(
-        (file) => `${baseUrl}/uploads/${file.filename}`
-      );
+      newImages = files.images.map((file) => `/uploads/${file.filename}`);
     }
 
     if (files?.rentalImages) {
       newRentalImages = files.rentalImages.map(
-        (file) => `${baseUrl}/uploads/${file.filename}`
+        (file) => `/uploads/${file.filename}`
       );
     }
 

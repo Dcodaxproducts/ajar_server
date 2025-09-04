@@ -129,6 +129,8 @@ const ZoneSchema = new Schema<IZone>(
   { timestamps: true }
 );
 
+ZoneSchema.index({ polygons: "2dsphere" });
+
 ZoneSchema.index({ name: 1 });
 
 // ---------------- Model ----------------
