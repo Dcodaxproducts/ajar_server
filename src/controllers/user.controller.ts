@@ -987,7 +987,7 @@ export const updateUserStatus = async (
     const { userId } = req.params;
     const { status } = req.body;
 
-    const allowedStatuses = ["active", "inactive", "blocked", "Unblocked"];
+    const allowedStatuses = ["active", "inactive", "blocked", "unblocked"];
     if (!allowedStatuses.includes(status)) {
       sendResponse(res, null, "Invalid status value", STATUS_CODES.BAD_REQUEST);
       return;

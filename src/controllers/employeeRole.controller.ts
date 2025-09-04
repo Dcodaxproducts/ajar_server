@@ -12,16 +12,17 @@ export const createRole = async (
 ): Promise<void> => {
   try {
     const { name, permissions } = req.body;
-    const formattedName = name.toLowerCase().replace(/\s+/g, "-");
+    // const formattedName = name.toLowerCase().replace(/\s+/g, "-");
 
-    const existing = await Role.findOne({ name: formattedName });
+    const existing = await Role.findOne({ name });
     if (existing) {
       sendResponse(res, null, "Role already exists", STATUS_CODES.CONFLICT);
       return;
     }
 
     const role = new Role({
-      name: formattedName,
+      name,
+      // name: formattedName,
       permissions,
     });
     await role.save();

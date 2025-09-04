@@ -6,6 +6,12 @@ import mongoose from "mongoose";
 import path from "path";
 import deleteFile from "../utils/deleteFile";
 import { paginateQuery } from "../utils/paginate";
+import { UserDocument } from "../models/userDocs.mode";
+import { Form } from "../models/form.model";
+import { MarketplaceListing } from "../models/marketplaceListings.model";
+import { RefundManagement } from "../models/refundManagement.model";
+import { RefundPolicy } from "../models/refundPolicy.model";
+import { Zone } from "../models/zone.model";
 
 //Get All Categories with Subcategories
 export const getAllCategories = async (
@@ -28,18 +34,19 @@ export const getAllCategories = async (
 
     // 1. If specific type is passed
     if (typeLower === "subcategory") {
-      baseQuery = Category.find(filter).populate({ path: "category" });
+      baseQuery = Category.find(filter)
+        .populate({ path: "category" })
+        .sort({ createdAt: -1 }); // NEW: Show newest subcategories first
     } else if (typeLower === "category") {
-      baseQuery = Category.find(filter);
+      baseQuery = Category.find(filter).sort({ createdAt: -1 }); // NEW: Show newest categories first
     } else {
       // 2. No type filter – show all with subcategory/category relations
-      baseQuery = Category.find().populate([
-        { path: "category" },
-        // { path: "subcategories" },
-      ]);
+      baseQuery = Category.find()
+        .populate([{ path: "category" }])
+        .sort({ createdAt: -1 }); // NEW: Show newest first
     }
 
-    // Rest of your code remains the same...
+    // Pagination
     const { data, total } = await paginateQuery(baseQuery, {
       page: Number(page),
       limit: Number(limit),
@@ -561,7 +568,6 @@ export const updateCategoryThumbnail = async (
   }
 };
 
-//Delete Category or Subcategory
 export const deleteCategory = async (
   req: Request,
   res: Response,
@@ -574,40 +580,146 @@ export const deleteCategory = async (
     return;
   }
 
+  // Start a session for transaction
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    const category = await Category.findByIdAndDelete(categoryId);
+    const category = await Category.findById(categoryId).session(session);
     if (!category) {
+      await session.abortTransaction();
+      session.endSession();
       sendResponse(res, null, "Category not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    // Delete thumbnail if it exists
-    if (category.thumbnail) {
-      const filePath = path.join(process.cwd(), category.thumbnail);
-      deleteFile(filePath);
+    // If it's a main category → delete its subcategories and related records
+    if (category.type === "category") {
+      const subcategories = await SubCategory.find({
+        category: category._id,
+      }).session(session);
+
+      for (const sub of subcategories) {
+        // Use type assertion for sub._id
+        const subId = (sub._id as mongoose.Types.ObjectId).toString();
+        await cascadeDeleteSubCategory(subId, session);
+        await SubCategory.findByIdAndDelete(sub._id).session(session);
+      }
+
+      // Delete user documents linked to this category
+      await UserDocument.deleteMany({
+        category: category._id,
+      }).session(session);
     }
 
-    //Delete subcategories related to this category
-    const subcategories = (await SubCategory.find({
-      category: category._id,
-    })) as ICategory[];
-    for (const sub of subcategories) {
-      // Delete each subcategory thumbnail
-      if (sub.thumbnail) {
-        const subFilePath = path.join(process.cwd(), sub.thumbnail);
-        deleteFile(subFilePath);
-      }
-      await sub.deleteOne();
+    // If it's a subcategory → delete related records first, then the subcategory
+    if (category.type === "subCategory") {
+      // Use type assertion for category._id
+      const catId = (category._id as mongoose.Types.ObjectId).toString();
+      await cascadeDeleteSubCategory(catId, session);
     }
+
+    // Delete category thumbnail if exists
+    if (category.thumbnail) {
+      const filePath = path.join(process.cwd(), category.thumbnail);
+      try {
+        deleteFile(filePath);
+      } catch (fileError) {
+        console.error("Error deleting thumbnail file:", fileError);
+        // Continue with deletion even if file deletion fails
+      }
+    }
+
+    // Finally delete the category itself
+    await Category.findByIdAndDelete(categoryId).session(session);
+
+    // Commit the transaction
+    await session.commitTransaction();
+    session.endSession();
 
     sendResponse(
       res,
-      category,
-      "Category and related subcategories deleted successfully",
+      null,
+      `${category.type} and related records deleted successfully`,
       STATUS_CODES.OK
     );
   } catch (error) {
+    // Abort transaction on error
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Error deleting category:", error);
     next(error);
+  }
+};
+
+// Enhanced cascade delete function with transaction support
+const cascadeDeleteSubCategory = async (
+  subCategoryId: string,
+  session: mongoose.ClientSession
+) => {
+  // Convert string to ObjectId
+  const id = new mongoose.Types.ObjectId(subCategoryId);
+
+  console.log(`Cascading delete for subCategory: ${id}`);
+
+  try {
+    // 1. First delete Marketplace listings (most important)
+    const listingDeleteResult = await MarketplaceListing.deleteMany({
+      subCategory: id,
+    }).session(session);
+
+    console.log(
+      `Deleted ${listingDeleteResult.deletedCount} marketplace listings`
+    );
+
+    // Verify deletion by checking if any listings remain
+    const remainingListings = await MarketplaceListing.countDocuments({
+      subCategory: id,
+    }).session(session);
+
+    if (remainingListings > 0) {
+      console.warn(
+        `WARNING: ${remainingListings} marketplace listings still exist after deletion attempt`
+      );
+
+      // Try force deletion with different approach if first attempt failed
+      const forceDeleteResult = await MarketplaceListing.deleteMany({
+        subCategory: id,
+      }).session(session);
+
+      console.log(
+        `Force deleted ${forceDeleteResult.deletedCount} additional listings`
+      );
+    }
+
+    // 2. Delete other related records
+    const formDeleteResult = await Form.deleteMany({
+      subCategory: id,
+    }).session(session);
+    console.log(`Deleted ${formDeleteResult.deletedCount} forms`);
+
+    const refundMgmtResult = await RefundManagement.deleteMany({
+      subCategory: id,
+    }).session(session);
+    console.log(
+      `Deleted ${refundMgmtResult.deletedCount} refund management records`
+    );
+
+    const refundPolicyResult = await RefundPolicy.deleteMany({
+      subCategory: id,
+    }).session(session);
+    console.log(`Deleted ${refundPolicyResult.deletedCount} refund policies`);
+
+    // 3. Pull from Zones
+    const zoneUpdateResult = await Zone.updateMany(
+      { subCategories: id },
+      { $pull: { subCategories: id } },
+      { session }
+    );
+    console.log(`Updated ${zoneUpdateResult.modifiedCount} zones`);
+  } catch (error) {
+    console.error("Error during cascade delete:", error);
+    throw error;
   }
 };
 

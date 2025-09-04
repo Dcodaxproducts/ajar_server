@@ -60,7 +60,7 @@ const UserSchema: Schema = new Schema(
     phone: { type: String, default: "" },
     status: {
       type: String,
-      enum: ["active", "inactive", "blocked", "Unblocked"],
+      enum: ["active", "inactive", "blocked", "unblocked"],
       default: "active",
     },
   },

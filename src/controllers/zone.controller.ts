@@ -7,6 +7,10 @@ import deleteFile from "../utils/deleteFile";
 import path from "path";
 import { SubCategory } from "../models/category.model";
 import { paginateQuery } from "../utils/paginate";
+import { Form } from "../models/form.model";
+import { MarketplaceListing } from "../models/marketplaceListings.model";
+import { RefundManagement } from "../models/refundManagement.model";
+import { RefundPolicy } from "../models/refundPolicy.model";
 
 // helper for polygon check
 const isPointInPolygon = (
@@ -39,7 +43,12 @@ export const getAllZones = async (
     const languageHeader = req.headers["language"];
     const locale = languageHeader?.toString() || null;
 
-    const baseQuery = Zone.find().populate("subCategories");
+    // Apply sorting by latest first
+    const baseQuery = Zone.find()
+      .populate("subCategories")
+      .sort({ createdAt: -1 });
+
+    // const baseQuery = Zone.find().populate("subCategories");
     const { data, total } = await paginateQuery(baseQuery, {
       page: Number(page),
       limit: Number(limit),
@@ -417,13 +426,29 @@ export const deleteZone = async (
   }
 
   try {
-    const zone = await Zone.findByIdAndDelete(zoneId);
+    const zone = await Zone.findById(zoneId);
     if (!zone) {
       sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    sendResponse(res, zone, "Zone deleted successfully", STATUS_CODES.OK);
+    // Delete all records referencing this Zone
+    await Promise.all([
+      Form.deleteMany({ zone: zoneId }),
+      MarketplaceListing.deleteMany({ zone: zoneId }),
+      RefundManagement.deleteMany({ zone: zoneId }),
+      RefundPolicy.deleteMany({ zone: zoneId }),
+    ]);
+
+    // Now delete the Zone itself
+    await zone.deleteOne();
+
+    sendResponse(
+      res,
+      null,
+      "Zone and related records deleted successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
