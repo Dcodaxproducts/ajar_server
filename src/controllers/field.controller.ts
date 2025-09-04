@@ -5,6 +5,7 @@ import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { getLanguage } from "../utils/getLanguage";
 import { paginateQuery } from "../utils/paginate";
+import { Form } from "../models/form.model";
 
 // GET all fields
 export const getAllFields = async (
@@ -277,6 +278,9 @@ export const deleteField = async (
       sendResponse(res, null, "Field not found", STATUS_CODES.NOT_FOUND);
       return;
     }
+
+    // Remove field reference from all Forms that used it
+    await Form.updateMany({ fields: id }, { $pull: { fields: id } });
 
     sendResponse(res, deleted, "Field deleted successfully", STATUS_CODES.OK);
   } catch (error) {

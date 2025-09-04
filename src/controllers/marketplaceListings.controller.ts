@@ -30,7 +30,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       });
     }
 
-    // 👇 Cast to IField[]
+    // Cast to IField[]
     const fields = form.fields as unknown as IField[];
     const requestData: any = {};
 
@@ -126,19 +126,21 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
   }
 };
 
-// Get All Marketplace Listings
+// Get All Marketplace Listings with automatic cleanup
 export const getAllMarketplaceListings = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
     const { page = 1, limit = 10, zone, subCategory, all } = req.query;
 
     const filter: any = {};
 
-    // ------------------ UPDATED LOGIC ------------------
     if (req.user) {
       if (req.user.role === "admin") {
         // Admin → show all listings, optionally filter by zone
@@ -171,7 +173,49 @@ export const getAllMarketplaceListings = async (
       filter.subCategory = subCategory;
     }
 
-    const baseQuery = MarketplaceListing.find(filter)
+    // First, find all listings that match the filter
+    const allListings = await MarketplaceListing.find(filter).session(session);
+
+    // Check each listing for valid references and collect invalid ones
+    const invalidListingIds: mongoose.Types.ObjectId[] = [];
+    const validListings: any[] = [];
+
+    for (const listing of allListings) {
+      // Use type assertion for listing._id
+      const listingId = listing._id as mongoose.Types.ObjectId;
+
+      const zoneExists = await Zone.exists({ _id: listing.zone }).session(
+        session
+      );
+      const subCategoryExists = await SubCategory.exists({
+        _id: listing.subCategory,
+      }).session(session);
+
+      if (zoneExists && subCategoryExists) {
+        validListings.push(listing);
+      } else {
+        invalidListingIds.push(listingId);
+        console.log(
+          `Marking listing ${listingId} for deletion - missing references`
+        );
+      }
+    }
+
+    // Delete invalid listings
+    if (invalidListingIds.length > 0) {
+      await MarketplaceListing.deleteMany({
+        _id: { $in: invalidListingIds },
+      }).session(session);
+      console.log(
+        `Deleted ${invalidListingIds.length} invalid listings with missing references`
+      );
+    }
+
+    // Now paginate only the valid listings
+    const baseQuery = MarketplaceListing.find({
+      ...filter,
+      _id: { $in: validListings.map((l) => l._id as mongoose.Types.ObjectId) },
+    })
       .populate("leaser", "_id name profilePicture phone createdAt updatedAt")
       .populate("subCategory", "_id name thumbnail createdAt updatedAt");
 
@@ -191,11 +235,16 @@ export const getAllMarketplaceListings = async (
       return obj;
     });
 
-    const uniqueUserIds = await MarketplaceListing.distinct("leaser", filter);
+    const uniqueUserIds = await MarketplaceListing.distinct("leaser", {
+      ...filter,
+      _id: { $in: validListings.map((l) => l._id as mongoose.Types.ObjectId) },
+    }).session(session);
+
     const totalUsersWithListings = uniqueUserIds.length;
-    const totalMarketplaceListings = await MarketplaceListing.countDocuments(
-      filter
-    );
+    const totalMarketplaceListings = validListings.length;
+
+    await session.commitTransaction();
+    session.endSession();
 
     sendResponse(
       res,
@@ -211,21 +260,28 @@ export const getAllMarketplaceListings = async (
       STATUS_CODES.OK
     );
   } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
     next(err);
   }
 };
 
-// READ ONE BY ID
+// READ ONE BY ID with automatic cleanup
 export const getMarketplaceListingById = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { id } = req.params;
     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
+      await session.abortTransaction();
+      session.endSession();
       sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
       return;
     }
@@ -234,10 +290,34 @@ export const getMarketplaceListingById = async (
       .populate("subCategory")
       .populate("zone")
       .populate("leaser", "name _id")
+      .session(session)
       .lean();
 
     if (!doc) {
+      await session.abortTransaction();
+      session.endSession();
       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    // Check if referenced documents exist
+    const zoneExists = await Zone.exists({ _id: doc.zone }).session(session);
+    const subCategoryExists = await SubCategory.exists({
+      _id: doc.subCategory,
+    }).session(session);
+
+    if (!zoneExists || !subCategoryExists) {
+      // Delete the listing since references are invalid
+      await MarketplaceListing.findByIdAndDelete(id).session(session);
+      await session.commitTransaction();
+      session.endSession();
+
+      sendResponse(
+        res,
+        null,
+        "Listing not found (references invalid)",
+        STATUS_CODES.NOT_FOUND
+      );
       return;
     }
 
@@ -262,11 +342,207 @@ export const getMarketplaceListingById = async (
       delete subCategoryObj.languages;
     }
 
+    await session.commitTransaction();
+    session.endSession();
+
     sendResponse(res, doc, "Listing fetched", STATUS_CODES.OK);
   } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
     next(err);
   }
 };
+
+// Additional utility function to clean up all orphaned listings
+export const cleanupAllOrphanedListings = async (
+  req: Request,
+  res: Response
+) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const allListings = await MarketplaceListing.find().session(session);
+    let deletedCount = 0;
+
+    for (const listing of allListings) {
+      // Use type assertion for listing._id
+      const listingId = listing._id as mongoose.Types.ObjectId;
+
+      const zoneExists = await Zone.exists({ _id: listing.zone }).session(
+        session
+      );
+      const subCategoryExists = await SubCategory.exists({
+        _id: listing.subCategory,
+      }).session(session);
+
+      if (!zoneExists || !subCategoryExists) {
+        await MarketplaceListing.findByIdAndDelete(listingId).session(session);
+        deletedCount++;
+        console.log(`Deleted orphaned listing: ${listingId}`);
+      }
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.status(200).json({
+      success: true,
+      message: `Cleaned up ${deletedCount} orphaned listings`,
+      deletedCount,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+
+    console.error("Error cleaning up orphaned listings:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error cleaning up orphaned listings",
+    });
+  }
+};
+
+// Get All Marketplace Listings
+// export const getAllMarketplaceListings = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
+//     const { page = 1, limit = 10, zone, subCategory, all } = req.query;
+
+//     const filter: any = {};
+
+//     if (req.user) {
+//       if (req.user.role === "admin") {
+//         // Admin → show all listings, optionally filter by zone
+//         if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//           filter.zone = zone;
+//         }
+//       } else {
+//         // Normal user
+//         if (all === "true") {
+//           // Show all listings → don't filter by leaser, only zone/subCategory
+//           if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//             filter.zone = zone;
+//           }
+//         } else {
+//           // Default → only user's own listings
+//           filter.leaser = req.user.id;
+//           if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//             filter.zone = zone;
+//           }
+//         }
+//       }
+//     } else {
+//       // Guest user (no token) → all listings, optionally filter by zone
+//       if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//         filter.zone = zone;
+//       }
+//     }
+
+//     if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
+//       filter.subCategory = subCategory;
+//     }
+
+//     const baseQuery = MarketplaceListing.find(filter)
+//       .populate("leaser", "_id name profilePicture phone createdAt updatedAt")
+//       .populate("subCategory", "_id name thumbnail createdAt updatedAt");
+
+//     const { data, total } = await paginateQuery(baseQuery, {
+//       page: +page,
+//       limit: +limit,
+//     });
+
+//     const final = data.map((doc: any) => {
+//       const obj = doc.toObject();
+//       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
+//       if (listingLang?.translations) {
+//         obj.description =
+//           listingLang.translations.description || obj.description;
+//       }
+//       delete obj.languages;
+//       return obj;
+//     });
+
+//     const uniqueUserIds = await MarketplaceListing.distinct("leaser", filter);
+//     const totalUsersWithListings = uniqueUserIds.length;
+//     const totalMarketplaceListings = await MarketplaceListing.countDocuments(
+//       filter
+//     );
+
+//     sendResponse(
+//       res,
+//       {
+//         listings: final,
+//         total,
+//         page: +page,
+//         limit: +limit,
+//         totalUsersWithListings,
+//         totalMarketplaceListings,
+//       },
+//       `Fetched listings${locale !== "en" ? ` (locale: ${locale})` : ""}`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (err) {
+//     next(err);
+//   }
+// };
+
+// // // READ ONE BY ID
+// export const getMarketplaceListingById = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const { id } = req.params;
+//     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
+
+//     if (!mongoose.Types.ObjectId.isValid(id)) {
+//       sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
+//       return;
+//     }
+
+//     const doc = await MarketplaceListing.findById(id)
+//       .populate("subCategory")
+//       .populate("zone")
+//       .populate("leaser", "name _id")
+//       .lean();
+
+//     if (!doc) {
+//       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+//       return;
+//     }
+
+//     if (Array.isArray(doc.languages)) {
+//       const match = doc.languages.find((l: any) => l.locale === locale);
+//       if (match?.translations) {
+//         doc.description = match.translations.description || doc.description;
+//       }
+//     }
+//     delete (doc as any).languages;
+
+//     const subCategoryObj = doc.subCategory as any;
+//     if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
+//       const match = subCategoryObj.languages.find(
+//         (l: any) => l.locale === locale
+//       );
+//       if (match?.translations) {
+//         subCategoryObj.name = match.translations.name || subCategoryObj.name;
+//         subCategoryObj.description =
+//           match.translations.description || subCategoryObj.description;
+//       }
+//       delete subCategoryObj.languages;
+//     }
+
+//     sendResponse(res, doc, "Listing fetched", STATUS_CODES.OK);
+//   } catch (err) {
+//     next(err);
+//   }
+// };
 
 // GET all bookings for a listing
 export const getBookingsForListing = async (
@@ -410,8 +686,18 @@ export const deleteMarketplaceListing = async (
       return;
     }
 
+    // Delete the listing itself
     await existingListing.deleteOne();
-    sendResponse(res, existingListing, "Listing deleted", STATUS_CODES.OK);
+
+    // Cascade delete bookings related to this listing
+    await Booking.deleteMany({ marketplaceListingId: id });
+
+    sendResponse(
+      res,
+      existingListing,
+      "Listing and related bookings deleted",
+      STATUS_CODES.OK
+    );
   } catch (err) {
     next(err);
   }

@@ -69,7 +69,7 @@ router.post(
 router.get("/details", authMiddleware, getUserDetails);
 
 router.get("/all", authMiddleware, getAllUsersWithStats);
-router.patch("/status/:userId", authMiddleware, updateUserStatus);
+router.patch("/:userId/status", authMiddleware, updateUserStatus);
 
 router.post("/form", addForm);
 
