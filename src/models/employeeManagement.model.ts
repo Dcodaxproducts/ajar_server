@@ -12,7 +12,6 @@ interface IAccessPermission {
 
 interface IEmployee extends Document {
   name: string;
-  // lastName: string;
   email: string;
   phone: string;
   password: string;

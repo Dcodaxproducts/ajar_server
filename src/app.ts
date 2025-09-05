@@ -9,6 +9,9 @@ import routes from "./routes";
 
 export const app: Application = express();
 export const server: HTTPServer = http.createServer(app);
+import compression from "compression";
+
+app.use(compression());
 
 app.use(
   cors({

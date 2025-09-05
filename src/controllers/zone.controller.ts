@@ -11,6 +11,7 @@ import { Form } from "../models/form.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { RefundManagement } from "../models/refundManagement.model";
 import { RefundPolicy } from "../models/refundPolicy.model";
+// import redisClient from "../utils/redisClient";
 
 // helper for polygon check
 const isPointInPolygon = (
@@ -138,7 +139,121 @@ export const getAllZones = async (
   }
 };
 
+// export const getAllZones = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const { page = 1, limit = 10, lat, lng } = req.query;
+//     const languageHeader = req.headers["language"];
+//     const locale = languageHeader?.toString() || null;
+
+//     // Build cache key based on params
+//     const cacheKey = `zones:page=${page}:limit=${limit}:lat=${lat || ""}:lng=${
+//       lng || ""
+//     }:locale=${locale || ""}`;
+
+//     // 1. Check cache
+//     const cached = await redisClient.get(cacheKey);
+//     if (cached) {
+//       const data = JSON.parse(cached);
+//       sendResponse(res, data, "Zones fetched from cache", STATUS_CODES.OK);
+//       return;
+//     }
+
+//     // 2. Run DB query
+//     const baseQuery = Zone.find()
+//       .populate("subCategories")
+//       .sort({ createdAt: -1 });
+
+//     const { data, total } = await paginateQuery(baseQuery, {
+//       page: Number(page),
+//       limit: Number(limit),
+//     });
+
+//     const totalCount = await Zone.countDocuments();
+
+//     let filteredData = data;
+
+//     // Apply locale filter
+//     if (locale) {
+//       filteredData = filteredData
+//         .filter((zone: any) =>
+//           zone.languages?.some((lang: any) => lang.locale === locale)
+//         )
+//         .map((zone: any) => {
+//           const matchedLang = zone.languages.find(
+//             (lang: any) => lang.locale === locale
+//           );
+
+//           const zoneObj = zone.toObject();
+
+//           if (matchedLang && matchedLang.translations) {
+//             zoneObj.name = matchedLang.translations.name || zoneObj.name;
+//             zoneObj.adminNotes =
+//               matchedLang.translations.adminNotes || zoneObj.adminNotes;
+//           }
+
+//           delete zoneObj.languages;
+//           return zoneObj;
+//         });
+//     }
+
+//     // Apply lat/lng filter
+//     if (lat && lng) {
+//       const point = { lat: Number(lat), lng: Number(lng) };
+
+//       filteredData = filteredData.filter((zone: any) =>
+//         zone.polygons?.some((polygon: any) => {
+//           if (!polygon || polygon.length < 1) return false;
+
+//           if (polygon.length === 1) {
+//             const p = polygon[0];
+//             return (
+//               Number(p.lat).toFixed(4) === Number(point.lat).toFixed(4) &&
+//               Number(p.lng).toFixed(4) === Number(point.lng).toFixed(4)
+//             );
+//           }
+
+//           if (polygon.length === 2) {
+//             const [sw, ne] = polygon;
+//             return (
+//               point.lat >= Math.min(sw.lat, ne.lat) &&
+//               point.lat <= Math.max(sw.lat, ne.lat) &&
+//               point.lng >= Math.min(sw.lng, ne.lng) &&
+//               point.lng <= Math.max(sw.lng, ne.lng)
+//             );
+//           }
+
+//           return isPointInPolygon(point, polygon);
+//         })
+//       );
+//     }
+
+//     const responseData = {
+//       zones: filteredData,
+//       total: totalCount,
+//       page: Number(page),
+//       limit: Number(limit),
+//     };
+
+//     // 3. Save to Redis (with TTL of 60s for freshness)
+//     await redisClient.setEx(cacheKey, 60, JSON.stringify(responseData));
+
+//     sendResponse(
+//       res,
+//       responseData,
+//       `Zones fetched successfully${locale ? ` for locale: ${locale}` : ""}`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 // GET Zone by ID with Locale-based Translations
+
 export const getZoneDetails = async (
   req: Request,
   res: Response,
@@ -202,6 +317,67 @@ export const getZoneDetails = async (
     next(error);
   }
 };
+
+// export const getZoneDetails = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const { id } = req.params;
+//     const languageHeader = req.headers["language"];
+//     const locale = languageHeader?.toString() || null;
+
+//     if (!mongoose.Types.ObjectId.isValid(id)) {
+//       sendResponse(res, null, "Invalid Zone ID", STATUS_CODES.BAD_REQUEST);
+//       return;
+//     }
+
+//     const cacheKey = `zone:${id}:locale=${locale || ""}`;
+
+//     // Check cache
+//     const cached = await redisClient.get(cacheKey);
+//     if (cached) {
+//       sendResponse(
+//         res,
+//         JSON.parse(cached),
+//         "Zone fetched from cache",
+//         STATUS_CODES.OK
+//       );
+//       return;
+//     }
+
+//     const zone = await Zone.findById(id).populate("subCategories").lean();
+//     if (!zone) {
+//       sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
+//       return;
+//     }
+
+//     let responseData: any = zone;
+
+//     if (locale) {
+//       const matchedLang = zone.languages?.find(
+//         (lang: any) => lang.locale === locale
+//       );
+//       if (matchedLang) {
+//         responseData = { ...zone, ...matchedLang.translations };
+//         delete responseData.languages;
+//       }
+//     }
+
+//     // Cache result for 5 minutes
+//     await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
+
+//     sendResponse(
+//       res,
+//       responseData,
+//       "Zone details fetched successfully",
+//       STATUS_CODES.OK
+//     );
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 //create zone
 export const createZone = async (

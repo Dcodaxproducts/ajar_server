@@ -23,10 +23,12 @@ import favouritesRoutes from "./favourites.route";
 import analyticsRoutes from "./analytics.routes";
 import refundPoliciesRoutes from "./refundPolicies.routes";
 import refundRequestsRoutes from "./refundRequests.routes";
+import dashboardRoutes from "./dashboard.routes";
 
 const router = express.Router();
 
 router.use("/users", userRoutes);
+router.use("/dashboard", dashboardRoutes);
 // router.use("/messages", messageRoutes);
 router.use("/chats", conversationRoutes);
 router.use("/payments", paymentRoutes);
