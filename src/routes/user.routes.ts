@@ -81,7 +81,7 @@ router.put(
   updateUserProfile
 );
 
-router.get("/stats", authMiddleware, getDashboardStats);
+// router.get("/stats", authMiddleware, getDashboardStats);
 
 router.delete("/:userId", authMiddleware, deleteUser);
 
