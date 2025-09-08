@@ -2,7 +2,7 @@ export const endpointAccessMap: Record<string, string> = {
   "/zones": "zone",
   "/categories": "category",
   "/fields": "field",
-  "/users": "users",
+  // "/users": "users",
   "/dashboard": "dashboard",
   "/marketplace-listings": "listing",
   "/businessSetting": "business",
