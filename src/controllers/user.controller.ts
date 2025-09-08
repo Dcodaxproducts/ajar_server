@@ -195,98 +195,6 @@ export const loginUser = async (
   }
 };
 
-// export const loginUser = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction
-// ): Promise<void> => {
-//   const { email, password, role } = req.body;
-
-//   try {
-//     if (role === "staff") {
-//       // Staff login using Employee model with plain password
-//       const employee = await Employee.findOne({ email })
-//         .select("email password roles")
-//         .lean();
-
-//       if (!employee) {
-//         sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
-//         return;
-//       }
-
-//       if (employee.password !== password) {
-//         sendResponse(
-//           res,
-//           null,
-//           "Invalid email or password",
-//           STATUS_CODES.UNAUTHORIZED
-//         );
-//         return;
-//       }
-
-//       const accessToken = generateAccessToken({
-//         id: employee._id,
-//         role: "staff",
-//       });
-
-//       sendResponse(
-//         res,
-//         {
-//           token: accessToken,
-//           user: employee,
-//         },
-//         "Login successful (staff)",
-//         STATUS_CODES.OK
-//       );
-//     } else if (role === "user" || role === "admin") {
-//       // User/Admin login using User model with bcrypt
-//       const user = await User.findOne({ email, role })
-//         .select("email password role")
-//         .lean();
-
-//       if (!user) {
-//         sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
-//         return;
-//       }
-
-//       const isPasswordValid = await bcrypt.compare(password, user.password);
-//       if (!isPasswordValid) {
-//         sendResponse(
-//           res,
-//           null,
-//           "Invalid email or password",
-//           STATUS_CODES.UNAUTHORIZED
-//         );
-//         return;
-//       }
-
-//       const accessToken = generateAccessToken({
-//         id: user._id,
-//         role: user.role,
-//       });
-
-//       sendResponse(
-//         res,
-//         {
-//           token: accessToken,
-//           user: user,
-//         },
-//         "Login successful",
-//         STATUS_CODES.OK
-//       );
-//     } else {
-//       sendResponse(
-//         res,
-//         null,
-//         "Invalid role provided",
-//         STATUS_CODES.BAD_REQUEST
-//       );
-//     }
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
 export const refreshToken = async (
   req: Request,
   res: Response,
@@ -339,14 +247,12 @@ export const logout = async (
   sendResponse(res, null, "Logged out successfully", STATUS_CODES.OK);
 };
 
-// Assuming your AuthRequest extends Express Request and adds a `user` object
 interface AuthRequest extends Request {
   user?: {
     id: string;
-    role: string | string[]; // Allow both string and string[] formats
+    role: string | string[];
   };
 }
-
 export const getUserDetails = async (
   req: AuthRequest,
   res: Response,
@@ -373,17 +279,33 @@ export const getUserDetails = async (
       Array.isArray(role) ? role.includes(r) : role === r;
 
     if (hasRole("admin") || hasRole("user")) {
-      user = await User.findById(userId).select("email name role").lean();
+      // Get all user details except password
+      user = await User.findById(userId).select("-password").lean();
     } else if (hasRole("staff")) {
+      // Get all staff details with populated role information - EXACTLY like login
       user = await Employee.findById(userId)
-        .select("email firstName lastName role")
+        .populate({
+          path: "allowAccess",
+          select: "-__v",
+        })
+        .select("-__v") // Remove -password to match login response
         .lean();
 
       if (user) {
-        // Combine firstName and lastName into a name field for consistency
-        user.name = `${user.firstName} ${user.lastName}`;
-        delete user.firstName;
-        delete user.lastName;
+        // Add role field for consistency with user response
+        user.role = "staff";
+
+        // Check if name already exists (from the database)
+        // If not, create it from firstName and lastName if they exist
+        if (!user.name) {
+          if (user.firstName && user.lastName) {
+            user.name = `${user.firstName} ${user.lastName}`;
+          } else if (user.firstName) {
+            user.name = user.firstName;
+          } else if (user.lastName) {
+            user.name = user.lastName;
+          }
+        }
       }
     } else {
       sendResponse(res, null, "Invalid role", STATUS_CODES.UNAUTHORIZED);

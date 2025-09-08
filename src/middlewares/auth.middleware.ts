@@ -78,25 +78,17 @@ export const authMiddleware = async (
       return;
     }
 
-    //Determine required access key
-    // const accessKey =
-    //   endpointAccessMap[req.baseUrl as keyof typeof endpointAccessMap];
-
+    // Determine required access key
     const baseUrl = req.baseUrl.replace(/^\/api/, "");
     const accessKey =
       endpointAccessMap[baseUrl as keyof typeof endpointAccessMap];
 
+    // If endpoint is not in the access map, allow access
     if (!accessKey) {
-      sendResponse(
-        res,
-        null,
-        `Forbidden: No access mapping for ${req.baseUrl}`,
-        STATUS_CODES.FORBIDDEN
-      );
-      return;
+      return next();
     }
 
-    //Determine operation (create/read/update/delete)
+    // Determine operation (create/read/update/delete)
     const operation = methodToOperation[req.method];
     if (!operation) {
       sendResponse(
@@ -108,7 +100,7 @@ export const authMiddleware = async (
       return;
     }
 
-    //Check permissions
+    // Check permissions only for mapped endpoints
     const hasPermission = role.permissions.some(
       (perm) => perm.access === accessKey && perm.operations.includes(operation)
     );
@@ -123,7 +115,7 @@ export const authMiddleware = async (
       return;
     }
 
-    //Permission granted
+    // Permission granted
     next();
   } catch (err) {
     console.error(err);
@@ -137,6 +129,7 @@ export const authMiddleware = async (
 // import { verifyAccessToken } from "../utils/jwt.utils";
 // import { Employee } from "../models/employeeManagement.model";
 // import Role from "../models/employeeRole.model";
+// import { endpointAccessMap } from "../config/accessControl";
 
 // export interface AuthRequest extends Request {
 //   user?: { id: string; role: string };
@@ -181,28 +174,15 @@ export const authMiddleware = async (
 
 //     req.user = { id: decoded.id, role: decoded.role };
 
-//     // Skip RBAC for admin or any non-staff role
-//     if (decoded.role !== "staff") {
-//       return next();
-//     }
+//     // Admin bypass
+//     if (decoded.role !== "staff") return next();
 
-//     // Fetch employee data
+//     // Get employee with role
 //     const employee = await Employee.findById(decoded.id)
 //       .populate("allowAccess")
 //       .exec();
 
-//     if (!employee) {
-//       sendResponse(
-//         res,
-//         null,
-//         "Unauthorized: Employee not found",
-//         STATUS_CODES.UNAUTHORIZED
-//       );
-//       return;
-//     }
-
-//     // If no role assigned → deny
-//     if (!employee.allowAccess) {
+//     if (!employee || !employee.allowAccess) {
 //       sendResponse(
 //         res,
 //         null,
@@ -212,7 +192,7 @@ export const authMiddleware = async (
 //       return;
 //     }
 
-//     const role = await Role.findById(employee.allowAccess);
+//     const role = await Role.findById(employee.allowAccess).lean();
 //     if (!role) {
 //       sendResponse(
 //         res,
@@ -223,10 +203,26 @@ export const authMiddleware = async (
 //       return;
 //     }
 
-//     // Map HTTP method to operation
-//     const operation = methodToOperation[req.method];
-//     console.log({ operation });
+//     //Determine required access key
+//     // const accessKey =
+//     //   endpointAccessMap[req.baseUrl as keyof typeof endpointAccessMap];
 
+//     const baseUrl = req.baseUrl.replace(/^\/api/, "");
+//     const accessKey =
+//       endpointAccessMap[baseUrl as keyof typeof endpointAccessMap];
+
+//     if (!accessKey) {
+//       sendResponse(
+//         res,
+//         null,
+//         `Forbidden: No access mapping for ${req.baseUrl}`,
+//         STATUS_CODES.FORBIDDEN
+//       );
+//       return;
+//     }
+
+//     //Determine operation (create/read/update/delete)
+//     const operation = methodToOperation[req.method];
 //     if (!operation) {
 //       sendResponse(
 //         res,
@@ -237,26 +233,22 @@ export const authMiddleware = async (
 //       return;
 //     }
 
-//     // Dynamic permission check: match access substring & operation
-//     const hasPermission = role.permissions.some((perm) => {
-//       const urlMatches = req.originalUrl
-//         .toLowerCase()
-//         .includes(perm.access.toLowerCase());
-//       const opMatches = perm.operations.includes(operation);
-//       return urlMatches && opMatches;
-//     });
+//     //Check permissions
+//     const hasPermission = role.permissions.some(
+//       (perm) => perm.access === accessKey && perm.operations.includes(operation)
+//     );
 
 //     if (!hasPermission) {
 //       sendResponse(
 //         res,
 //         null,
-//         "Forbidden: You do not have permission",
+//         `Forbidden: You do not have ${operation.toUpperCase()} permission on ${accessKey}`,
 //         STATUS_CODES.FORBIDDEN
 //       );
 //       return;
 //     }
 
-//     //  All checks passed
+//     //Permission granted
 //     next();
 //   } catch (err) {
 //     console.error(err);
