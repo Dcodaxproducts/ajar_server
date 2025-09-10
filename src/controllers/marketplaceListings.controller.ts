@@ -312,95 +312,97 @@ export const getAllMarketplaceListings = async (
 
   try {
     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
-    const { page = 1, limit = 10, zone, subCategory, all } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      zone,
+      subCategory,
+      category,
+      all,
+    } = req.query;
 
     const filter: any = {};
 
+    // ---------------- ROLE-BASED FILTERS ----------------
     if (req.user) {
       if (req.user.role === "admin") {
-        // Admin → show all listings, optionally filter by zone
         if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
-          filter.zone = zone;
+          filter.zone = new mongoose.Types.ObjectId(String(zone));
         }
       } else {
-        // Normal user
         if (all === "true") {
-          // Show all listings → don't filter by leaser, only zone/subCategory
           if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
-            filter.zone = zone;
+            filter.zone = new mongoose.Types.ObjectId(String(zone));
           }
         } else {
-          // Default → only user's own listings
-          filter.leaser = req.user.id;
+          filter.leaser = new mongoose.Types.ObjectId(String(req.user.id));
           if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
-            filter.zone = zone;
+            filter.zone = new mongoose.Types.ObjectId(String(zone));
           }
         }
       }
     } else {
-      // Guest user (no token) → all listings, optionally filter by zone
       if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
-        filter.zone = zone;
+        filter.zone = new mongoose.Types.ObjectId(String(zone));
       }
     }
 
+    // ---------------- CATEGORY & SUBCATEGORY FILTERS ----------------
     if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
-      filter.subCategory = subCategory;
+      filter.subCategory = new mongoose.Types.ObjectId(String(subCategory));
     }
 
-    // First, find all listings that match the filter
-    const allListings = await MarketplaceListing.find(filter).session(session);
+    if (category && mongoose.Types.ObjectId.isValid(String(category))) {
+      const subCategoryIds = await SubCategory.find({
+        category: category,
+      }).distinct("_id");
 
-    // Check each listing for valid references and collect invalid ones
-    const invalidListingIds: mongoose.Types.ObjectId[] = [];
-    const validListings: any[] = [];
-
-    for (const listing of allListings) {
-      // Use type assertion for listing._id
-      const listingId = listing._id as mongoose.Types.ObjectId;
-
-      const zoneExists = await Zone.exists({ _id: listing.zone }).session(
-        session
-      );
-      const subCategoryExists = await SubCategory.exists({
-        _id: listing.subCategory,
-      }).session(session);
-
-      if (zoneExists && subCategoryExists) {
-        validListings.push(listing);
-      } else {
-        invalidListingIds.push(listingId);
-        console.log(
-          `Marking listing ${listingId} for deletion - missing references`
-        );
-      }
+      filter.subCategory = { $in: subCategoryIds };
     }
 
-    // Delete invalid listings
-    if (invalidListingIds.length > 0) {
-      await MarketplaceListing.deleteMany({
-        _id: { $in: invalidListingIds },
-      }).session(session);
-      console.log(
-        `Deleted ${invalidListingIds.length} invalid listings with missing references`
-      );
-    }
+    // ---------------- AGGREGATION PIPELINE ----------------
+    const pipeline: any[] = [
+      { $match: filter },
+      {
+        $lookup: {
+          from: "categories", // SubCategory & Category share same collection
+          localField: "subCategory",
+          foreignField: "_id",
+          as: "subCategory",
+        },
+      },
+      { $unwind: "$subCategory" },
+      {
+        $lookup: {
+          from: "users",
+          localField: "leaser",
+          foreignField: "_id",
+          as: "leaser",
+        },
+      },
+      { $unwind: "$leaser" },
+      {
+        $lookup: {
+          from: "zones",
+          localField: "zone",
+          foreignField: "_id",
+          as: "zone",
+        },
+      },
+      { $unwind: "$zone" },
+      { $skip: (Number(page) - 1) * Number(limit) },
+      { $limit: Number(limit) },
+    ];
 
-    // Now paginate only the valid listings
-    const baseQuery = MarketplaceListing.find({
-      ...filter,
-      _id: { $in: validListings.map((l) => l._id as mongoose.Types.ObjectId) },
-    })
-      .populate("leaser", "_id name profilePicture phone createdAt updatedAt")
-      .populate("subCategory", "_id name thumbnail createdAt updatedAt");
+    const listings = await MarketplaceListing.aggregate(pipeline).session(
+      session
+    );
+    const total = await MarketplaceListing.countDocuments(filter).session(
+      session
+    );
 
-    const { data, total } = await paginateQuery(baseQuery, {
-      page: +page,
-      limit: +limit,
-    });
-
-    const final = data.map((doc: any) => {
-      const obj = doc.toObject();
+    // ---------------- LANGUAGE HANDLING ----------------
+    const final = listings.map((obj: any) => {
       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
       if (listingLang?.translations) {
         obj.description =
@@ -410,13 +412,12 @@ export const getAllMarketplaceListings = async (
       return obj;
     });
 
-    const uniqueUserIds = await MarketplaceListing.distinct("leaser", {
-      ...filter,
-      _id: { $in: validListings.map((l) => l._id as mongoose.Types.ObjectId) },
-    }).session(session);
-
+    // ---------------- STATS ----------------
+    const uniqueUserIds = await MarketplaceListing.distinct(
+      "leaser",
+      filter
+    ).session(session);
     const totalUsersWithListings = uniqueUserIds.length;
-    const totalMarketplaceListings = validListings.length;
 
     await session.commitTransaction();
     session.endSession();
@@ -429,7 +430,7 @@ export const getAllMarketplaceListings = async (
         page: +page,
         limit: +limit,
         totalUsersWithListings,
-        totalMarketplaceListings,
+        totalMarketplaceListings: total,
       },
       `Fetched listings${locale !== "en" ? ` (locale: ${locale})` : ""}`,
       STATUS_CODES.OK
@@ -440,6 +441,145 @@ export const getAllMarketplaceListings = async (
     next(err);
   }
 };
+
+// export const getAllMarketplaceListings = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+
+//   try {
+//     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
+//     const { page = 1, limit = 10, zone, subCategory, all } = req.query;
+
+//     const filter: any = {};
+
+//     if (req.user) {
+//       if (req.user.role === "admin") {
+//         // Admin → show all listings, optionally filter by zone
+//         if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//           filter.zone = zone;
+//         }
+//       } else {
+//         // Normal user
+//         if (all === "true") {
+//           // Show all listings → don't filter by leaser, only zone/subCategory
+//           if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//             filter.zone = zone;
+//           }
+//         } else {
+//           // Default → only user's own listings
+//           filter.leaser = req.user.id;
+//           if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//             filter.zone = zone;
+//           }
+//         }
+//       }
+//     } else {
+//       // Guest user (no token) → all listings, optionally filter by zone
+//       if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//         filter.zone = zone;
+//       }
+//     }
+
+//     if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
+//       filter.subCategory = subCategory;
+//     }
+
+//     // First, find all listings that match the filter
+//     const allListings = await MarketplaceListing.find(filter).session(session);
+
+//     // Check each listing for valid references and collect invalid ones
+//     const invalidListingIds: mongoose.Types.ObjectId[] = [];
+//     const validListings: any[] = [];
+
+//     for (const listing of allListings) {
+//       // Use type assertion for listing._id
+//       const listingId = listing._id as mongoose.Types.ObjectId;
+
+//       const zoneExists = await Zone.exists({ _id: listing.zone }).session(
+//         session
+//       );
+//       const subCategoryExists = await SubCategory.exists({
+//         _id: listing.subCategory,
+//       }).session(session);
+
+//       if (zoneExists && subCategoryExists) {
+//         validListings.push(listing);
+//       } else {
+//         invalidListingIds.push(listingId);
+//         console.log(
+//           `Marking listing ${listingId} for deletion - missing references`
+//         );
+//       }
+//     }
+
+//     // Delete invalid listings
+//     if (invalidListingIds.length > 0) {
+//       await MarketplaceListing.deleteMany({
+//         _id: { $in: invalidListingIds },
+//       }).session(session);
+//       console.log(
+//         `Deleted ${invalidListingIds.length} invalid listings with missing references`
+//       );
+//     }
+
+//     // Now paginate only the valid listings
+//     const baseQuery = MarketplaceListing.find({
+//       ...filter,
+//       _id: { $in: validListings.map((l) => l._id as mongoose.Types.ObjectId) },
+//     })
+//       .populate("leaser", "_id name profilePicture phone createdAt updatedAt")
+//       .populate("subCategory", "_id name thumbnail createdAt updatedAt");
+
+//     const { data, total } = await paginateQuery(baseQuery, {
+//       page: +page,
+//       limit: +limit,
+//     });
+
+//     const final = data.map((doc: any) => {
+//       const obj = doc.toObject();
+//       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
+//       if (listingLang?.translations) {
+//         obj.description =
+//           listingLang.translations.description || obj.description;
+//       }
+//       delete obj.languages;
+//       return obj;
+//     });
+
+//     const uniqueUserIds = await MarketplaceListing.distinct("leaser", {
+//       ...filter,
+//       _id: { $in: validListings.map((l) => l._id as mongoose.Types.ObjectId) },
+//     }).session(session);
+
+//     const totalUsersWithListings = uniqueUserIds.length;
+//     const totalMarketplaceListings = validListings.length;
+
+//     await session.commitTransaction();
+//     session.endSession();
+
+//     sendResponse(
+//       res,
+//       {
+//         listings: final,
+//         total,
+//         page: +page,
+//         limit: +limit,
+//         totalUsersWithListings,
+//         totalMarketplaceListings,
+//       },
+//       `Fetched listings${locale !== "en" ? ` (locale: ${locale})` : ""}`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (err) {
+//     await session.abortTransaction();
+//     session.endSession();
+//     next(err);
+//   }
+// };
 
 // READ ONE BY ID with automatic cleanup
 export const getMarketplaceListingById = async (
