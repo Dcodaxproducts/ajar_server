@@ -29,6 +29,8 @@ router.get("/search", asyncHandler(searchMarketplaceListings));
 // router.get("/", optionalAuth, getAllMarketplaceListings);
 
 router.get("/", authMiddleware, getAllMarketplaceListings);
+// Guest route - no auth required
+router.get("/guest", getAllMarketplaceListings);
 
 router.get("/:id", getMarketplaceListingById);
 
