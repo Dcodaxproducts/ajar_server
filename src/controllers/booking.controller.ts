@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { Booking } from "../models/booking.model";
+import { Booking, IBooking }   from "../models/booking.model";
 import { sendResponse } from "../utils/response";
 import mongoose from "mongoose";
 import { STATUS_CODES } from "../config/constants";
@@ -7,79 +7,80 @@ import { paginateQuery } from "../utils/paginate";
 import { sendEmail } from "../helpers/node-mailer";
 import { User } from "../models/user.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
+import { AuthRequest } from "../middlewares/auth.middleware";
 
-async function updateListingAvailability(listingId: mongoose.Types.ObjectId) {
-  // check if any accepted booking exists for this listing
-  const acceptedBooking = await Booking.findOne({
-    marketplaceListingId: listingId,
-    status: "accepted",
-  });
 
-  if (acceptedBooking) {
-    await MarketplaceListing.findByIdAndUpdate(listingId, {
-      isAvailable: false,
-      currentBookingId: acceptedBooking._id,
-    });
-  } else {
-    await MarketplaceListing.findByIdAndUpdate(listingId, {
-      isAvailable: true,
-      currentBookingId: null,
-    });
+// Utility function to update listing availability
+async function updateListingAvailability(
+  listingId: mongoose.Types.ObjectId,
+  status: string,
+  bookingId?: mongoose.Types.ObjectId
+) {
+  const listing = await MarketplaceListing.findById(listingId);
+  if (!listing) return;
+
+  if (status === "accepted" && bookingId) {
+    if (!listing.currentBookingIds.includes(bookingId)) {
+      listing.currentBookingIds.push(bookingId);
+    }
+    listing.isAvailable = false;
+  } else if (
+    ["rejected", "completed", "cancelled"].includes(status) &&
+    bookingId
+  ) {
+    listing.currentBookingIds = listing.currentBookingIds.filter(
+      (id: mongoose.Types.ObjectId) =>
+        id.toString() !== bookingId.toString()
+    );
+
+    if (listing.currentBookingIds.length === 0) {
+      listing.isAvailable = true;
+    }
   }
+
+  await listing.save();
 }
 
-// CREATE
-export const createBooking = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
+// Create booking controller
+export const createBooking = async (req: AuthRequest, res: Response) => {
   try {
-    const user = (req as any).user;
-
-    if (!user || !user.id) {
-      return sendResponse(
-        res,
-        null,
-        "Unauthenticated",
-        STATUS_CODES.UNAUTHORIZED
-      );
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorised" });
     }
 
-    const { marketplaceListingId } = req.body;
+    const { marketplaceListingId, ...bookingData } = req.body;
 
-    const listing = await MarketplaceListing.findById(
-      marketplaceListingId
-    ).lean();
+    const listing = await MarketplaceListing.findById(marketplaceListingId);
     if (!listing) {
-      return sendResponse(
-        res,
-        null,
-        "Marketplace listing not found",
-        STATUS_CODES.NOT_FOUND
-      );
+      return res.status(404).json({ message: "Listing not found" });
     }
 
-    const newBooking = await Booking.create({
-      ...req.body,
+    if (!listing.isAvailable) {
+      return res.status(400).json({ message: "Listing is not available" });
+    }
+
+    // 1️⃣ Create new booking
+    const newBooking: IBooking = await Booking.create({
+      ...bookingData,
       renter: user.id,
       leaser: listing.leaser,
       status: "pending",
+      marketplaceListingId: listing._id,
     });
 
-    console.log("Booking input body:", req.body);
+    // 2️⃣ Update marketplace listing with this booking ID
+    listing.currentBookingId = newBooking._id;
+    // keep isAvailable true for now, will flip false when accepted
+    await listing.save();
 
-    // update listing availability after booking is created
-    await updateListingAvailability(newBooking.marketplaceListingId);
-
-    sendResponse(
-      res,
-      newBooking.toObject(),
-      "Booking created successfully",
-      STATUS_CODES.CREATED
-    );
-  } catch (err) {
-    next(err);
+    return res.status(201).json({
+      message: "Booking created successfully",
+      booking: newBooking,
+    });
+  } catch (error) {
+    console.error("Error creating booking:", error);
+    return res.status(500).json({ message: "Server error", error });
   }
 };
 
@@ -370,11 +371,8 @@ export const deleteBooking = async (
 };
 
 // PATCH /bookings/:id/status
-export const updateBookingStatus = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
+// PATCH /bookings/:id/status
+export const updateBookingStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -382,22 +380,12 @@ export const updateBookingStatus = async (
 
     const allowedStatuses = ["accepted", "rejected", "completed", "cancelled"];
     if (!allowedStatuses.includes(status)) {
-      return sendResponse(
-        res,
-        null,
-        "Invalid status",
-        STATUS_CODES.BAD_REQUEST
-      );
+      return sendResponse(res, null, "Invalid status", STATUS_CODES.BAD_REQUEST);
     }
 
     const booking = await Booking.findById(id).populate("renter", "email name");
     if (!booking) {
-      return sendResponse(
-        res,
-        null,
-        "Booking not found",
-        STATUS_CODES.NOT_FOUND
-      );
+      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
     }
 
     const isRenter =
@@ -407,43 +395,20 @@ export const updateBookingStatus = async (
 
     const isLeaser = user.id === booking.leaser?.toString();
 
-    // Restriction logic
-    if (status === "cancelled") {
-      if (!isRenter) {
-        return sendResponse(
-          res,
-          null,
-          "Only renter can cancel the booking",
-          STATUS_CODES.FORBIDDEN
-        );
-      }
-    } else {
-      if (!isLeaser) {
-        return sendResponse(
-          res,
-          null,
-          "Only leaser can change the booking status",
-          STATUS_CODES.FORBIDDEN
-        );
-      }
+    // Restrictions
+    if (status === "cancelled" && !isRenter) {
+      return sendResponse(res, null, "Only renter can cancel the booking", STATUS_CODES.FORBIDDEN);
+    }
+    if (["accepted", "rejected", "completed"].includes(status) && !isLeaser) {
+      return sendResponse(res, null, "Only leaser can change the booking status", STATUS_CODES.FORBIDDEN);
     }
 
-    const bookingToUpdate = await Booking.findById(id);
-    if (!bookingToUpdate) {
-      return sendResponse(
-        res,
-        null,
-        "Booking not found",
-        STATUS_CODES.NOT_FOUND
-      );
-    }
+    booking.status = status as any;
 
-    bookingToUpdate.status = status as any;
-
-    // If accepted → send OTP
+    // If accepted → generate OTP
     if (status === "accepted") {
       const pin = Math.floor(1000 + Math.random() * 9000).toString();
-      bookingToUpdate.otp = pin;
+      booking.otp = pin;
 
       const userInfo = booking.renter as any;
       await sendEmail({
@@ -454,35 +419,140 @@ export const updateBookingStatus = async (
       });
     }
 
-    await bookingToUpdate.save();
+    await booking.save();
 
-    // Update listing availability + currentBookingId
-    const listing = await MarketplaceListing.findById(
-      bookingToUpdate.marketplaceListingId
-    );
-
+    // 🔧 Update MarketplaceListing
+    const listing = await MarketplaceListing.findById(booking.marketplaceListingId);
     if (listing) {
       if (status === "accepted") {
         listing.isAvailable = false;
-        listing.currentBookingId = bookingToUpdate._id;
+        listing.currentBookingId = booking._id;
       } else {
-        // rejected / completed / cancelled
         listing.isAvailable = true;
         listing.currentBookingId = null;
       }
       await listing.save();
     }
 
-    sendResponse(
-      res,
-      bookingToUpdate,
-      `Booking status updated to ${status}`,
-      STATUS_CODES.OK
-    );
+    sendResponse(res, booking, `Booking status updated to ${status}`, STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }
 };
+
+// export const updateBookingStatus = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     const { id } = req.params;
+//     const { status } = req.body;
+//     const user = (req as any).user;
+
+//     const allowedStatuses = ["accepted", "rejected", "completed", "cancelled"];
+//     if (!allowedStatuses.includes(status)) {
+//       return sendResponse(
+//         res,
+//         null,
+//         "Invalid status",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//     }
+
+//     const booking = await Booking.findById(id).populate("renter", "email name");
+//     if (!booking) {
+//       return sendResponse(
+//         res,
+//         null,
+//         "Booking not found",
+//         STATUS_CODES.NOT_FOUND
+//       );
+//     }
+
+//     const isRenter =
+//       typeof booking.renter === "object" && "_id" in booking.renter
+//         ? user.id === (booking.renter as any)._id.toString()
+//         : user.id === booking.renter.toString();
+
+//     const isLeaser = user.id === booking.leaser?.toString();
+
+//     // Restriction logic
+//     if (status === "cancelled") {
+//       if (!isRenter) {
+//         return sendResponse(
+//           res,
+//           null,
+//           "Only renter can cancel the booking",
+//           STATUS_CODES.FORBIDDEN
+//         );
+//       }
+//     } else {
+//       if (!isLeaser) {
+//         return sendResponse(
+//           res,
+//           null,
+//           "Only leaser can change the booking status",
+//           STATUS_CODES.FORBIDDEN
+//         );
+//       }
+//     }
+
+//     const bookingToUpdate = await Booking.findById(id);
+//     if (!bookingToUpdate) {
+//       return sendResponse(
+//         res,
+//         null,
+//         "Booking not found",
+//         STATUS_CODES.NOT_FOUND
+//       );
+//     }
+
+//     bookingToUpdate.status = status as any;
+
+//     // If accepted → send OTP
+//     if (status === "accepted") {
+//       const pin = Math.floor(1000 + Math.random() * 9000).toString();
+//       bookingToUpdate.otp = pin;
+
+//       const userInfo = booking.renter as any;
+//       await sendEmail({
+//         to: userInfo.email,
+//         name: userInfo.name,
+//         subject: "Your Booking Confirmation PIN",
+//         content: `Dear ${userInfo.name},\n\nYour booking has been accepted. Your confirmation PIN is: ${pin}`,
+//       });
+//     }
+
+//     await bookingToUpdate.save();
+
+//     // Update listing availability + currentBookingId
+//     const listing = await MarketplaceListing.findById(
+//       bookingToUpdate.marketplaceListingId
+//     );
+
+//     if (listing) {
+//       if (status === "accepted") {
+//         listing.isAvailable = false;
+//         listing.currentBookingId = bookingToUpdate._id;
+//       } else {
+//         // rejected / completed / cancelled
+//         listing.isAvailable = true;
+//         listing.currentBookingId = null;
+//       }
+//       await listing.save();
+//     }
+
+//     sendResponse(
+//       res,
+//       bookingToUpdate,
+//       `Booking status updated to ${status}`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (err) {
+//     next(err);
+//   }
+// };
 
 //submit booking pin
 export const submitBookingPin = async (

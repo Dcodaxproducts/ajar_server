@@ -11,6 +11,7 @@ import {
   refreshToken,
   resendOtp,
   resetPassword,
+  updateDocumentStatus,
   updateUserProfile,
   updateUserStatus,
   verifyOtp,
@@ -73,12 +74,36 @@ router.patch("/:userId/status", authMiddleware, updateUserStatus);
 
 router.post("/form", addForm);
 
+// router.put(
+//   "/profile",
+//   authMiddleware,
+//   upload.single("profilePicture"),
+//   validateRequest({ body: updateUserSchema }),
+//   updateUserProfile
+// );
+
+// Update profile route with multiple uploads
 router.put(
   "/profile",
   authMiddleware,
-  upload.single("profilePicture"),
+  upload.fields([
+    { name: "profilePicture", maxCount: 1 },
+    { name: "cnicFront", maxCount: 1 },
+    { name: "cnicBack", maxCount: 1 },
+    { name: "passport", maxCount: 1 },
+    { name: "driving_license_front", maxCount: 1 },
+    { name: "driving_license_back", maxCount: 1 },
+  ]),
   validateRequest({ body: updateUserSchema }),
   updateUserProfile
+);
+
+// Admin-only: Update document status
+// PATCH /admin/users/:userId/documents/:docType/status
+router.patch(
+  "/:userId/documents/:docType",
+  authMiddleware, // must be admin
+  updateDocumentStatus
 );
 
 // router.get("/stats", authMiddleware, getDashboardStats);

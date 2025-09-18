@@ -574,6 +574,8 @@ export const getAllUsersWithStats = async (
   }
 };
 
+// controllers/user.controller.ts
+
 export const updateUserProfile = async (
   req: AuthRequest,
   res: Response,
@@ -582,15 +584,79 @@ export const updateUserProfile = async (
   try {
     const userId = req.user?.id;
 
-    // Collect body data
+    // Start collecting updates
     const updates: any = { ...req.body };
 
-    // Handle file upload
-    if (req.file) {
-      updates.profilePicture = `/uploads/${req.file.filename}`;
+    // Handle profile picture upload
+    if (req.files && "profilePicture" in req.files) {
+      const profileFile = (req.files as any).profilePicture[0];
+      updates.profilePicture = `/uploads/${profileFile.filename}`;
     }
 
-    // Find and update in one go
+    // Handle documents upload
+    if (req.files) {
+      updates.documents = {};
+
+      // CNIC
+      if ("cnicFront" in req.files || "cnicBack" in req.files) {
+        updates.documents.cnic = { images: [] };
+
+        if ("cnicFront" in req.files) {
+          updates.documents.cnic.images.push({
+            side: "front",
+            url: `/uploads/${(req.files as any).cnicFront[0].filename}`,
+          });
+        }
+        if ("cnicBack" in req.files) {
+          updates.documents.cnic.images.push({
+            side: "back",
+            url: `/uploads/${(req.files as any).cnicBack[0].filename}`,
+          });
+        }
+      }
+
+      // Passport
+      if ("passport" in req.files) {
+        updates.documents.passport = {
+          images: [
+            {
+              side: "single",
+              url: `/uploads/${(req.files as any).passport[0].filename}`,
+            },
+          ],
+        };
+      }
+
+      // Driving license
+      if (
+        "driving_license_front" in req.files ||
+        "driving_license_back" in req.files
+      ) {
+        updates.documents.driving_license = { images: [] };
+
+        if ("driving_license_front" in req.files) {
+          updates.documents.driving_license.images.push({
+            side: "front",
+            url: `/uploads/${
+              (req.files as any).driving_license_front[0].filename
+            }`,
+          });
+        }
+        if ("driving_license_back" in req.files) {
+          updates.documents.driving_license.images.push({
+            side: "back",
+            url: `/uploads/${
+              (req.files as any).driving_license_back[0].filename
+            }`,
+          });
+        }
+      }
+
+      // Always reset status if re-uploaded
+      updates.documents.status = "pending";
+    }
+
+    // Update user in DB
     const user = await User.findByIdAndUpdate(
       userId,
       { $set: updates },
@@ -602,7 +668,6 @@ export const updateUserProfile = async (
       return;
     }
 
-    // Exclude password before sending back
     const { password, ...userWithoutPassword } = user.toObject();
 
     sendResponse(
@@ -615,6 +680,48 @@ export const updateUserProfile = async (
     next(error);
   }
 };
+
+// export const updateUserProfile = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const userId = req.user?.id;
+
+//     // Collect body data
+//     const updates: any = { ...req.body };
+
+//     // Handle file upload
+//     if (req.file) {
+//       updates.profilePicture = `/uploads/${req.file.filename}`;
+//     }
+
+//     // Find and update in one go
+//     const user = await User.findByIdAndUpdate(
+//       userId,
+//       { $set: updates },
+//       { new: true, runValidators: true }
+//     );
+
+//     if (!user) {
+//       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+//       return;
+//     }
+
+//     // Exclude password before sending back
+//     const { password, ...userWithoutPassword } = user.toObject();
+
+//     sendResponse(
+//       res,
+//       userWithoutPassword,
+//       "Profile updated successfully",
+//       STATUS_CODES.OK
+//     );
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 // add dynamic form
 export const addForm = async (
@@ -964,6 +1071,80 @@ export const deleteUser = async (
     }
 
     sendResponse(res, null, "User deleted successfully", STATUS_CODES.OK);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ===== Admin: Update Document Status =====
+// ===== Admin: Update Document Status =====
+export const updateDocumentStatus = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    //Only admin allowed
+    if (!req.user) {
+      sendResponse(
+        res,
+        null,
+        "Authentication required",
+        STATUS_CODES.UNAUTHORIZED
+      );
+      return;
+    }
+
+    if (req.user.role !== "admin") {
+      sendResponse(
+        res,
+        null,
+        "Access denied. Only admins can update document statuses.",
+        STATUS_CODES.FORBIDDEN
+      );
+      return;
+    }
+    const { userId, docType } = req.params; // docType = "cnic" | "passport" | "driving_license"
+    const { status, reason } = req.body; // status: "approved" | "rejected" | "pending"
+
+    // Validate docType
+    if (!["cnic", "passport", "driving_license"].includes(docType)) {
+      sendResponse(
+        res,
+        null,
+        "Invalid document type",
+        STATUS_CODES.BAD_REQUEST
+      );
+      return;
+    }
+
+    // Build dynamic update path
+    const updatePath = `documents.${docType}.status`;
+    const reasonPath = `documents.${docType}.reason`;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          [updatePath]: status,
+          [reasonPath]:
+            status === "rejected" ? reason || "Rejected by admin" : null,
+        },
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    sendResponse(
+      res,
+      user.documents,
+      `${docType} document ${status} successfully`,
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
