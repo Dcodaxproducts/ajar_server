@@ -15,7 +15,8 @@ export const createNewForm = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { subCategory, zone, name, description, fields, language } = req.body;
+    const { subCategory, zone, name, description, fields, language, setting } =
+      req.body;
 
     // Validate ObjectIds
     if (
@@ -52,7 +53,18 @@ export const createNewForm = async (
       return;
     }
 
-    const { setting } = req.body;
+    // ✅ Validate requiredDocuments inside setting
+    if (setting && setting.requiredDocuments) {
+      if (!Array.isArray(setting.requiredDocuments)) {
+        sendResponse(
+          res,
+          null,
+          "requiredDocuments must be an array",
+          STATUS_CODES.BAD_REQUEST
+        );
+        return;
+      }
+    }
 
     const newForm = await Form.create({
       subCategory,
@@ -61,7 +73,7 @@ export const createNewForm = async (
       description,
       language: language || "en",
       fields,
-      setting,
+      setting: setting || {},
     });
 
     const populatedForm = await Form.findById(newForm._id)
@@ -79,6 +91,77 @@ export const createNewForm = async (
     next(error);
   }
 };
+
+// export const createNewForm = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const { subCategory, zone, name, description, fields, language } = req.body;
+
+//     // Validate ObjectIds
+//     if (
+//       !mongoose.Types.ObjectId.isValid(subCategory) ||
+//       !mongoose.Types.ObjectId.isValid(zone) ||
+//       !Array.isArray(fields) ||
+//       !fields.every((id) => mongoose.Types.ObjectId.isValid(id))
+//     ) {
+//       sendResponse(
+//         res,
+//         null,
+//         "Invalid subCategoryId, zoneId or fieldsIds",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//       return;
+//     }
+
+//     // Check SubCategory exists
+//     const subCatExists = await SubCategory.findById(subCategory);
+//     if (!subCatExists) {
+//       sendResponse(res, null, "SubCategory not found", STATUS_CODES.NOT_FOUND);
+//       return;
+//     }
+
+//     // Optional: Validate that all fieldIds actually exist
+//     const validFields = await Field.find({ _id: { $in: fields } });
+//     if (validFields.length !== fields.length) {
+//       sendResponse(
+//         res,
+//         null,
+//         "One or more fieldIds are invalid",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//       return;
+//     }
+
+//     const { setting } = req.body;
+
+//     const newForm = await Form.create({
+//       subCategory,
+//       zone,
+//       name,
+//       description,
+//       language: language || "en",
+//       fields,
+//       setting,
+//     });
+
+//     const populatedForm = await Form.findById(newForm._id)
+//       .populate("fields")
+//       .populate("zone")
+//       .populate("subCategory");
+
+//     sendResponse(
+//       res,
+//       populatedForm,
+//       "Form created successfully",
+//       STATUS_CODES.CREATED
+//     );
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 export const getAllForms = async (
   req: Request,

@@ -25,6 +25,7 @@ interface IForm extends Document {
   language: string;
   languages?: IZoneLanguage[];
   setting: ISetting;
+  requiredDocuments: string[]; // e.g. ["propertyPaper", "registrationPaper"]
 }
 
 const FormSchema = new Schema<IForm>(
@@ -93,6 +94,12 @@ const FormSchema = new Schema<IForm>(
         type: Date,
         required: true,
       },
+
+      //NEW: required listing-specific documents
+      // requiredDocuments: {
+      //   type: [String], // e.g. ["propertyPaper", "registrationPaper"]
+      //   default: [],
+      // },
     },
   },
   {
