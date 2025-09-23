@@ -10,6 +10,160 @@ import { SubCategory } from "../models/category.model";
 import { Form } from "../models/form.model";
 import { Field, IField } from "../models/field.model";
 import { Booking } from "../models/booking.model";
+import { UserDocument } from "../models/userDocs.model";
+import { UserForm } from "../models/userForm.model";
+
+// controllers/marketplaceListings.controller.ts
+
+//Utility to convert keys to camelCase
+// const toCamelCase = (str: string) => {
+//   return str
+//     .replace(/([-_][a-z])/gi, (s) =>
+//       s.toUpperCase().replace("-", "").replace("_", "")
+//     )
+//     .replace(/^[A-Z]/, (s) => s.toLowerCase());
+// };
+
+// export const createMarketplaceListing = async (req: any, res: Response) => {
+//   try {
+//     const { zone, subCategory } = req.body;
+//     const leaser = req.user.id;
+
+//     // 🔹 Normalise all incoming keys to camelCase
+//     const normalisedBody: any = {};
+//     for (const key of Object.keys(req.body)) {
+//       normalisedBody[toCamelCase(key)] = req.body[key];
+//     }
+
+//     // 1. Fetch form for zone + subCategory
+//     const form = await Form.findOne({ zone, subCategory }).populate("fields");
+//     if (!form) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Form not found for this Zone and SubCategory",
+//       });
+//     }
+
+//     const fields = form.fields as unknown as IField[];
+//     const requestData: any = {};
+
+//     // 2. Dynamic validation from form fields
+//     for (const field of fields) {
+//       const fieldName = toCamelCase(field.name); // enforce camelCase
+//       const value = normalisedBody[fieldName];
+
+//       if (field.validation?.required && (value === undefined || value === "")) {
+//         return res
+//           .status(400)
+//           .json({ success: false, message: `${field.label} is required` });
+//       }
+
+//       if (value !== undefined) {
+//         if (field.options?.length && !field.options.includes(value)) {
+//           return res.status(400).json({
+//             success: false,
+//             message: `${field.label} must be one of: ${field.options.join(
+//               ", "
+//             )}`,
+//           });
+//         }
+
+//         if (field.min !== undefined && value < field.min) {
+//           return res.status(400).json({
+//             success: false,
+//             message: `${field.label} must be >= ${field.min}`,
+//           });
+//         }
+
+//         if (field.max !== undefined && value > field.max) {
+//           return res.status(400).json({
+//             success: false,
+//             message: `${field.label} must be <= ${field.max}`,
+//           });
+//         }
+
+//         if (field.validation?.pattern) {
+//           const regex = new RegExp(field.validation.pattern);
+//           if (!regex.test(value)) {
+//             return res.status(400).json({
+//               success: false,
+//               message: `${field.label} format is invalid`,
+//             });
+//           }
+//         }
+
+//         requestData[fieldName] = value;
+//       }
+//     }
+
+//     // 3. Manual validation for must-have fields
+//     if (!normalisedBody.name) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "name is required" });
+//     }
+//     if (!normalisedBody.subTitle) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "subTitle is required" });
+//     }
+//     if (!normalisedBody.price) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "price is required" });
+//     }
+//     if (!req.files || !req.files.rentalImages) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "rentalImages is required" });
+//     }
+
+//     // 4. Handle uploaded files
+//     if (req.files) {
+//       for (const field of fields) {
+//         const fieldName = toCamelCase(field.name);
+//         if (field.type === "file" && req.files[fieldName]) {
+//           requestData[fieldName] = (
+//             req.files[fieldName] as Express.Multer.File[]
+//           ).map((file) => `/uploads/${file.filename}`);
+//         }
+//       }
+
+//       if (req.files["images"]) {
+//         requestData.images = (req.files["images"] as Express.Multer.File[]).map(
+//           (file) => `/uploads/${file.filename}`
+//         );
+//       }
+
+//       if (req.files["rentalImages"]) {
+//         requestData.rentalImages = (
+//           req.files["rentalImages"] as Express.Multer.File[]
+//         ).map((file) => `/uploads/${file.filename}`);
+//       }
+//     }
+
+//     // 5. Save listing
+//     const listing = new MarketplaceListing({
+//       leaser,
+//       zone,
+//       subCategory,
+//       name: normalisedBody.name,
+//       subTitle: normalisedBody.subTitle,
+//       price: normalisedBody.price,
+//       ...requestData,
+//     });
+
+//     await listing.save();
+
+//     return res.status(201).json({ success: true, data: listing });
+//   } catch (error) {
+//     console.error(error);
+//     return res
+//       .status(500)
+//       .json({ success: false, message: "Server error", error });
+//   }
+// };
+
 
 // controllers/marketplaceListings.controller.ts
 
@@ -43,9 +197,31 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     }
 
     const fields = form.fields as unknown as IField[];
+
+    // ------------------ NEW VALIDATION FOR DOCUMENTS ------------------
+    const requiredDocumentFields = fields.filter(f => f.type === "document");
+    if (requiredDocumentFields.length > 0) {
+      for (const field of requiredDocumentFields) {
+        // Find the user's document submission for this specific field
+        const userDoc = await UserDocument.findOne({ user: leaser, field: field._id });
+
+        if (!userDoc) {
+          return sendResponse(res, null, `User has not submitted a document for the required field: ${field.name}`, STATUS_CODES.BAD_REQUEST);
+        }
+
+        // Check if any of the submitted document values have an 'approved' status
+        const isApproved = userDoc.values.some(value => value.status === "approved");
+
+        if (!isApproved) {
+          return sendResponse(res, null, `The document for the field "${field.name}" is not yet approved.`, STATUS_CODES.FORBIDDEN);
+        }
+      }
+    }
+    // ------------------ END OF NEW VALIDATION ------------------
+
     const requestData: any = {};
 
-    // 2. Dynamic validation from form fields
+    // 2. Dynamic validation from form fields (existing logic)
     for (const field of fields) {
       const fieldName = toCamelCase(field.name); // enforce camelCase
       const value = normalisedBody[fieldName];
@@ -94,7 +270,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       }
     }
 
-    // 3. Manual validation for must-have fields
+    // 3. Manual validation for must-have fields (existing logic)
     if (!normalisedBody.name) {
       return res
         .status(400)
@@ -116,7 +292,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
         .json({ success: false, message: "rentalImages is required" });
     }
 
-    // 4. Handle uploaded files
+    // 4. Handle uploaded files (existing logic)
     if (req.files) {
       for (const field of fields) {
         const fieldName = toCamelCase(field.name);
@@ -140,7 +316,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       }
     }
 
-    // 5. Save listing
+    // 5. Save listing (existing logic)
     const listing = new MarketplaceListing({
       leaser,
       zone,
@@ -161,6 +337,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       .json({ success: false, message: "Server error", error });
   }
 };
+
 
 // Get All Marketplace Listings with automatic cleanup
 export const getAllMarketplaceListings = async (

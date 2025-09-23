@@ -11,7 +11,7 @@ import {
   refreshToken,
   resendOtp,
   resetPassword,
-  updateDocumentStatus,
+  // updateDocumentStatus,
   updateUserProfile,
   updateUserStatus,
   verifyOtp,
@@ -100,11 +100,11 @@ router.put(
 
 // Admin-only: Update document status
 // PATCH /admin/users/:userId/documents/:docType/status
-router.patch(
-  "/:userId/documents/:docType",
-  authMiddleware, // must be admin
-  updateDocumentStatus
-);
+// router.patch(
+//   "/:userId/documents/:docType",
+//   authMiddleware, // must be admin
+//   updateDocumentStatus
+// );
 
 // router.get("/stats", authMiddleware, getDashboardStats);
 
