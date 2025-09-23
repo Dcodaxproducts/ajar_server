@@ -6,7 +6,7 @@ import mongoose from "mongoose";
 import path from "path";
 import deleteFile from "../utils/deleteFile";
 import { paginateQuery } from "../utils/paginate";
-import { UserDocument } from "../models/userDocs.mode";
+import { UserDocument } from "../models/userDocs.model";
 import { Form } from "../models/form.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { RefundManagement } from "../models/refundManagement.model";

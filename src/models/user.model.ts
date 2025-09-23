@@ -1,18 +1,5 @@
-// src/models/user.model.ts
-import mongoose, { Schema, Document } from "mongoose";
-
-// Sub-schema for document images
-export interface IDocumentImage {
-  side: "front" | "back" | "single"; // "single" for docs like passport
-  url: string;
-}
-
-//  Sub-schema for a document
-export interface IDocument {
-  images: IDocumentImage[];
-  status: "pending" | "approved" | "rejected";
-  reason?: string; // Only if rejected
-}
+import mongoose, { Schema, Document, Types } from "mongoose";
+import { IUserDocument } from "./userDocs.model"; // optional, if you want to type populated documents
 
 export interface IUser extends Document {
   name: string;
@@ -38,36 +25,9 @@ export interface IUser extends Document {
   };
   status: "active" | "inactive" | "blocked" | "unblocked";
 
-  //  Added documents inside user
-  documents: {
-    cnic?: IDocument;
-    passport?: IDocument;
-    driving_license?: IDocument;
-  };
+  // 🔹 Only add this line
+  documents: Types.ObjectId[] | IUserDocument[];
 }
-
-// ✅ Sub-schema for document image
-const DocumentImageSchema = new Schema<IDocumentImage>(
-  {
-    side: { type: String, enum: ["front", "back", "single"], required: true },
-    url: { type: String, required: true },
-  },
-  { _id: false }
-);
-
-// ✅ Sub-schema for document
-const DocumentSchema = new Schema<IDocument>(
-  {
-    images: { type: [DocumentImageSchema], required: true },
-    status: {
-      type: String,
-      enum: ["pending", "approved", "rejected"],
-      default: "pending",
-    },
-    reason: { type: String },
-  },
-  { _id: false }
-);
 
 const UserSchema: Schema = new Schema(
   {
@@ -107,19 +67,21 @@ const UserSchema: Schema = new Schema(
       enum: ["active", "inactive", "blocked", "unblocked"],
       default: "active",
     },
-
-    // ✅ Documents added here
-    documents: {
-      cnic: { type: DocumentSchema, default: null },
-      passport: { type: DocumentSchema, default: null },
-      driving_license: { type: DocumentSchema, default: null },
-    },
+    documents: [{ type: Schema.Types.ObjectId, ref: "UserDocument" }],
   },
   { timestamps: true }
 );
 
 export const User = mongoose.model<IUser>("User", UserSchema);
 
+
+
+
+
+
+
+
+// // src/models/user.model.ts
 // import mongoose, { Schema, Document } from "mongoose";
 
 // export interface IUser extends Document {
@@ -144,8 +106,13 @@ export const User = mongoose.model<IUser>("User", UserSchema);
 //     resetToken: string;
 //     resetTokenExpiry: Date;
 //   };
-//   status: "active" | "inactive" | "blocked" | "Unblocked";
+//   status: "active" | "inactive" | "blocked" | "unblocked";
+  
+
+
 // }
+
+
 
 // const UserSchema: Schema = new Schema(
 //   {
@@ -185,6 +152,7 @@ export const User = mongoose.model<IUser>("User", UserSchema);
 //       enum: ["active", "inactive", "blocked", "unblocked"],
 //       default: "active",
 //     },
+//     documents: [{ type: Schema.Types.ObjectId, ref: "UserDocument" }], // 🔹 added
 //   },
 //   { timestamps: true }
 // );

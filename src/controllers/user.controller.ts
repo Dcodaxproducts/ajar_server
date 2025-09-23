@@ -14,7 +14,7 @@ import { sendEmail } from "../helpers/node-mailer";
 import { createCustomer } from "../helpers/stripe-functions";
 import { redis } from "../utils/redis.client";
 import { generateZodSchema } from "../utils/generate-zod-schema";
-import { UserDocument } from "../models/userDocs.mode";
+import { UserDocument } from "../models/userDocs.model";
 import { Category } from "../models/category.model";
 import { Booking } from "../models/booking.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
@@ -1076,76 +1076,3 @@ export const deleteUser = async (
   }
 };
 
-// ===== Admin: Update Document Status =====
-// ===== Admin: Update Document Status =====
-export const updateDocumentStatus = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    //Only admin allowed
-    if (!req.user) {
-      sendResponse(
-        res,
-        null,
-        "Authentication required",
-        STATUS_CODES.UNAUTHORIZED
-      );
-      return;
-    }
-
-    if (req.user.role !== "admin") {
-      sendResponse(
-        res,
-        null,
-        "Access denied. Only admins can update document statuses.",
-        STATUS_CODES.FORBIDDEN
-      );
-      return;
-    }
-    const { userId, docType } = req.params; // docType = "cnic" | "passport" | "driving_license"
-    const { status, reason } = req.body; // status: "approved" | "rejected" | "pending"
-
-    // Validate docType
-    if (!["cnic", "passport", "driving_license"].includes(docType)) {
-      sendResponse(
-        res,
-        null,
-        "Invalid document type",
-        STATUS_CODES.BAD_REQUEST
-      );
-      return;
-    }
-
-    // Build dynamic update path
-    const updatePath = `documents.${docType}.status`;
-    const reasonPath = `documents.${docType}.reason`;
-
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          [updatePath]: status,
-          [reasonPath]:
-            status === "rejected" ? reason || "Rejected by admin" : null,
-        },
-      },
-      { new: true }
-    );
-
-    if (!user) {
-      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
-      return;
-    }
-
-    sendResponse(
-      res,
-      user.documents,
-      `${docType} document ${status} successfully`,
-      STATUS_CODES.OK
-    );
-  } catch (error) {
-    next(error);
-  }
-};
