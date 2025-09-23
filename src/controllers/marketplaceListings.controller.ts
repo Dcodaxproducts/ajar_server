@@ -15,7 +15,7 @@ import { UserForm } from "../models/userForm.model";
 
 // controllers/marketplaceListings.controller.ts
 
-//Utility to convert keys to camelCase
+// //Utility to convert keys to camelCase
 // const toCamelCase = (str: string) => {
 //   return str
 //     .replace(/([-_][a-z])/gi, (s) =>
@@ -45,9 +45,31 @@ import { UserForm } from "../models/userForm.model";
 //     }
 
 //     const fields = form.fields as unknown as IField[];
+
+//     // ------------------ NEW VALIDATION FOR DOCUMENTS ------------------
+//     const requiredDocumentFields = fields.filter(f => f.type === "document");
+//     if (requiredDocumentFields.length > 0) {
+//       for (const field of requiredDocumentFields) {
+//         // Find the user's document submission for this specific field
+//         const userDoc = await UserDocument.findOne({ user: leaser, field: field._id });
+
+//         if (!userDoc) {
+//           return sendResponse(res, null, `User has not submitted a document for the required field: ${field.name}`, STATUS_CODES.BAD_REQUEST);
+//         }
+
+//         // Check if any of the submitted document values have an 'approved' status
+//         const isApproved = userDoc.values.some(value => value.status === "approved");
+
+//         if (!isApproved) {
+//           return sendResponse(res, null, `The document for the field "${field.name}" is not yet approved.`, STATUS_CODES.FORBIDDEN);
+//         }
+//       }
+//     }
+//     // ------------------ END OF NEW VALIDATION ------------------
+
 //     const requestData: any = {};
 
-//     // 2. Dynamic validation from form fields
+//     // 2. Dynamic validation from form fields (existing logic)
 //     for (const field of fields) {
 //       const fieldName = toCamelCase(field.name); // enforce camelCase
 //       const value = normalisedBody[fieldName];
@@ -96,7 +118,7 @@ import { UserForm } from "../models/userForm.model";
 //       }
 //     }
 
-//     // 3. Manual validation for must-have fields
+//     // 3. Manual validation for must-have fields (existing logic)
 //     if (!normalisedBody.name) {
 //       return res
 //         .status(400)
@@ -118,7 +140,7 @@ import { UserForm } from "../models/userForm.model";
 //         .json({ success: false, message: "rentalImages is required" });
 //     }
 
-//     // 4. Handle uploaded files
+//     // 4. Handle uploaded files (existing logic)
 //     if (req.files) {
 //       for (const field of fields) {
 //         const fieldName = toCamelCase(field.name);
@@ -142,7 +164,7 @@ import { UserForm } from "../models/userForm.model";
 //       }
 //     }
 
-//     // 5. Save listing
+//     // 5. Save listing (existing logic)
 //     const listing = new MarketplaceListing({
 //       leaser,
 //       zone,
@@ -164,8 +186,6 @@ import { UserForm } from "../models/userForm.model";
 //   }
 // };
 
-
-// controllers/marketplaceListings.controller.ts
 
 //Utility to convert keys to camelCase
 const toCamelCase = (str: string) => {
@@ -198,7 +218,32 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
 
     const fields = form.fields as unknown as IField[];
 
-    // ------------------ NEW VALIDATION FOR DOCUMENTS ------------------
+    // ------------------ NEW VALIDATION: CHECK USERFORM DOCUMENT APPROVAL ------------------
+    const userForm = await UserForm.findOne({ zone, subCategory }).populate("fields");
+    
+    if (userForm) {
+      const requiredUserDocuments = userForm.fields as unknown as IField[];
+      if (requiredUserDocuments.length > 0) {
+        for (const field of requiredUserDocuments) {
+          // Find the user's document submission for this specific field
+          const userDoc = await UserDocument.findOne({ user: leaser, field: field._id });
+
+          if (!userDoc) {
+            return sendResponse(res, null, `User has not submitted a document for the required field: ${field.name}`, STATUS_CODES.BAD_REQUEST);
+          }
+
+          // Check if any of the submitted document values have an 'approved' status
+          const isApproved = userDoc.values.some(value => value.status === "approved");
+
+          if (!isApproved) {
+            return sendResponse(res, null, `The document for the field "${field.name}" is not yet approved.`, STATUS_CODES.FORBIDDEN);
+          }
+        }
+      }
+    }
+    // ------------------ END OF USERFORM VALIDATION ------------------
+
+    // ------------------ EXISTING VALIDATION FOR DOCUMENTS IN LISTING FORM ------------------
     const requiredDocumentFields = fields.filter(f => f.type === "document");
     if (requiredDocumentFields.length > 0) {
       for (const field of requiredDocumentFields) {
@@ -217,7 +262,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
         }
       }
     }
-    // ------------------ END OF NEW VALIDATION ------------------
+    // ------------------ END OF EXISTING DOCUMENT VALIDATION ------------------
 
     const requestData: any = {};
 
@@ -337,6 +382,10 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       .json({ success: false, message: "Server error", error });
   }
 };
+
+
+
+
 
 
 // Get All Marketplace Listings with automatic cleanup
