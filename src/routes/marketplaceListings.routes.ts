@@ -48,6 +48,7 @@ router.post(
   asyncHandler(createMarketplaceListing)
 );
 
+
 router.patch(
   "/:id",
   uploadFiles(["images", "rentalImages"]),
