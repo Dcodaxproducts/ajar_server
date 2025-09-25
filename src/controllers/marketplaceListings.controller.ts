@@ -12,360 +12,139 @@ import { Field, IField } from "../models/field.model";
 import { Booking } from "../models/booking.model";
 import { UserDocument } from "../models/userDocs.model";
 import { UserForm } from "../models/userForm.model";
+import { validateDocuments } from "../middlewares/documentvalidationhelper.middleware";
+import { User } from "../models/user.model";
 
-// controllers/marketplaceListings.controller.ts
-
-// //Utility to convert keys to camelCase
-// const toCamelCase = (str: string) => {
-//   return str
-//     .replace(/([-_][a-z])/gi, (s) =>
-//       s.toUpperCase().replace("-", "").replace("_", "")
-//     )
-//     .replace(/^[A-Z]/, (s) => s.toLowerCase());
-// };
-
-// export const createMarketplaceListing = async (req: any, res: Response) => {
-//   try {
-//     const { zone, subCategory } = req.body;
-//     const leaser = req.user.id;
-
-//     // 🔹 Normalise all incoming keys to camelCase
-//     const normalisedBody: any = {};
-//     for (const key of Object.keys(req.body)) {
-//       normalisedBody[toCamelCase(key)] = req.body[key];
-//     }
-
-//     // 1. Fetch form for zone + subCategory
-//     const form = await Form.findOne({ zone, subCategory }).populate("fields");
-//     if (!form) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Form not found for this Zone and SubCategory",
-//       });
-//     }
-
-//     const fields = form.fields as unknown as IField[];
-
-//     // ------------------ NEW VALIDATION FOR DOCUMENTS ------------------
-//     const requiredDocumentFields = fields.filter(f => f.type === "document");
-//     if (requiredDocumentFields.length > 0) {
-//       for (const field of requiredDocumentFields) {
-//         // Find the user's document submission for this specific field
-//         const userDoc = await UserDocument.findOne({ user: leaser, field: field._id });
-
-//         if (!userDoc) {
-//           return sendResponse(res, null, `User has not submitted a document for the required field: ${field.name}`, STATUS_CODES.BAD_REQUEST);
-//         }
-
-//         // Check if any of the submitted document values have an 'approved' status
-//         const isApproved = userDoc.values.some(value => value.status === "approved");
-
-//         if (!isApproved) {
-//           return sendResponse(res, null, `The document for the field "${field.name}" is not yet approved.`, STATUS_CODES.FORBIDDEN);
-//         }
-//       }
-//     }
-//     // ------------------ END OF NEW VALIDATION ------------------
-
-//     const requestData: any = {};
-
-//     // 2. Dynamic validation from form fields (existing logic)
-//     for (const field of fields) {
-//       const fieldName = toCamelCase(field.name); // enforce camelCase
-//       const value = normalisedBody[fieldName];
-
-//       if (field.validation?.required && (value === undefined || value === "")) {
-//         return res
-//           .status(400)
-//           .json({ success: false, message: `${field.label} is required` });
-//       }
-
-//       if (value !== undefined) {
-//         if (field.options?.length && !field.options.includes(value)) {
-//           return res.status(400).json({
-//             success: false,
-//             message: `${field.label} must be one of: ${field.options.join(
-//               ", "
-//             )}`,
-//           });
-//         }
-
-//         if (field.min !== undefined && value < field.min) {
-//           return res.status(400).json({
-//             success: false,
-//             message: `${field.label} must be >= ${field.min}`,
-//           });
-//         }
-
-//         if (field.max !== undefined && value > field.max) {
-//           return res.status(400).json({
-//             success: false,
-//             message: `${field.label} must be <= ${field.max}`,
-//           });
-//         }
-
-//         if (field.validation?.pattern) {
-//           const regex = new RegExp(field.validation.pattern);
-//           if (!regex.test(value)) {
-//             return res.status(400).json({
-//               success: false,
-//               message: `${field.label} format is invalid`,
-//             });
-//           }
-//         }
-
-//         requestData[fieldName] = value;
-//       }
-//     }
-
-//     // 3. Manual validation for must-have fields (existing logic)
-//     if (!normalisedBody.name) {
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "name is required" });
-//     }
-//     if (!normalisedBody.subTitle) {
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "subTitle is required" });
-//     }
-//     if (!normalisedBody.price) {
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "price is required" });
-//     }
-//     if (!req.files || !req.files.rentalImages) {
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "rentalImages is required" });
-//     }
-
-//     // 4. Handle uploaded files (existing logic)
-//     if (req.files) {
-//       for (const field of fields) {
-//         const fieldName = toCamelCase(field.name);
-//         if (field.type === "file" && req.files[fieldName]) {
-//           requestData[fieldName] = (
-//             req.files[fieldName] as Express.Multer.File[]
-//           ).map((file) => `/uploads/${file.filename}`);
-//         }
-//       }
-
-//       if (req.files["images"]) {
-//         requestData.images = (req.files["images"] as Express.Multer.File[]).map(
-//           (file) => `/uploads/${file.filename}`
-//         );
-//       }
-
-//       if (req.files["rentalImages"]) {
-//         requestData.rentalImages = (
-//           req.files["rentalImages"] as Express.Multer.File[]
-//         ).map((file) => `/uploads/${file.filename}`);
-//       }
-//     }
-
-//     // 5. Save listing (existing logic)
-//     const listing = new MarketplaceListing({
-//       leaser,
-//       zone,
-//       subCategory,
-//       name: normalisedBody.name,
-//       subTitle: normalisedBody.subTitle,
-//       price: normalisedBody.price,
-//       ...requestData,
-//     });
-
-//     await listing.save();
-
-//     return res.status(201).json({ success: true, data: listing });
-//   } catch (error) {
-//     console.error(error);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Server error", error });
-//   }
-// };
-
-
-//Utility to convert keys to camelCase
-const toCamelCase = (str: string) => {
-  return str
-    .replace(/([-_][a-z])/gi, (s) =>
-      s.toUpperCase().replace("-", "").replace("_", "")
-    )
+// controllers/marketplaceListings.controller.ts]
+const toCamelCase = (str: string) =>
+  str
+    .replace(/([-_][a-z])/gi, (s) => s.toUpperCase().replace("-", "").replace("_", ""))
     .replace(/^[A-Z]/, (s) => s.toLowerCase());
-};
 
 export const createMarketplaceListing = async (req: any, res: Response) => {
+  console.log("Starting createMarketplaceListing process...");
   try {
     const { zone, subCategory } = req.body;
     const leaser = req.user.id;
 
-    // 🔹 Normalise all incoming keys to camelCase
+    console.log(`Request received for Zone: ${zone}, SubCategory: ${subCategory}, Leaser ID: ${leaser}`);
+
+    // 🔹 Normalize body keys
     const normalisedBody: any = {};
     for (const key of Object.keys(req.body)) {
       normalisedBody[toCamelCase(key)] = req.body[key];
     }
+    console.log("Normalized request body:", normalisedBody);
 
-    // 1. Fetch form for zone + subCategory
-    const form = await Form.findOne({ zone, subCategory }).populate("fields");
+    // ✅ NEW: Early validation for required fields
+    const requiredFields = ['name', 'subTitle', 'price'];
+    for (const field of requiredFields) {
+      if (!normalisedBody[field]) {
+        console.log(`❌ Missing required body field: ${field}`);
+        return res.status(400).json({
+          success: false,
+          message: `${field} is required`,
+        });
+      }
+    }
+
+    // 1️⃣ Load Form for zone + subCategory
+    const form = await Form.findOne({
+      zone: new mongoose.Types.ObjectId(zone),
+      subCategory: new mongoose.Types.ObjectId(subCategory),
+    }).populate("fields");
+
     if (!form) {
+      console.log("❌ Form not found for specified Zone/SubCategory.");
       return res.status(400).json({
         success: false,
-        message: "Form not found for this Zone and SubCategory",
+        message: "Form not found for this Zone/SubCategory",
       });
     }
+    console.log("✅ Form found:", form.name);
 
-    const fields = form.fields as unknown as IField[];
+    // 2️⃣ Handle uploaded files and separate them
+    const uploadedFiles = req.files as Express.Multer.File[] || [];
+    const generalImages: string[] = [];
+    const rentalImages: string[] = [];
+    const listingDocs: any[] = [];
 
-    // ------------------ NEW VALIDATION: CHECK USERFORM DOCUMENT APPROVAL ------------------
-    const userForm = await UserForm.findOne({ zone, subCategory }).populate("fields");
-    
-    if (userForm) {
-      const requiredUserDocuments = userForm.fields as unknown as IField[];
-      if (requiredUserDocuments.length > 0) {
-        for (const field of requiredUserDocuments) {
-          // Find the user's document submission for this specific field
-          const userDoc = await UserDocument.findOne({ user: leaser, field: field._id });
+    const requiredDocs = form.leaserDocuments || [];
+    const uploadedDocNames = uploadedFiles.map(file => file.fieldname);
+    console.log("Required documents from Form:", requiredDocs);
+    console.log("Uploaded file field names:", uploadedDocNames);
 
-          if (!userDoc) {
-            return sendResponse(res, null, `User has not submitted a document for the required field: ${field.name}`, STATUS_CODES.BAD_REQUEST);
-          }
+    // ✅ NEW: Check for required rentalImages
+    const hasRentalImages = uploadedFiles.some(file => file.fieldname === 'rentalImages');
+    if (!hasRentalImages) {
+        console.log("❌ Missing required file: rentalImages");
+        return res.status(400).json({
+            success: false,
+            message: "rentalImages is required",
+        });
+    }
 
-          // Check if any of the submitted document values have an 'approved' status
-          const isApproved = userDoc.values.some(value => value.status === "approved");
-
-          if (!isApproved) {
-            return sendResponse(res, null, `The document for the field "${field.name}" is not yet approved.`, STATUS_CODES.FORBIDDEN);
-          }
-        }
+    if (requiredDocs.length > 0) {
+      const missingDocs = requiredDocs.filter(docName => !uploadedDocNames.includes(docName));
+      if (missingDocs.length > 0) {
+        console.log("❌ Missing required documents:", missingDocs);
+        return res.status(400).json({
+          success: false,
+          message: `Missing required document(s): ${missingDocs.join(", ")}`,
+          missingDocuments: missingDocs,
+        });
       }
     }
-    // ------------------ END OF USERFORM VALIDATION ------------------
 
-    // ------------------ EXISTING VALIDATION FOR DOCUMENTS IN LISTING FORM ------------------
-    const requiredDocumentFields = fields.filter(f => f.type === "document");
-    if (requiredDocumentFields.length > 0) {
-      for (const field of requiredDocumentFields) {
-        // Find the user's document submission for this specific field
-        const userDoc = await UserDocument.findOne({ user: leaser, field: field._id });
-
-        if (!userDoc) {
-          return sendResponse(res, null, `User has not submitted a document for the required field: ${field.name}`, STATUS_CODES.BAD_REQUEST);
-        }
-
-        // Check if any of the submitted document values have an 'approved' status
-        const isApproved = userDoc.values.some(value => value.status === "approved");
-
-        if (!isApproved) {
-          return sendResponse(res, null, `The document for the field "${field.name}" is not yet approved.`, STATUS_CODES.FORBIDDEN);
-        }
+    uploadedFiles.forEach(file => {
+      const filePath = `/uploads/${file.filename}`;
+      // Separate files based on their fieldname
+      if (file.fieldname === 'images') {
+        generalImages.push(filePath);
+      } else if (file.fieldname === 'rentalImages') {
+        rentalImages.push(filePath);
+      } else {
+        // Assume other fieldnames are documents
+        listingDocs.push({
+          name: file.fieldname,
+          filesUrl: [filePath],
+        });
       }
-    }
-    // ------------------ END OF EXISTING DOCUMENT VALIDATION ------------------
+    });
 
+    console.log("General Images:", generalImages);
+    console.log("Rental Images:", rentalImages);
+    console.log("Listing Documents:", listingDocs);
+
+    // 3️⃣ Validate dynamic fields from form
+    console.log("Starting validation of dynamic fields...");
+    const fields = form.fields as any[];
     const requestData: any = {};
-
-    // 2. Dynamic validation from form fields (existing logic)
     for (const field of fields) {
-      const fieldName = toCamelCase(field.name); // enforce camelCase
+      const fieldName = toCamelCase(field.name);
       const value = normalisedBody[fieldName];
 
       if (field.validation?.required && (value === undefined || value === "")) {
-        return res
-          .status(400)
-          .json({ success: false, message: `${field.label} is required` });
+        console.log(`❌ Missing required field: ${field.label}`);
+        return res.status(400).json({
+          success: false,
+          message: `${field.label} is required`,
+        });
       }
 
-      if (value !== undefined) {
-        if (field.options?.length && !field.options.includes(value)) {
-          return res.status(400).json({
-            success: false,
-            message: `${field.label} must be one of: ${field.options.join(
-              ", "
-            )}`,
-          });
-        }
-
-        if (field.min !== undefined && value < field.min) {
-          return res.status(400).json({
-            success: false,
-            message: `${field.label} must be >= ${field.min}`,
-          });
-        }
-
-        if (field.max !== undefined && value > field.max) {
-          return res.status(400).json({
-            success: false,
-            message: `${field.label} must be <= ${field.max}`,
-          });
-        }
-
-        if (field.validation?.pattern) {
-          const regex = new RegExp(field.validation.pattern);
-          if (!regex.test(value)) {
-            return res.status(400).json({
-              success: false,
-              message: `${field.label} format is invalid`,
-            });
-          }
-        }
-
-        requestData[fieldName] = value;
-      }
+      if (value !== undefined) requestData[fieldName] = value;
     }
+    console.log("✅ Dynamic fields validated successfully.");
 
-    // 3. Manual validation for must-have fields (existing logic)
-    if (!normalisedBody.name) {
-      return res
-        .status(400)
-        .json({ success: false, message: "name is required" });
-    }
-    if (!normalisedBody.subTitle) {
-      return res
-        .status(400)
-        .json({ success: false, message: "subTitle is required" });
-    }
-    if (!normalisedBody.price) {
-      return res
-        .status(400)
-        .json({ success: false, message: "price is required" });
-    }
-    if (!req.files || !req.files.rentalImages) {
-      return res
-        .status(400)
-        .json({ success: false, message: "rentalImages is required" });
-    }
-
-    // 4. Handle uploaded files (existing logic)
-    if (req.files) {
-      for (const field of fields) {
-        const fieldName = toCamelCase(field.name);
-        if (field.type === "file" && req.files[fieldName]) {
-          requestData[fieldName] = (
-            req.files[fieldName] as Express.Multer.File[]
-          ).map((file) => `/uploads/${file.filename}`);
-        }
-      }
-
-      if (req.files["images"]) {
-        requestData.images = (req.files["images"] as Express.Multer.File[]).map(
-          (file) => `/uploads/${file.filename}`
-        );
-      }
-
-      if (req.files["rentalImages"]) {
-        requestData.rentalImages = (
-          req.files["rentalImages"] as Express.Multer.File[]
-        ).map((file) => `/uploads/${file.filename}`);
-      }
-    }
-
-    // 5. Save listing (existing logic)
+    // 4️⃣ Create Marketplace Listing with separated data
+    console.log("Creating new Marketplace Listing...");
     const listing = new MarketplaceListing({
       leaser,
       zone,
       subCategory,
+      documents: listingDocs, // Only documents are here
+      images: generalImages,
+      rentalImages: rentalImages,
       name: normalisedBody.name,
       subTitle: normalisedBody.subTitle,
       price: normalisedBody.price,
@@ -373,20 +152,18 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     });
 
     await listing.save();
+    console.log("✅ Listing created successfully with ID:", listing._id);
 
-    return res.status(201).json({ success: true, data: listing });
+    return res.status(201).json({
+      success: true,
+      message: "Listing created successfully",
+      data: listing,
+    });
   } catch (error) {
-    console.error(error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Server error", error });
+    console.error("❌ Server error during listing creation:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
-
-
-
-
-
 
 // Get All Marketplace Listings with automatic cleanup
 export const getAllMarketplaceListings = async (

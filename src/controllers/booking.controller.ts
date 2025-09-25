@@ -8,6 +8,7 @@ import { sendEmail } from "../helpers/node-mailer";
 import { User } from "../models/user.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
+import { Types } from "mongoose";
 
 
 // Utility function to update listing availability
@@ -70,7 +71,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     });
 
     // 2️⃣ Update marketplace listing with this booking ID
-    listing.currentBookingId = newBooking._id;
+      listing.currentBookingId = [newBooking._id as Types.ObjectId]; 
     // keep isAvailable true for now, will flip false when accepted
     await listing.save();
 
@@ -370,7 +371,7 @@ export const deleteBooking = async (
   }
 };
 
-// PATCH /bookings/:id/status
+
 // PATCH /bookings/:id/status
 export const updateBookingStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -426,10 +427,14 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
     if (listing) {
       if (status === "accepted") {
         listing.isAvailable = false;
-        listing.currentBookingId = booking._id;
+        // ✅ Explicitly cast booking._id to ObjectId
+        listing.currentBookingId = [
+          ...(listing.currentBookingId || []),
+          booking._id as Types.ObjectId,
+        ];
       } else {
         listing.isAvailable = true;
-        listing.currentBookingId = null;
+        listing.currentBookingId = []; // clear when not accepted
       }
       await listing.save();
     }

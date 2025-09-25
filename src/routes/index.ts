@@ -25,13 +25,13 @@ import refundPoliciesRoutes from "./refundPolicies.routes";
 import refundRequestsRoutes from "./refundRequests.routes";
 import dashboardRoutes from "./dashboard.routes";
 import userForm from "./userForm.routes";
-import userDocs from "./userDocs.routes";
+// import userDocs from "./userDocs.routes";
 
 const router = express.Router();
 
 router.use("/users", userRoutes);
-router.use("/userForm", userForm);
-router.use("/userdocs", userDocs);
+// router.use("/userForm", userForm);
+// router.use("/userdocs", userDocs);
 router.use("/dashboard", dashboardRoutes);
 // router.use("/messages", messageRoutes);
 router.use("/chats", conversationRoutes);

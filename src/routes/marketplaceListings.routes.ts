@@ -13,8 +13,9 @@ import {
 } from "../controllers/marketplaceListings.controller";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
-import upload, { uploadFiles } from "../utils/multer";
+import upload, { uploadAny, uploadFiles } from "../utils/multer";
 import { optionalAuth } from "../middlewares/optionalAuthMiddleware";
+import { validateDocuments } from "../middlewares/validateDocuments.middleware";
 
 const router = express.Router();
 
@@ -42,11 +43,19 @@ router.get(
 
 router.post(
   "/",
-  uploadFiles(["images", "rentalImages", "documents", "otherFileField"]),
   authMiddleware,
-  validateRequest({ body: marketplaceListingSchema }),
+  uploadAny, // Middleware to accept any file field
   asyncHandler(createMarketplaceListing)
 );
+
+
+// router.post(
+//   "/",
+//     authMiddleware, // user must be authenticated
+//     uploadFiles(["image","images", "rentalImages", "documents", "otherFileField", "rental_agreement"]), // parse multipart/form-data 
+//     // uploadAny, 
+//     asyncHandler(createMarketplaceListing)
+// );
 
 
 router.patch(

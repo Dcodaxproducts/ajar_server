@@ -6,7 +6,9 @@ import {
   forgotPassword,
   getAllUsersWithStats,
   getDashboardStats,
+  getListingDocuments,
   getUserDetails,
+  getUserDocuments,
   loginUser,
   refreshToken,
   resendOtp,
@@ -14,8 +16,17 @@ import {
   // updateDocumentStatus,
   updateUserProfile,
   updateUserStatus,
+
   verifyOtp,
 } from "../controllers/user.controller";
+import {
+  
+  getAllUsers,
+  getUserById,
+  reviewUserDocument,
+  uploadUserDocuments,
+} from "../controllers/userDocuments.controller";
+
 import { validateRequest } from "../middlewares/validateRequest";
 import {
   createUserSchema,
@@ -30,8 +41,16 @@ import {
 
 import upload from "../utils/multer";
 import { authMiddleware } from "../middlewares/auth.middleware";
+import { validateDocuments } from "../middlewares/validateDocuments.middleware";
+import expressAsyncHandler from "express-async-handler";
 
 const router = express.Router();
+
+function asyncHandler(fn: any) {
+  return function (req: any, res: any, next: any) {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
 
 router.post(
   "/signup",
@@ -74,40 +93,45 @@ router.patch("/:userId/status", authMiddleware, updateUserStatus);
 
 router.post("/form", addForm);
 
-// router.put(
-//   "/profile",
-//   authMiddleware,
-//   upload.single("profilePicture"),
-//   validateRequest({ body: updateUserSchema }),
-//   updateUserProfile
-// );
-
 // Update profile route with multiple uploads
 router.put(
   "/profile",
   authMiddleware,
   upload.fields([
     { name: "profilePicture", maxCount: 1 },
-    { name: "cnicFront", maxCount: 1 },
-    { name: "cnicBack", maxCount: 1 },
+    { name: "cnic", maxCount: 1 },
     { name: "passport", maxCount: 1 },
-    { name: "driving_license_front", maxCount: 1 },
-    { name: "driving_license_back", maxCount: 1 },
+    { name: "drivingLicense", maxCount: 1 },
   ]),
   validateRequest({ body: updateUserSchema }),
   updateUserProfile
 );
 
-// Admin-only: Update document status
-// PATCH /admin/users/:userId/documents/:docType/status
-// router.patch(
-//   "/:userId/documents/:docType",
-//   authMiddleware, // must be admin
-//   updateDocumentStatus
-// );
-
-// router.get("/stats", authMiddleware, getDashboardStats);
-
 router.delete("/:userId", authMiddleware, deleteUser);
+
+// documents routes 
+router.get("/userdocs", getUserDocuments);
+router.get("/listingdocs", getListingDocuments);
+
+// User uploads document
+// User uploads document(s)
+router.post(
+  "/documents/upload",
+  authMiddleware,
+  upload.array("filesUrl", 10), //accepts up to 10 files per document
+  asyncHandler(uploadUserDocuments)
+);
+// Admin approves/rejects
+router.patch(
+  "/documents/review",
+  authMiddleware,
+  reviewUserDocument
+);
+
+// Get all users
+router.get("/all", authMiddleware, asyncHandler(getAllUsers));
+
+// Get user by ID
+router.get("/:id", authMiddleware, asyncHandler(getUserById));
 
 export default router;

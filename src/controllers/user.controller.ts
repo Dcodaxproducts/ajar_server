@@ -249,7 +249,8 @@ export const logout = async (
 
 interface AuthRequest extends Request {
   user?: {
-    id: string;
+    _id: string;
+    id?: string;   
     role: string | string[];
   };
 }
@@ -582,79 +583,31 @@ export const updateUserProfile = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?._id;
 
     // Start collecting updates
     const updates: any = { ...req.body };
 
-    // Handle profile picture upload
-    if (req.files && "profilePicture" in req.files) {
-      const profileFile = (req.files as any).profilePicture[0];
-      updates.profilePicture = `/uploads/${profileFile.filename}`;
-    }
+    // Handle documents upload dynamically
+if (req.files) {
+  for (const [key, files] of Object.entries(req.files)) {
+    // Each `key` corresponds to a fieldId
+    const fieldId = key; // field._id from Form schema
+    const uploadedFiles = (files as Express.Multer.File[]).map(file => ({
+      url: `/uploads/${file.filename}`,
+      side: "single", // you can infer from field definition if needed
+      status: "pending"
+    }));
 
-    // Handle documents upload
-    if (req.files) {
-      updates.documents = {};
+    // Upsert into UserDocument collection
+    await UserDocument.findOneAndUpdate(
+      { user: userId, field: fieldId },
+      { $push: { values: { $each: uploadedFiles } } },
+      { upsert: true, new: true }
+    );
+  }
+}
 
-      // CNIC
-      if ("cnicFront" in req.files || "cnicBack" in req.files) {
-        updates.documents.cnic = { images: [] };
-
-        if ("cnicFront" in req.files) {
-          updates.documents.cnic.images.push({
-            side: "front",
-            url: `/uploads/${(req.files as any).cnicFront[0].filename}`,
-          });
-        }
-        if ("cnicBack" in req.files) {
-          updates.documents.cnic.images.push({
-            side: "back",
-            url: `/uploads/${(req.files as any).cnicBack[0].filename}`,
-          });
-        }
-      }
-
-      // Passport
-      if ("passport" in req.files) {
-        updates.documents.passport = {
-          images: [
-            {
-              side: "single",
-              url: `/uploads/${(req.files as any).passport[0].filename}`,
-            },
-          ],
-        };
-      }
-
-      // Driving license
-      if (
-        "driving_license_front" in req.files ||
-        "driving_license_back" in req.files
-      ) {
-        updates.documents.driving_license = { images: [] };
-
-        if ("driving_license_front" in req.files) {
-          updates.documents.driving_license.images.push({
-            side: "front",
-            url: `/uploads/${
-              (req.files as any).driving_license_front[0].filename
-            }`,
-          });
-        }
-        if ("driving_license_back" in req.files) {
-          updates.documents.driving_license.images.push({
-            side: "back",
-            url: `/uploads/${
-              (req.files as any).driving_license_back[0].filename
-            }`,
-          });
-        }
-      }
-
-      // Always reset status if re-uploaded
-      updates.documents.status = "pending";
-    }
 
     // Update user in DB
     const user = await User.findByIdAndUpdate(
@@ -680,48 +633,6 @@ export const updateUserProfile = async (
     next(error);
   }
 };
-
-// export const updateUserProfile = async (
-//   req: AuthRequest,
-//   res: Response,
-//   next: NextFunction
-// ): Promise<void> => {
-//   try {
-//     const userId = req.user?.id;
-
-//     // Collect body data
-//     const updates: any = { ...req.body };
-
-//     // Handle file upload
-//     if (req.file) {
-//       updates.profilePicture = `/uploads/${req.file.filename}`;
-//     }
-
-//     // Find and update in one go
-//     const user = await User.findByIdAndUpdate(
-//       userId,
-//       { $set: updates },
-//       { new: true, runValidators: true }
-//     );
-
-//     if (!user) {
-//       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
-//       return;
-//     }
-
-//     // Exclude password before sending back
-//     const { password, ...userWithoutPassword } = user.toObject();
-
-//     sendResponse(
-//       res,
-//       userWithoutPassword,
-//       "Profile updated successfully",
-//       STATUS_CODES.OK
-//     );
-//   } catch (error) {
-//     next(error);
-//   }
-// };
 
 // add dynamic form
 export const addForm = async (
@@ -1076,3 +987,249 @@ export const deleteUser = async (
   }
 };
 
+
+// for documents get dropdown
+
+import { Dropdown } from "../models/dropdown.model";
+
+export const getUserDocuments = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const docs = await Dropdown.findOne({ name: "userDocuments" }).lean();
+    const values = docs?.values ?? [];
+    sendResponse(res, values, "User documents fetched", STATUS_CODES.OK);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getListingDocuments = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const docs = await Dropdown.findOne({ name: "listingDocuments" }).lean();
+    const values = docs?.values ?? [];
+    sendResponse(res, values, "Listing documents fetched", STATUS_CODES.OK);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+// for documents upload and approved 
+/**
+ * User uploads/updates documents
+ */
+
+
+// export const uploadUserDocuments = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     const userId = req.user?.id || req.user?._id;
+//     if (!userId) {
+//       return sendResponse(res, null, "Unauthorized", STATUS_CODES.UNAUTHORIZED);
+//     }
+
+//     const { expiryDate, name, oldUrl, filesUrl } = req.body; // 👈 added filesUrl (string/array)
+//     const files = req.files as Express.Multer.File[];
+
+//     if (!name) {
+//       return sendResponse(
+//         res,
+//         null,
+//         "Document name is required",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//     }
+
+//     // 🔹 Accept either uploaded files OR filesUrl from body
+//     let newUrls: string[] = [];
+//     if (files && files.length > 0) {
+//       newUrls = files.map((f) => `/uploads/${f.filename}`);
+//     } else if (filesUrl) {
+//       if (Array.isArray(filesUrl)) {
+//         newUrls = filesUrl;
+//       } else {
+//         newUrls = [filesUrl]; // if single string
+//       }
+//     } else {
+//       return sendResponse(
+//         res,
+//         null,
+//         "At least one file or URL must be provided",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//     }
+
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       return sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+//     }
+
+//     const existingDocIndex = user.documents.findIndex(
+//       (doc: any) => doc.name === name
+//     );
+
+//     if (existingDocIndex > -1) {
+//       if (oldUrl) {
+//         // ✅ Replace old file with new one
+//         const urlIndex =
+//           user.documents[existingDocIndex].filesUrl.indexOf(oldUrl);
+
+//         if (urlIndex > -1) {
+//           user.documents[existingDocIndex].filesUrl[urlIndex] = newUrls[0];
+//         } else {
+//           return sendResponse(
+//             res,
+//             null,
+//             "Old file URL not found in document",
+//             STATUS_CODES.NOT_FOUND
+//           );
+//         }
+//       } else {
+//         // ✅ Append new URLs
+//         user.documents[existingDocIndex].filesUrl.push(...newUrls);
+//       }
+
+//       if (expiryDate) {
+//         user.documents[existingDocIndex].expiryDate = new Date(expiryDate);
+//       }
+//       user.documents[existingDocIndex].status = "pending";
+//     } else {
+//       // ✅ New document
+//       user.documents.push({
+//         name,
+//         filesUrl: newUrls,
+//         expiryDate: expiryDate ? new Date(expiryDate) : undefined,
+//         status: "pending",
+//       });
+//     }
+
+//     await user.save();
+
+//     return sendResponse(
+//       res,
+//       user,
+//       oldUrl
+//         ? "Document file replaced successfully"
+//         : "Document(s) uploaded/updated successfully",
+//       STATUS_CODES.OK
+//     );
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+
+// export const reviewUserDocument = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     if (req.user?.role !== "admin") {
+//       sendResponse(res, null, "Forbidden: Admins only", STATUS_CODES.FORBIDDEN);
+//       return;
+//     }
+
+//     const { userId, documentId, status, reason } = req.body;
+
+//     if (!["verified", "rejected"].includes(status)) {
+//       sendResponse(
+//         res,
+//         null,
+//         "Invalid status. Allowed: verified, rejected",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//       return;
+//     }
+
+//     const user = await User.findOneAndUpdate(
+//       { _id: userId, "documents._id": documentId },
+//       {
+//         $set: {
+//           "documents.$.status": status,
+//           "documents.$.reason": reason || "",
+//         },
+//       },
+//       { new: true }
+//     ).select("-password");
+
+//     if (!user) {
+//       sendResponse(res, null, "User or document not found", STATUS_CODES.NOT_FOUND);
+//       return;
+//     }
+
+//     sendResponse(
+//       res,
+//       user,
+//       `Document ${status === "verified" ? "approved" : "rejected"} successfully`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+
+// // Get all users (admin only)
+// export const getAllUsers = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     if (req.user?.role !== "admin") {
+//       return sendResponse(
+//         res,
+//         null,
+//         "Forbidden: Admins only",
+//         STATUS_CODES.FORBIDDEN
+//       );
+//     }
+
+//     const users = await User.find().select("-password"); // exclude password
+//     return sendResponse(res, users, "Users fetched successfully", STATUS_CODES.OK);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+// // Get user by ID (admin or the user himself)
+// export const getUserById = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     const { id } = req.params;
+//     const requesterId = req.user?._id;
+//     const requesterRole = req.user?.role;
+
+//     if (!requesterId) {
+//       return sendResponse(res, null, "Unauthorized", STATUS_CODES.UNAUTHORIZED);
+//     }
+
+//     // Admin can fetch any user, normal user can fetch only self
+//     if (requesterRole !== "admin" && requesterId.toString() !== id) {
+//       return sendResponse(res, null, "Forbidden", STATUS_CODES.FORBIDDEN);
+//     }
+
+//     const user = await User.findById(id).select("-password");
+//     if (!user) {
+//       return sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+//     }
+
+//     return sendResponse(res, user, "User fetched successfully", STATUS_CODES.OK);
+//   } catch (error) {
+//     next(error);
+//   }
+// };

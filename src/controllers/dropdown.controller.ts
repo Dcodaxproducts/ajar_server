@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { Dropdown } from "../models/dropdown.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
+import { Form } from "../models/form.model";
 
 // GET All Dropdowns
 export const getAllDropdowns = async (
@@ -120,6 +121,20 @@ export const removeValueFromDropdown = async (
       return;
     }
 
+    // if value is of userDocument remove it from userDocuments array field in all documents of form as well in which it exisits
+    if (name === "userDocuments") {
+      await Form.updateMany(
+        { userDocuments: value },
+        { $pull: { userDocuments: value } }
+      );
+    }
+    if (name === "leaserDocuments") {
+      await Form.updateMany(
+        { leaserDocuments: value },
+        { $pull: { leaserDocuments: value } }
+      );
+    }
+
     dropdown.values = dropdown.values.filter((v) => v.value !== value);
     await dropdown.save();
 
@@ -143,6 +158,14 @@ export const deleteDropdown = async (
     if (!deleted) {
       sendResponse(res, null, "Dropdown not found", STATUS_CODES.NOT_FOUND);
       return;
+    }
+
+    // if its usrDocuments dropdown then remove whole userDocuments array field in all documents of form as well in which it exisits
+    if (name === "userDocuments") {
+      await Form.updateMany({}, { $set: { userDocuments: [] } });
+    }
+    if (name === "leaserDocuments") {
+      await Form.updateMany({}, { $set: { leaserDocuments: [] } });
     }
 
     sendResponse(res, null, "Dropdown deleted successfully", STATUS_CODES.OK);

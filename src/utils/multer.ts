@@ -25,19 +25,17 @@ const storage = multer.diskStorage({
   },
 });
 
+// Strict upload instance (images only, used for existing routes)
 const upload = multer({
   storage,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
+    fileSize: 5 * 1024 * 1024, // 5MB
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     const allowedTypes = [
       "image/jpeg",
       "image/png",
       "image/webp",
-      "images/jpeg",
-      "images/png",
-      "images/webp",
     ];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
@@ -47,11 +45,23 @@ const upload = multer({
   },
 });
 
-// Generic single file upload middleware
+// Generic single file upload (strict)
 export const uploadFile = (fieldName: string) => upload.single(fieldName);
 
-// Generic multiple files upload middleware
+// Generic multiple files upload (strict)
 export const uploadFiles = (fieldNames: string[]) =>
   upload.fields(fieldNames.map((name) => ({ name, maxCount: 10 })));
+
+// Relaxed upload instance (accept any file type)
+const uploadRelaxed = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB
+  },
+  // no fileFilter → accept all types
+});
+
+// Any field, any file
+export const uploadAny = uploadRelaxed.any();
 
 export default upload;
