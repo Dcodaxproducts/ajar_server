@@ -8,6 +8,9 @@ import { SubCategory } from "../models/category.model";
 import { IZone } from "../models/zone.model";
 import { ICategory } from "../models/category.model";
 import { paginateQuery } from "../utils/paginate";
+import slugify from "slugify";
+import { Dropdown } from "../models/dropdown.model";
+
 
 export const createNewForm = async (
   req: Request,
@@ -15,8 +18,18 @@ export const createNewForm = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { subCategory, zone, name, description, fields, language, setting } =
-      req.body;
+    const {
+      subCategory,
+      zone,
+      name,
+      description,
+      fields,
+      language,
+      setting,
+      context,
+      userDocuments,
+      leaserDocuments, // 👈 Destructure leaserDocuments
+    } = req.body;
 
     // Validate ObjectIds
     if (
@@ -53,13 +66,52 @@ export const createNewForm = async (
       return;
     }
 
-    // ✅ Validate requiredDocuments inside setting
-    if (setting && setting.requiredDocuments) {
-      if (!Array.isArray(setting.requiredDocuments)) {
+    // Validate userDocuments against dropdown
+    const userDropdowns = await Dropdown.findOne({ name: "userDocuments" });
+    const allowedUserDocs = userDropdowns
+      ? userDropdowns.values.map((v) => v.value)
+      : [];
+    if (userDocuments && Array.isArray(userDocuments)) {
+      for (const doc of userDocuments) {
+        if (!allowedUserDocs.includes(doc)) {
+          sendResponse(
+            res,
+            null,
+            `Invalid user document: ${doc}`,
+            STATUS_CODES.BAD_REQUEST
+          );
+          return;
+        }
+      }
+    }
+
+    // Validate leaserDocuments against dropdown
+    const leaserDropdowns = await Dropdown.findOne({ name: "leaserDocuments" });
+    const allowedLeaserDocs = leaserDropdowns
+      ? leaserDropdowns.values.map((v) => v.value)
+      : [];
+    if (leaserDocuments && Array.isArray(leaserDocuments)) {
+        for (const doc of leaserDocuments) {
+            if (!allowedLeaserDocs.includes(doc)) {
+                sendResponse(
+                    res,
+                    null,
+                    `Invalid leaser document: ${doc}`,
+                    STATUS_CODES.BAD_REQUEST
+                );
+                return;
+            }
+        }
+    }
+
+
+    // Validate userDocuments inside setting
+    if (setting && setting.userDocuments) {
+      if (!Array.isArray(setting.userDocuments)) {
         sendResponse(
           res,
           null,
-          "requiredDocuments must be an array",
+          "userDocuments must be an array",
           STATUS_CODES.BAD_REQUEST
         );
         return;
@@ -74,6 +126,10 @@ export const createNewForm = async (
       language: language || "en",
       fields,
       setting: setting || {},
+      context,
+      userDocuments: userDocuments || [],
+      leaserDocuments: leaserDocuments || [],
+      slug: slugify(name, { lower: true, strict: true }),
     });
 
     const populatedForm = await Form.findById(newForm._id)
@@ -92,13 +148,26 @@ export const createNewForm = async (
   }
 };
 
+
+
 // export const createNewForm = async (
 //   req: Request,
 //   res: Response,
 //   next: NextFunction
 // ): Promise<void> => {
 //   try {
-//     const { subCategory, zone, name, description, fields, language } = req.body;
+//     const {
+//       subCategory,
+//       zone,
+//       name,
+//       description,
+//       fields,
+//       language,
+//       setting,
+//       context,
+//       userDocuments,
+//       leaserDocuments,
+//     } = req.body;
 
 //     // Validate ObjectIds
 //     if (
@@ -135,7 +204,43 @@ export const createNewForm = async (
 //       return;
 //     }
 
-//     const { setting } = req.body;
+//     const dropdowns = await Dropdown.findOne({ name: "userDocuments" });
+//     const allowedUserDocs = dropdowns
+//       ? dropdowns.values.map((v) => v.value)
+//       : [];
+//     // ✅ Validate userDocuments against dropdown
+//     if (userDocuments && Array.isArray(userDocuments)) {
+//       for (const doc of userDocuments) {
+//         if (!allowedUserDocs.includes(doc)) {
+//           sendResponse(
+//             res,
+//             null,
+//             `Invalid user document: ${doc}`,
+//             STATUS_CODES.BAD_REQUEST
+//           );
+//           return;
+//         }
+//       }
+//     }
+
+//     //leaserDocuments
+//     const leaserDropdowns = await Dropdown.findOne({ name: "leaserDocuments" });
+//     const allowedLeaserDocs = leaserDropdowns
+//       ? leaserDropdowns.values.map((v) => v.value)
+//       : [];
+
+//     // ✅ Validate userDocuments inside setting
+//     if (setting && setting.userDocuments) {
+//       if (!Array.isArray(setting.userDocuments)) {
+//         sendResponse(
+//           res,
+//           null,
+//           "userDocuments must be an array",
+//           STATUS_CODES.BAD_REQUEST
+//         );
+//         return;
+//       }
+//     }
 
 //     const newForm = await Form.create({
 //       subCategory,
@@ -144,7 +249,11 @@ export const createNewForm = async (
 //       description,
 //       language: language || "en",
 //       fields,
-//       setting,
+//       setting: setting || {},
+//       context,
+//       userDocuments: userDocuments || [],
+//       leaserDocuments: leaserDocuments || [],
+//       slug: slugify(name, { lower: true, strict: true }),
 //     });
 
 //     const populatedForm = await Form.findById(newForm._id)

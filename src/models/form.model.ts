@@ -1,4 +1,4 @@
-import { Schema, model, Document, Types, models } from "mongoose";
+import { Schema, model, Document, Types } from "mongoose";
 import slugify from "slugify";
 
 interface IZoneLanguage {
@@ -6,16 +6,15 @@ interface IZoneLanguage {
   translations: Record<string, any>;
 }
 
-// Setting interface
 interface ISetting {
   commissionType: "fixed" | "percentage";
-  leaserCommission: number;
-  renterCommission: number;
+  leaserCommission: { value: number; min: number; max: number };
+  renterCommission: { value: number; min: number; max: number };
   tax: number;
   expiry: Date;
 }
 
-interface IForm extends Document {
+export interface IForm extends Document {
   subCategory: Types.ObjectId;
   fields: Types.ObjectId[];
   zone: Types.ObjectId;
@@ -25,43 +24,21 @@ interface IForm extends Document {
   language: string;
   languages?: IZoneLanguage[];
   setting: ISetting;
-  requiredDocuments: string[]; // e.g. ["propertyPaper", "registrationPaper"]
+  userDocuments: string[]; 
+  leaserDocuments: string[]; 
 }
+
 
 const FormSchema = new Schema<IForm>(
   {
-    subCategory: {
-      type: Schema.Types.ObjectId,
-      ref: "subCategory",
-      required: true,
-    },
-    fields: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "Field",
-        required: true,
-      },
-    ],
-    zone: {
-      type: Schema.Types.ObjectId,
-      ref: "Zone",
-      required: true,
-    },
-    name: {
-      type: String,
-      trim: true,
-      required: true,
-    },
-    slug: {
-      type: String,
-      lowercase: true,
-      trim: true,
-    },
-    description: {
-      type: String,
-      trim: true,
-      required: true,
-    },
+    subCategory: { type: Schema.Types.ObjectId, ref: "subCategory", required: true },
+    fields: [{ type: Schema.Types.ObjectId, ref: "Field", required: true }],
+    zone: { type: Schema.Types.ObjectId, ref: "Zone", required: true },
+
+    name: { type: String, trim: true, required: true },
+    slug: { type: String, lowercase: true, trim: true },
+    description: { type: String, trim: true, required: true },
+
     language: { type: String, default: "en" },
     languages: [
       {
@@ -71,11 +48,7 @@ const FormSchema = new Schema<IForm>(
     ],
 
     setting: {
-      commissionType: {
-        type: String,
-        enum: ["fixed", "percentage"],
-        default: "fixed",
-      },
+      commissionType: { type: String, enum: ["fixed", "percentage"], default: "fixed" },
       leaserCommission: {
         value: { type: Number, min: 0, max: 100, default: 0 },
         min: { type: Number, default: 0 },
@@ -86,25 +59,21 @@ const FormSchema = new Schema<IForm>(
         min: { type: Number, default: 0 },
         max: { type: Number, default: 100 },
       },
-      tax: {
-        type: Number,
-        default: 0,
-      },
-      expiry: {
-        type: Date,
-        required: true,
-      },
-
-      //NEW: required listing-specific documents
-      // requiredDocuments: {
-      //   type: [String], // e.g. ["propertyPaper", "registrationPaper"]
-      //   default: [],
-      // },
+      tax: { type: Number, default: 0 },
+      expiry: { type: Date, required: true },
     },
+
+    userDocuments: {
+      type: [String], 
+      default: [],
+    },
+    leaserDocuments: {
+      type: [String], 
+      default: [],
+    },
+   
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
 // Generate slug before saving
@@ -116,9 +85,5 @@ FormSchema.pre("validate", function (next) {
   }
   next();
 });
-
-// FormSchema.index({ order: 1 });
-
-// delete models.Form
 
 export const Form = model<IForm>("Form", FormSchema);

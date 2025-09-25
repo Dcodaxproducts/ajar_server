@@ -1,20 +1,23 @@
 import mongoose, { Schema, Document, model } from "mongoose";
 
+export interface IListingDocument {
+  name: string;         // e.g. "property_paper"
+  filesUrl: string[];      // uploaded file link
+  expiryDate?: Date;
+  verified?: boolean;
+}
+
 interface ILanguageTranslation {
   locale: string;
   translations: Record<string, any>;
 }
 
 export interface IMarketplaceListing extends Document {
-  leaser: mongoose.Schema.Types.ObjectId;
+  leaser: mongoose.Types.ObjectId;
   subCategory: mongoose.Types.ObjectId;
   zone: mongoose.Types.ObjectId;
-
-  ratings: {
-    count: number;
-    average: number;
-  };
-  name?: string;
+  ratings: { count: number; average: number };
+  name: string;
   subTitle: string;
   images?: string[];
   rentalImages?: string[];
@@ -25,26 +28,24 @@ export interface IMarketplaceListing extends Document {
   isActive?: boolean;
   language?: string;
   languages?: ILanguageTranslation[];
+  documents: IListingDocument[];
+  isAvailable: boolean;
+  currentBookingId: mongoose.Types.ObjectId[];
   [key: string]: any;
 }
 
+const ListingDocumentSchema = new Schema<IListingDocument>({
+  name: { type: String, required: true },
+  filesUrl: [{ type: String, required: true }],
+  expiryDate: { type: Date },
+  verified: { type: Boolean, default: false },
+});
+
 const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
   {
-    leaser: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
-    subCategory: {
-      type: Schema.Types.ObjectId,
-      ref: "subCategory",
-      required: true,
-    },
-    zone: {
-      type: Schema.Types.ObjectId,
-      ref: "Zone",
-      required: true,
-    },
+    leaser: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    subCategory: { type: Schema.Types.ObjectId, ref: "subCategory", required: true },
+    zone: { type: Schema.Types.ObjectId, ref: "Zone", required: true },
 
     ratings: {
       count: { type: Number, default: 0 },
@@ -67,14 +68,14 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
       },
     ],
 
+    documents: [ListingDocumentSchema], // embedded listing-specific docs
+
     isAvailable: { type: Boolean, default: true },
-    currentBookingId: [{
-      type: Schema.Types.ObjectId,
-      ref: "Booking",
-      default: null,
-    }],
+    currentBookingId: [
+      { type: Schema.Types.ObjectId, ref: "Booking", default: null },
+    ],
   },
-  { timestamps: true, strict: false } // allows dynamic fields
+  { timestamps: true, strict: false }
 );
 
 export const MarketplaceListing = model<IMarketplaceListing>(
