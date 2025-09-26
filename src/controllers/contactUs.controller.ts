@@ -70,35 +70,3 @@ export const deleteContact = async (req: Request, res: Response): Promise<void> 
     res.status(500).json({ success: false, message: "Server error", error });
   }
 };
-
-// export const updateContact = async (req: Request, res: Response) => {
-//   try {
-//     const contactId = req.params.id;
-//     const updatedContact = await ContactUs.findByIdAndUpdate(contactId, req.body, {
-//       new: true,
-//     });
-
-//     if (!updatedContact) {
-//       return sendResponse(res, null, "Contact not found", STATUS_CODES.NOT_FOUND);
-//     }
-
-//     sendResponse(res, updatedContact, "Contact updated successfully", STATUS_CODES.OK);
-//   } catch (error) {
-//     sendResponse(res, null, "Failed to update contact", STATUS_CODES.INTERNAL_SERVER_ERROR);
-//   }
-// };
-
-// export const deleteContact = async (req: Request, res: Response) => {
-//   try {
-//     const contactId = req.params.id;
-//     const deleted = await ContactUs.findByIdAndDelete(contactId);
-
-//     if (!deleted) {
-//       return sendResponse(res, null, "Contact not found", STATUS_CODES.NOT_FOUND);
-//     }
-
-//     sendResponse(res, null, "Contact deleted successfully", STATUS_CODES.OK);
-//   } catch (error) {
-//     sendResponse(res, null, "Failed to delete contact", STATUS_CODES.INTERNAL_SERVER_ERROR);
-//   }
-// };

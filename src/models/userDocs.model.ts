@@ -10,7 +10,7 @@ interface DocumentItem {
 export interface IUserDocument extends Document {
   user: mongoose.Types.ObjectId;
   field: mongoose.Types.ObjectId;
-  values: DocumentItem[];   // 🔹 array instead of single object
+  values: DocumentItem[];   // array instead of single object
 }
 
 const UserDocumentSchema = new Schema<IUserDocument>(

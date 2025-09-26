@@ -131,7 +131,6 @@ export const verifyPayment = async (
 };
 
 /// attach payment method to customer ( attachPaymentMethodToCustomer )
-
 export const attachPaymentMethodToCustomer = async (
   req: AuthRequest,
   res: Response,
@@ -178,7 +177,6 @@ export const attachPaymentMethodToCustomer = async (
 };
 
 // onborad connected acount  ( createConnectedAccount )
-
 export const onBoardVendor = async (
   req: AuthRequest,
   res: Response,
@@ -244,7 +242,6 @@ export const onBoardVendor = async (
 };
 
 // delte connected account ( deleteConnectedAccount )
-
 export const deleteOnboardedAccount = async (
   req: AuthRequest,
   res: Response,
@@ -370,7 +367,6 @@ export const transferToVendor = async (
 };
 
 //// refund payment
-
 export const handleRefund = async (
   req: AuthRequest,
   res: Response,
@@ -392,7 +388,6 @@ export const sanitizeAmount = (amount: number): number => {
 };
 
 /// handle subscription
-
 export const handleCreateSubscription = async (
   req: AuthRequest,
   res: Response,

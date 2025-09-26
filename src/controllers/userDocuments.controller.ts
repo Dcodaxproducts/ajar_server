@@ -33,7 +33,6 @@ interface AuthRequest extends Request {
   };
 }
 
-
 export const uploadUserDocuments = async (
   req: AuthRequest,
   res: Response,
@@ -45,7 +44,7 @@ export const uploadUserDocuments = async (
       return sendResponse(res, null, "Unauthorized", STATUS_CODES.UNAUTHORIZED);
     }
 
-    const { expiryDate, name, oldUrl, filesUrl } = req.body; // 👈 added filesUrl (string/array)
+    const { expiryDate, name, oldUrl, filesUrl } = req.body; // added filesUrl (string/array)
     const files = req.files as Express.Multer.File[];
 
     if (!name) {
@@ -57,7 +56,7 @@ export const uploadUserDocuments = async (
       );
     }
 
-    // 🔹 Accept either uploaded files OR filesUrl from body
+    // Accept either uploaded files OR filesUrl from body
     let newUrls: string[] = [];
     if (files && files.length > 0) {
       newUrls = files.map((f) => `/uploads/${f.filename}`);
@@ -87,7 +86,7 @@ export const uploadUserDocuments = async (
 
     if (existingDocIndex > -1) {
       if (oldUrl) {
-        // ✅ Replace old file with new one
+        // Replace old file with new one
         const urlIndex =
           user.documents[existingDocIndex].filesUrl.indexOf(oldUrl);
 
@@ -102,7 +101,7 @@ export const uploadUserDocuments = async (
           );
         }
       } else {
-        // ✅ Append new URLs
+        // Append new URLs
         user.documents[existingDocIndex].filesUrl.push(...newUrls);
       }
 
@@ -111,7 +110,7 @@ export const uploadUserDocuments = async (
       }
       user.documents[existingDocIndex].status = "pending";
     } else {
-      // ✅ New document
+      //  New document
       user.documents.push({
         name,
         filesUrl: newUrls,
@@ -134,7 +133,6 @@ export const uploadUserDocuments = async (
     next(error);
   }
 };
-
 
 export const reviewUserDocument = async (
   req: AuthRequest,
@@ -185,7 +183,6 @@ export const reviewUserDocument = async (
     next(error);
   }
 };
-
 
 // Get all users (admin only)
 export const getAllUsers = async (

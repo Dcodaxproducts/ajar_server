@@ -163,7 +163,6 @@ export const deleteRefundSettings = asyncHandler(
 
 //for leaser
 // Create Refund Request (User)
-// Create Refund Request (User)
 export const createRefundRequest = asyncHandler(
   async (req: AuthRequest, res: Response): Promise<void> => {
     const allowedUserFields = ["booking", "reason", "selectTime"];

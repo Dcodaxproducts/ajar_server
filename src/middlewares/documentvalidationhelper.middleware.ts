@@ -16,7 +16,7 @@ export const validateDocuments = async (
       (d) => d.name.toLowerCase() === docName.toLowerCase()
     );
     if (!doc || !doc.filesUrl || doc.filesUrl.length === 0) {
-      console.log(`❌ Missing or empty document: ${docName}`);
+      console.log(`Missing or empty document: ${docName}`);
       missingDocuments.push(docName);
     }
   }
@@ -34,48 +34,3 @@ export const validateDocuments = async (
 
 
 
-
-
-
-
-
-
-// import { Dropdown } from "../models/dropdown.model";
-// import { User } from "../models/user.model"; // assuming you have this
-
-
-// interface DocumentCheckResult {
-//   valid: boolean;
-//   message: string;
-//   missingDocuments?: string[]; // new field for missing dropdowns
-// }
-
-// export const validateDocuments = async (
-//   type: string,
-//   documents: any[]
-// ): Promise<DocumentCheckResult> => {
-//   // For example, required dropdowns for listing
-//   const requiredDropdowns = type === "listing" ? ["property_paper", "ownership_doc"] : [];
-
-//   const missingDocuments: string[] = [];
-
-//   for (const docName of requiredDropdowns) {
-//     const doc = documents.find(
-//       (d) => d.name.toLowerCase() === docName.toLowerCase()
-//     );
-//     if (!doc || !doc.filesUrl || doc.filesUrl.length === 0) {
-//       console.log(`❌ Missing or empty dropdown document: ${docName}`);
-//       missingDocuments.push(docName);
-//     }
-//   }
-
-//   if (missingDocuments.length > 0) {
-//     return {
-//       valid: false,
-//       message: `Missing document dropdown(s): ${missingDocuments.join(", ")}`,
-//       missingDocuments,
-//     };
-//   }
-
-//   return { valid: true, message: "All documents are valid" };
-// };
