@@ -5,10 +5,10 @@ import { Field } from "../models/field.model";
 import { STATUS_CODES } from "../config/constants";
 import { sendResponse } from "../utils/response";
 import { Zone } from "../models/zone.model";
-import { Category } from "../models/category.model"; // ✅ use Category only
+import { Category } from "../models/category.model"; //
 import mongoose from "mongoose";
 
-// ✅ Create new UserForm
+// Create new UserForm
 export const createUserForm = async (req: Request, res: Response) => {
   try {
     const { zone, subCategory, fields, type } = req.body;
@@ -47,9 +47,7 @@ export const createUserForm = async (req: Request, res: Response) => {
   }
 };
 
-
-
-// ✅ Get all UserForms
+// Get all UserForms
 export const getUserForms = async (req: Request, res: Response) => {
   try {
     const { zone, subCategory, type } = req.query;
@@ -79,7 +77,7 @@ export const getUserForms = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ Get single UserForm
+// Get single UserForm
 export const getUserFormById = async (req: Request, res: Response) => {
   try {
     const userForm = await UserForm.findById(req.params.id).populate("zone subCategory fields");
@@ -92,7 +90,7 @@ export const getUserFormById = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ Update UserForm
+// Update UserForm
 export const updateUserForm = async (req: Request, res: Response) => {
   try {
     const { zone, subCategory, fields, type } = req.body;
@@ -120,7 +118,7 @@ export const updateUserForm = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ Delete UserForm
+// Delete UserForm
 export const deleteUserForm = async (req: Request, res: Response) => {
   try {
     const deletedUserForm = await UserForm.findByIdAndDelete(req.params.id);

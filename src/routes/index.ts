@@ -42,7 +42,7 @@ router.use("/forms", formRoutes);
 router.use("/marketplace-listings", marketplacelistingRoutes);
 router.use("/fields", fieldRoutes);
 router.use("/dropdowns", dropdownRoutes);
-router.use("/bookings", bookingRoutes);
+router.use("/bookings", bookingRoutes);   
 router.use("/tickets", damageReportRoutes);
 router.use("/businessSetting", BusinessSetting);
 router.use("/employee-management", employeeManagementRoutes);

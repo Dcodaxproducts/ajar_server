@@ -4,7 +4,7 @@ dotenv.config();
 
 export const config = {
   PORT: process.env.PORT || "5005",
-  JWT_SECRET: process.env.JWT_SECRET, //Add this line
+  JWT_SECRET: process.env.JWT_SECRET,
   MONGO_URI: process.env.MONGO_URI,
   ACCESS_TOKEN_SECRET: "your_access_secret_key",
   REFRESH_TOKEN_SECRET: "your_refresh_secret_key",
@@ -15,29 +15,3 @@ export const config = {
   REDIS_PORT: process.env.REDIS_PORT,
 };
 
-
-
-
-
-
-
-
-
-
-
-// import dotenv from "dotenv";
-
-// dotenv.config();
-
-// export const config = {
-//   PORT: process.env.PORT || "5000",
-//   // MONGO_URI: process.env.MONGO_URI || "mongodb://localhost:27017/rentelly",
-// MONGO_URI: "mongodb+srv://kiran:kiran@cluster0.2qx2150.mongodb.net/ajar",
-//   ACCESS_TOKEN_SECRET: "your_access_secret_key",
-//   REFRESH_TOKEN_SECRET: "your_refresh_secret_key",
-//   ACCESS_TOKEN_EXPIRATION: "7d",
-//   REFRESH_TOKEN_EXPIRATION: "30d",
-//   REDIS_PASSWORD: process.env.REDIS_PASSWORD,
-//   REDIS_HOST: process.env.REDIS_HOST,
-//   REDIS_PORT: process.env.REDIS_PORT,
-// };

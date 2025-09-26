@@ -10,6 +10,7 @@ import {
   deleteMarketplaceListing,
   searchMarketplaceListings,
   getBookingsForListing,
+  updateListingStatus,
 } from "../controllers/marketplaceListings.controller";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
@@ -27,13 +28,11 @@ function asyncHandler(fn: any) {
 
 router.get("/search", asyncHandler(searchMarketplaceListings));
 
-// router.get("/", optionalAuth, getAllMarketplaceListings);
 
 router.get("/", authMiddleware, getAllMarketplaceListings);
-// Guest route - no auth required
 router.get("/guest", getAllMarketplaceListings);
 
-router.get("/:id", getMarketplaceListingById);
+router.get("/:id", asyncHandler(getMarketplaceListingById));
 
 router.get(
   "/:id/bookings",
@@ -49,14 +48,8 @@ router.post(
 );
 
 
-// router.post(
-//   "/",
-//     authMiddleware, // user must be authenticated
-//     uploadFiles(["image","images", "rentalImages", "documents", "otherFileField", "rental_agreement"]), // parse multipart/form-data 
-//     // uploadAny, 
-//     asyncHandler(createMarketplaceListing)
-// );
-
+// Admin approves/rejects listing
+router.patch("/:listingId/status", authMiddleware, asyncHandler(updateListingStatus));
 
 router.patch(
   "/:id",

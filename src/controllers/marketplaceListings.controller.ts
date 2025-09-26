@@ -229,7 +229,7 @@ export const getAllMarketplaceListings = async (
       { $match: filter },
       {
         $lookup: {
-          from: "categories", // SubCategory & Category share same collection
+          from: "categories", // subCategory
           localField: "subCategory",
           foreignField: "_id",
           as: "subCategory",
@@ -254,16 +254,49 @@ export const getAllMarketplaceListings = async (
         },
       },
       { $unwind: "$zone" },
+      // 🔹 Lookup Form based on subCategory + zone
+      {
+        $lookup: {
+          from: "forms",
+          let: { subCatId: "$subCategory._id", zoneId: "$zone._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$subCategory", "$$subCatId"] },
+                    { $eq: ["$zone", "$$zoneId"] },
+                  ],
+                },
+              },
+            },
+            {
+              $project: {
+                userDocuments: 1,
+                leaserDocuments: 1,
+              },
+            },
+          ],
+          as: "form",
+        },
+      },
+      {
+        $addFields: {
+          userDocuments: {
+            $ifNull: [{ $arrayElemAt: ["$form.userDocuments", 0] }, []],
+          },
+          leaserDocuments: {
+            $ifNull: [{ $arrayElemAt: ["$form.leaserDocuments", 0] }, []],
+          },
+        },
+      },
+      { $project: { form: 0 } }, // remove form object
       { $skip: (Number(page) - 1) * Number(limit) },
       { $limit: Number(limit) },
     ];
 
-    const listings = await MarketplaceListing.aggregate(pipeline).session(
-      session
-    );
-    const total = await MarketplaceListing.countDocuments(filter).session(
-      session
-    );
+    const listings = await MarketplaceListing.aggregate(pipeline).session(session);
+    const total = await MarketplaceListing.countDocuments(filter).session(session);
 
     // ---------------- LANGUAGE HANDLING ----------------
     const final = listings.map((obj: any) => {
@@ -306,6 +339,7 @@ export const getAllMarketplaceListings = async (
   }
 };
 
+
 // READ ONE BY ID with automatic cleanup
 export const getMarketplaceListingById = async (
   req: AuthRequest,
@@ -317,7 +351,8 @@ export const getMarketplaceListingById = async (
 
   try {
     const { id } = req.params;
-    const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
+    const locale =
+      req.headers["language"]?.toString()?.toLowerCase() || "en";
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       await session.abortTransaction();
@@ -327,9 +362,11 @@ export const getMarketplaceListingById = async (
     }
 
     const doc = await MarketplaceListing.findById(id)
-      .populate("subCategory")
-      .populate("zone")
-      .populate("leaser", "name _id")
+      .populate({
+        path: "subCategory",
+        populate: { path: "category" },
+      })
+      .populate("leaser")
       .session(session)
       .lean();
 
@@ -340,14 +377,29 @@ export const getMarketplaceListingById = async (
       return;
     }
 
-    // Check if referenced documents exist
-    const zoneExists = await Zone.exists({ _id: doc.zone }).session(session);
+    // ✅ remove zone field from final response
+    delete (doc as any).zone;
+
+    // ✅ fetch Form to include userDocuments
+    const form = await Form.findOne({
+      subCategory: doc.subCategory?._id || doc.subCategory,
+      zone: doc.zone, // use listing's zone
+    })
+      .select("userDocuments leaserDocuments")
+      .session(session)
+      .lean();
+
+    if (form) {
+      (doc as any).userDocuments = form.userDocuments || [];
+      (doc as any).leaserDocuments = form.leaserDocuments || [];
+    }
+
+    // ✅ Check if referenced subCategory exists
     const subCategoryExists = await SubCategory.exists({
       _id: doc.subCategory,
     }).session(session);
 
-    if (!zoneExists || !subCategoryExists) {
-      // Delete the listing since references are invalid
+    if (!subCategoryExists) {
       await MarketplaceListing.findByIdAndDelete(id).session(session);
       await session.commitTransaction();
       session.endSession();
@@ -361,6 +413,7 @@ export const getMarketplaceListingById = async (
       return;
     }
 
+    // ✅ Translate listing description if locale matches
     if (Array.isArray(doc.languages)) {
       const match = doc.languages.find((l: any) => l.locale === locale);
       if (match?.translations) {
@@ -369,13 +422,15 @@ export const getMarketplaceListingById = async (
     }
     delete (doc as any).languages;
 
+    // ✅ Translate subCategory fields if locale matches
     const subCategoryObj = doc.subCategory as any;
     if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
       const match = subCategoryObj.languages.find(
         (l: any) => l.locale === locale
       );
       if (match?.translations) {
-        subCategoryObj.name = match.translations.name || subCategoryObj.name;
+        subCategoryObj.name =
+          match.translations.name || subCategoryObj.name;
         subCategoryObj.description =
           match.translations.description || subCategoryObj.description;
       }
@@ -392,6 +447,7 @@ export const getMarketplaceListingById = async (
     next(err);
   }
 };
+
 
 // Additional utility function to clean up all orphaned listings
 export const cleanupAllOrphanedListings = async (
@@ -674,5 +730,45 @@ export const searchMarketplaceListings = async (
     res.json({ count: results.length, data: results });
   } catch (error) {
     res.status(500).json({ message: "Server error", error });
+  }
+};
+
+// update listing status (admin only)
+export const updateListingStatus = async (req: AuthRequest, res: Response) => {
+  try {
+    const { listingId } = req.params;
+    const { status } = req.body; // "approved" | "rejected"
+
+    // ✅ Only allow valid statuses
+    if (!["approved", "rejected"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status. Allowed values: approved, rejected",
+      });
+    }
+
+    // ✅ Find listing and update status
+    const listing = await MarketplaceListing.findById(listingId);
+    if (!listing) {
+      return res.status(404).json({
+        success: false,
+        message: "Listing not found",
+      });
+    }
+
+    listing.status = status;
+    await listing.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Listing ${status} successfully`,
+      data: listing,
+    });
+  } catch (error) {
+    console.error("❌ Error updating listing status:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
