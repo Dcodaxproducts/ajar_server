@@ -12,6 +12,7 @@ import {
   getBookingsForListing,
   updateListingStatus,
   getAllMarketplaceListingsforLeaser,
+  getMarketplaceListingByIdforLeaser,
 } from "../controllers/marketplaceListings.controller";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
@@ -37,7 +38,11 @@ router.get("/", authMiddleware, getAllMarketplaceListings);
 
 router.get("/guest", getAllMarketplaceListings);
 
+router.get("/listing/:id", asyncHandler(getMarketplaceListingByIdforLeaser));
 router.get("/:id", asyncHandler(getMarketplaceListingById));
+
+
+
 
 router.get(
   "/:id/bookings",

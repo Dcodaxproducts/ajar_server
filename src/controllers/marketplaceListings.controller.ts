@@ -526,7 +526,110 @@ export const getAllMarketplaceListings = async (
 
 // READ ONE BY ID with automatic cleanup
 
+export const getMarketplaceListingByIdforLeaser = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { id } = req.params;
+    const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
+    // Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      await session.abortTransaction();
+      session.endSession();
+      sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+    // Find listing
+    const doc = await MarketplaceListing.findById(id)
+      .populate({ path: "subCategory", populate: { path: "category" } })
+      .populate("leaser")
+      .session(session)
+      .lean();
+    if (!doc) {
+      await session.abortTransaction();
+      session.endSession();
+      sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+    // ✅ Remove unwanted fields
+    delete (doc as any).zone;
+    delete (doc as any).documents;
+    delete (doc as any).__v;
+    delete (doc as any).languages;
+    // ✅ Clean up leaser object
+    if (doc.leaser) {
+      delete (doc.leaser as any).documents;
+      delete (doc.leaser as any).password;
+      delete (doc.leaser as any).otp;
+      delete (doc.leaser as any).stripe;
+      delete (doc.leaser as any).__v;
+    }
+    // ✅ Fetch form docs (userDocuments & leaserDocuments)
+    const form = await Form.findOne({
+      subCategory: doc.subCategory?._id || doc.subCategory,
+      zone: doc.zone,
+    })
+      .select("userDocuments leaserDocuments")
+      .session(session)
+      .lean();
+    if (form) {
+      (doc as any).userDocuments = form.userDocuments || [];
+      (doc as any).leaserDocuments = form.leaserDocuments || [];
+    }
+    // ✅ Ensure subCategory exists
+    const subCategoryExists = await SubCategory.exists({
+      _id: doc.subCategory,
+    }).session(session);
+    if (!subCategoryExists) {
+      await MarketplaceListing.findByIdAndDelete(id).session(session);
+      await session.commitTransaction();
+      session.endSession();
+      sendResponse(
+        res,
+        null,
+        "Listing not found (references invalid)",
+        STATUS_CODES.NOT_FOUND
+      );
+      return;
+    }
+    // ✅ Translate description if locale matches
+    if (Array.isArray((doc as any).languages)) {
+      const match = (doc as any).languages.find(
+        (l: any) => l.locale === locale
+      );
+      if (match?.translations) {
+        doc.description = match.translations.description || doc.description;
+      }
+    }
+    // ✅ Translate subCategory fields
+    const subCategoryObj = doc.subCategory as any;
+    if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
+      const match = subCategoryObj.languages.find(
+        (l: any) => l.locale === locale
+      );
+      if (match?.translations) {
+        subCategoryObj.name = match.translations.name || subCategoryObj.name;
+        subCategoryObj.description =
+          match.translations.description || subCategoryObj.description;
+      }
+      delete subCategoryObj.languages;
+      delete subCategoryObj.__v;
+    }
+    await session.commitTransaction();
+    session.endSession();
+    sendResponse(res, doc, "Listing fetched", STATUS_CODES.OK);
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    next(err);
+  }
+};
 
+//for admin
 export const getMarketplaceListingById = async (
   req: AuthRequest,
   res: Response,
