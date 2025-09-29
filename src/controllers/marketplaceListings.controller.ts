@@ -166,6 +166,190 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
 };
 
 // Get All Marketplace Listings with automatic cleanup
+export const getAllMarketplaceListingsforLeaser = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
+    const {
+      page = 1,
+      limit = 10,
+      zone,
+      subCategory,
+      category,
+      all,
+    } = req.query;
+
+    const filter: any = {};
+
+    // ---------------- ROLE-BASED FILTERS ----------------
+    if (req.user) {
+      if (req.user.role === "admin") {
+        if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+          filter.zone = new mongoose.Types.ObjectId(String(zone));
+        }
+      } else {
+        if (all === "true") {
+          if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+            filter.zone = new mongoose.Types.ObjectId(String(zone));
+          }
+        } else {
+          filter.leaser = new mongoose.Types.ObjectId(String(req.user.id));
+          if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+            filter.zone = new mongoose.Types.ObjectId(String(zone));
+          }
+        }
+      }
+    } else {
+      if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+        filter.zone = new mongoose.Types.ObjectId(String(zone));
+      }
+    }
+
+    // ---------------- CATEGORY & SUBCATEGORY FILTERS ----------------
+    if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
+      filter.subCategory = new mongoose.Types.ObjectId(String(subCategory));
+    }
+
+    if (category && mongoose.Types.ObjectId.isValid(String(category))) {
+      // NOTE: SubCategory model is assumed to be imported
+      const subCategoryIds = await SubCategory.find({
+        category: category,
+      }).distinct("_id");
+
+      filter.subCategory = { $in: subCategoryIds };
+    }
+
+    // ---------------- AGGREGATION PIPELINE ----------------
+    const pipeline: any[] = [
+      { $match: filter },
+      {
+        $lookup: {
+          from: "categories", // subCategory
+          localField: "subCategory",
+          foreignField: "_id",
+          as: "subCategory",
+        },
+      },
+      { $unwind: "$subCategory" },
+      {
+        $lookup: {
+          from: "users",
+          localField: "leaser",
+          foreignField: "_id",
+          as: "leaser",
+        },
+      },
+      { $unwind: "$leaser" },
+      {
+        $lookup: {
+          from: "zones",
+          localField: "zone",
+          foreignField: "_id",
+          as: "zone",
+        },
+      },
+      { $unwind: "$zone" },
+      // 🔹 Lookup Form based on subCategory + zone
+      {
+        $lookup: {
+          from: "forms",
+          let: { subCatId: "$subCategory._id", zoneId: "$zone._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$subCategory", "$$subCatId"] },
+                    { $eq: ["$zone", "$$zoneId"] },
+                  ],
+                },
+              },
+            },
+            {
+              $project: {
+                userDocuments: 1,
+                leaserDocuments: 1,
+              },
+            },
+          ],
+          as: "form",
+        },
+      },
+      {
+        $addFields: {
+          userDocuments: {
+            $ifNull: [{ $arrayElemAt: ["$form.userDocuments", 0] }, []],
+          },
+          leaserDocuments: {
+            $ifNull: [{ $arrayElemAt: ["$form.leaserDocuments", 0] }, []],
+          },
+        },
+      },
+      { $project: { form: 0 } }, // remove form object
+      
+      //  CHANGE: Add $project stage to explicitly remove the 'documents' field
+      {
+          $project: {
+              documents: 0, // Exclude the confidential documents array from the final output
+              // Note: All other fields will be implicitly included because no other field is set to 0 or 1
+          }
+      },
+      
+      { $skip: (Number(page) - 1) * Number(limit) },
+      { $limit: Number(limit) },
+    ];
+
+    const listings = await MarketplaceListing.aggregate(pipeline).session(session);
+    const total = await MarketplaceListing.countDocuments(filter).session(session);
+
+    // ---------------- LANGUAGE HANDLING ----------------
+    const final = listings.map((obj: any) => {
+      const listingLang = obj.languages?.find((l: any) => l.locale === locale);
+      if (listingLang?.translations) {
+        obj.description =
+          listingLang.translations.description || obj.description;
+      }
+      delete obj.languages;
+      return obj;
+    });
+
+    // ---------------- STATS ----------------
+    const uniqueUserIds = await MarketplaceListing.distinct(
+      "leaser",
+      filter
+    ).session(session);
+    const totalUsersWithListings = uniqueUserIds.length;
+
+    await session.commitTransaction();
+    session.endSession();
+
+    sendResponse(
+      res,
+      {
+        listings: final,
+        total,
+        page: +page,
+        limit: +limit,
+        totalUsersWithListings,
+        totalMarketplaceListings: total,
+      },
+      `Fetched listings${locale !== "en" ? ` (locale: ${locale})` : ""}`,
+      STATUS_CODES.OK
+    );
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    next(err);
+  }
+};
+
+
 export const getAllMarketplaceListings = async (
   req: AuthRequest,
   res: Response,
@@ -254,7 +438,7 @@ export const getAllMarketplaceListings = async (
         },
       },
       { $unwind: "$zone" },
-      // 🔹 Lookup Form based on subCategory + zone
+      // Lookup Form based on subCategory + zone
       {
         $lookup: {
           from: "forms",
@@ -341,6 +525,8 @@ export const getAllMarketplaceListings = async (
 
 
 // READ ONE BY ID with automatic cleanup
+
+
 export const getMarketplaceListingById = async (
   req: AuthRequest,
   res: Response,

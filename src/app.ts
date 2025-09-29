@@ -7,8 +7,11 @@ import { allowedOrigins } from "./config/corsOrigins";
 import { errorHandler } from "./middlewares/errorHandler";
 import routes from "./routes";
 
-export const app: Application = express();
-export const server: HTTPServer = http.createServer(app);
+// export const app: Application = express();
+// export const server: HTTPServer = http.createServer(app);
+export const app = express();
+export const server = http.createServer(app);
+
 import compression from "compression";
 
 app.use(compression());
