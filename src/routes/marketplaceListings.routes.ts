@@ -11,6 +11,7 @@ import {
   searchMarketplaceListings,
   getBookingsForListing,
   updateListingStatus,
+  getAllMarketplaceListingsforLeaser,
 } from "../controllers/marketplaceListings.controller";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
@@ -29,7 +30,11 @@ function asyncHandler(fn: any) {
 router.get("/search", asyncHandler(searchMarketplaceListings));
 
 
+router.get("/listing", authMiddleware, getAllMarketplaceListingsforLeaser);
+
+
 router.get("/", authMiddleware, getAllMarketplaceListings);
+
 router.get("/guest", getAllMarketplaceListings);
 
 router.get("/:id", asyncHandler(getMarketplaceListingById));
