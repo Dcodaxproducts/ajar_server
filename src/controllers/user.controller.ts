@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
@@ -54,16 +54,6 @@ export const createUser = async (
     const stripeCustomer = await createCustomer(email, name);
     userData.stripe.customerId = stripeCustomer.id;
 
-    // if (profilePicture) {
-    //   userData.profilePicture = `/uploads/${profilePicture.filename}`;
-    // }
-
-    // if (profilePicture) {
-    //   userData.profilePicture = `${req.protocol}://${req.get("host")}/uploads/${
-    //     profilePicture.filename
-    //   }`;
-    // }
-
     if (profilePicture) {
       userData.profilePicture = `/uploads/${profilePicture.filename}`;
     }
@@ -105,7 +95,6 @@ export const loginUser = async (
 
   try {
     if (role === "staff") {
-      // Staff login using Employee model with plain password
       const employee = await Employee.findOne({ email })
         .populate({
           path: "allowAccess",
@@ -144,9 +133,8 @@ export const loginUser = async (
         STATUS_CODES.OK
       );
     } else if (role === "user" || role === "admin") {
-      // User/Admin login using User model with bcrypt
       const user = await User.findOne({ email, role })
-        .select("-password") //Fetch all fields except password
+        .select("-password")
         .lean();
 
       if (!user) {
@@ -459,6 +447,7 @@ export const forgotPassword = async (
   }
 };
 
+
 export const resetPassword = async (
   req: Request,
   res: Response,
@@ -483,7 +472,6 @@ export const resetPassword = async (
     const hashedPassword = await bcrypt.hash(password, 10);
     user.password = hashedPassword;
 
-    // clear reset OTP fields (optional if you use OTP flow)
     user.otp.resetToken = "";
     user.otp.resetTokenExpiry = new Date(0);
 
