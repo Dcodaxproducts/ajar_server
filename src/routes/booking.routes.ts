@@ -1,5 +1,17 @@
 import express from "express";
-import {  getAllBookings, getBookingById, deleteBooking, updateBooking, createBooking, getBookingsByUser, getBookingsByUserIdForAdmin, updateBookingStatus, submitBookingPin, } from "../controllers/booking.controller";
+import {
+  getAllBookings,
+  getBookingById,
+  deleteBooking,
+  updateBooking,
+  createBooking,
+  getBookingsByUser,
+  getBookingsByUserIdForAdmin,
+  updateBookingStatus,
+  submitBookingPin,
+  requestExtendBooking,
+  applyExtensionCharges,
+} from "../controllers/booking.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { Booking } from "../models/booking.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
@@ -16,20 +28,35 @@ router.post("/", authMiddleware, asyncHandler(createBooking));
 router.get("/", asyncHandler(getAllBookings));
 router.get("/:id", getBookingById);
 
-router.get("/admin/user/:userId", authMiddleware, asyncHandler(getBookingsByUserIdForAdmin));
+router.get(
+  "/admin/user/:userId",
+  authMiddleware,
+  asyncHandler(getBookingsByUserIdForAdmin)
+);
 
 router.get("/user/bookings", authMiddleware, asyncHandler(getBookingsByUser));
 
 router.patch(
-  "/:id",authMiddleware,
-   asyncHandler(languageTranslationMiddleware(Booking)),
+  "/:id",
+  authMiddleware,
+  asyncHandler(languageTranslationMiddleware(Booking)),
   asyncHandler(updateBooking)
 );
+
+router.post(
+  "/:id/request-extend",
+  authMiddleware,
+  asyncHandler(requestExtendBooking)
+);
+
 
 router.patch("/:id/status", authMiddleware, asyncHandler(updateBookingStatus));
 
 router.delete("/:id", authMiddleware, deleteBooking);
 
 router.post("/:id/submit-pin", authMiddleware, asyncHandler(submitBookingPin));
+
+router.post("/:id/apply-extension-charges", authMiddleware, asyncHandler(applyExtensionCharges));
+
 
 export default router;

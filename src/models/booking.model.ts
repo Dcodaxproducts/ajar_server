@@ -8,8 +8,13 @@ interface IPriceDetails {
 }
 
 // Updated IExtensionCharges with adminFee and tax removed
-interface IExtensionCharges {
+interface IExtraRequestCharges {
     additionalCharges: number;
+    totalPrice: number;
+}
+
+interface IExtendCharges {
+    extendCharges: number;
     totalPrice: number;
 }
 
@@ -25,8 +30,11 @@ export interface IBooking extends Document {
     language?: string;
     otp?: string;
     priceDetails: IPriceDetails;
-    extensionCharges?: IExtensionCharges; // Uses the updated interface
+    extraRequestCharges?: IExtraRequestCharges; // Uses the updated interface
     specialRequest?: string;
+extendCharges?: IExtendCharges; 
+     isExtend?: boolean;
+    extensionRequestedDate?: Date;
 }
 
 const BookingSchema = new Schema<IBooking>(
@@ -66,13 +74,20 @@ const BookingSchema = new Schema<IBooking>(
             totalPrice: { type: Number, required: true },
         },
         // Updated extensionCharges schema
-        extensionCharges: {
+        extraRequestCharges: {
             additionalCharges: { type: Number },
             totalPrice: { type: Number },
         },
+                extendCharges: { // <--- Add this
+            extendCharges: { type: Number },
+            totalPrice: { type: Number },
+        },
+
         specialRequest: {
             type: String,
         },
+          isExtend: { type: Boolean, default: false },
+    extensionRequestedDate: { type: Date },
     },
     { timestamps: true }
 );

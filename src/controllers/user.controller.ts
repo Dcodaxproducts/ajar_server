@@ -703,7 +703,7 @@ export const getDashboardStats = async (
 
     const totalEarning = filteredBookings.reduce((acc, booking) => {
       const price = booking.priceDetails?.totalPrice || 0;
-      const extension = booking.extensionCharges?.totalPrice || 0;
+      const extension = booking.extraRequestCharges?.totalPrice || 0;
       return acc + price + extension;
     }, 0);
 
@@ -725,7 +725,7 @@ export const getDashboardStats = async (
 
         const dailyEarning = bookings.reduce((acc, booking) => {
           const price = booking.priceDetails?.totalPrice || 0;
-          const extension = booking.extensionCharges?.totalPrice || 0;
+          const extension = booking.extraRequestCharges?.totalPrice || 0;
           return acc + price + extension;
         }, 0);
 
@@ -750,7 +750,7 @@ export const getDashboardStats = async (
 
         const weeklyEarning = bookings.reduce((acc, booking) => {
           const price = booking.priceDetails?.totalPrice || 0;
-          const extension = booking.extensionCharges?.totalPrice || 0;
+          const extension = booking.extraRequestCharges?.totalPrice || 0;
           return acc + price + extension;
         }, 0);
 
@@ -782,7 +782,7 @@ export const getDashboardStats = async (
 
         const monthlyEarning = bookings.reduce((acc, booking) => {
           const price = booking.priceDetails?.totalPrice || 0;
-          const extension = booking.extensionCharges?.totalPrice || 0;
+          const extension = booking.extraRequestCharges?.totalPrice || 0;
           return acc + price + extension;
         }, 0);
 
@@ -815,7 +815,7 @@ export const getDashboardStats = async (
       const prevTotalUsers = prevUserDocs;
       const prevTotalEarning = prevBookings.reduce((acc, booking) => {
         const price = booking.priceDetails?.totalPrice || 0;
-        const extension = booking.extensionCharges?.totalPrice || 0;
+        const extension = booking.extraRequestCharges?.totalPrice || 0;
         return acc + price + extension;
       }, 0);
 
