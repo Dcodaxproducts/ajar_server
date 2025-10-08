@@ -51,7 +51,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
             return res.status(401).json({ message: "Unauthorised" });
         }
 
-        const { marketplaceListingId, ...bookingData } = req.body;
+        const { marketplaceListingId, dates, ...bookingData } = req.body;
 
         // 1️⃣ Validate marketplaceListingId and fetch listing
         if (!mongoose.Types.ObjectId.isValid(marketplaceListingId)) {
@@ -63,8 +63,19 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: "Listing not found" });
         }
 
-        if (!listing.isAvailable) {
-            return res.status(400).json({ message: "Listing is not available" });
+        // ✅ Check for overlapping bookings instead of isAvailable
+        if (!dates?.checkIn || !dates?.checkOut) {
+            return res.status(400).json({ message: "Booking dates (checkIn & checkOut) are required" });
+        }
+
+        const checkInDate = new Date(dates.checkIn);
+        const checkOutDate = new Date(dates.checkOut);
+
+        const isAvailable = await isBookingDateAvailable(listing._id as mongoose.Types.ObjectId, checkInDate, checkOutDate);
+        if (!isAvailable) {
+            return res.status(400).json({
+                message: "Listing is already booked for the selected dates. Please choose different dates.",
+            });
         }
 
         // 2️⃣ Fetch form and user documents (previous logic retained)
@@ -118,10 +129,8 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         const leaserCommissionRate = form.setting.leaserCommission.value / 100;
         const taxRate = form.setting.tax / 100;
 
-        // Assuming AdminFee is the sum of Renter and Leaser Commissions (as a cost to the booking)
         const totalCommissionRate = renterCommissionRate + leaserCommissionRate;
 
-        // Calculate actual amounts
         const commissionAmount = basePrice * totalCommissionRate;
         const taxAmount = (basePrice + commissionAmount) * taxRate;
         const finalPrice = basePrice + commissionAmount + taxAmount;
@@ -136,6 +145,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         // 4️⃣ Create new booking
         const newBooking: IBooking = await Booking.create({
             ...bookingData,
+            dates: { checkIn: checkInDate, checkOut: checkOutDate },
             renter: user.id,
             leaser: listing.leaser,
             status: "pending",
@@ -156,7 +166,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         return res.status(500).json({ message: "Server error", error });
     }
 };
-
 // GET ALL BOOKINGS (Admin)
 export const getAllBookings = async (
   req: Request,
@@ -209,7 +218,7 @@ export const getAllBookings = async (
 
     const totalEarning = allBookings.reduce((acc, booking) => {
       const price = booking.priceDetails?.totalPrice || 0;
-      const extension = booking.extensionCharges?.totalPrice || 0;
+     const extension = booking.extraRequestCharges?.totalPrice || 0;
       return acc + price + extension;
     }, 0);
 
@@ -305,16 +314,6 @@ export const getBookingById = async (
       return;
     }
 
-    // if (Array.isArray(booking.languages)) {
-    //   const match = booking.languages.find((l: any) => l.locale === locale);
-    //   if (match?.translations) {
-    //     booking.roomType = match.translations.roomType || booking.roomType;
-    //     (booking as any).bookingNote =
-    //       match.translations.bookingNote || (booking as any).bookingNote;
-    //   }
-    // }
-    // delete booking.languages;
-
     sendResponse(
       res,
       booking,
@@ -327,6 +326,7 @@ export const getBookingById = async (
 };
 
 // Get by user ID
+// Get bookings by user role and zone
 export const getBookingsByUser = async (
   req: Request,
   res: Response,
@@ -337,20 +337,41 @@ export const getBookingsByUser = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-    // Extract status from query
-    const status = req.query.status;
+    const status = req.query.status;      // optional status filter
+    const role = req.query.role as string; // "renter" or "leaser"
+    const zone = req.query.zone as string; // optional zone filter
 
-    // Build filter conditionally
-    const filter: any = { renter: user.id };
+    // Build filter based on role
+    let filter: any = {};
+
+    if (role === "renter") {
+      filter.renter = user.id;
+    } else if (role === "leaser") {
+      filter.leaser = user.id;
+    } else {
+      // no role filter: get bookings where user is either renter or leaser
+      filter.$or = [{ renter: user.id }, { leaser: user.id }];
+    }
+
+    // Add status filter if provided
     if (status) {
       filter.status = status;
     }
 
-    // Apply the filter
-    const baseQuery = Booking.find(filter)
-      .populate("marketplaceListingId")
+    // Build query with optional zone filter
+    let baseQuery = Booking.find(filter)
+      .populate({
+        path: "marketplaceListingId",
+        match: zone ? { zone: zone } : {}, // filter by zone if provided
+      })
       .lean() as any;
 
+    // If zone filter is applied, remove bookings with null marketplaceListingId
+    if (zone) {
+      baseQuery = baseQuery.where("marketplaceListingId").ne(null);
+    }
+
+    // Apply pagination
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
 
     return sendResponse(res, {
@@ -368,6 +389,7 @@ export const getBookingsByUser = async (
     next(error);
   }
 };
+
 
 // UPDATE
 export const updateBooking = async (
@@ -444,176 +466,543 @@ export const deleteBooking = async (
 };
 
 // PATCH /bookings/:id/status
+import  {generatePIN}  from "../utils/generatePin"; // helper for generating 4 or 6 digit PIN
 
 export const updateBookingStatus = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { id } = req.params;
-        const { status, additionalCharges } = req.body;
-        const user = (req as any).user;
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-        const allowedStatuses = ["approved", "rejected", "completed", "cancelled"];
-        if (!allowedStatuses.includes(status)) {
-            return sendResponse(res, null, "Invalid status", STATUS_CODES.BAD_REQUEST);
-        }
+  try {
+    const { id } = req.params;
+    const { status, additionalCharges, isExtendApproval } = req.body;
+    const user = (req as any).user;
 
-        // Fetch booking to get current priceDetails
-        let booking = await Booking.findById(id);
-        if (!booking) {
-            return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
-        }
-        
-        // Ensure user is authorized (Leaser/Renter check remains)
-        const isRenter = user.id === booking.renter.toString();
-        const isLeaser = user.id === booking.leaser?.toString();
+    // ✅ Ensure we handle both id and _id from token payload
+    const userId = user.id || user._id;
 
-        // Restrictions
-        if (status === "cancelled" && !isRenter) {
-            return sendResponse(res, null, "Only renter can cancel the booking", STATUS_CODES.FORBIDDEN);
-        }
-        if (["approved", "rejected", "completed"].includes(status) && !isLeaser) {
-            return sendResponse(res, null, "Only leaser can change the booking status", STATUS_CODES.FORBIDDEN);
-        }
-        
-        const bookingIdString = booking._id?.toString() as string;
-        
-        let updateFields: any = { status: status };
-        let finalBooking: IBooking | null = null;
-        let pin: string | undefined;
+    console.log("Authenticated User ID:", userId);
+    console.log("Booking ID:", id);
 
-        // 🔹 LOGIC FOR approved STATUS
-        if (status === "approved") {
-            // 1. Check for special request
-            if (booking.specialRequest) {
-                const additionalAmount = Number(additionalCharges) || 0;
-
-                // 2. Validate if additionalCharges are required but missing
-                if (additionalAmount <= 0) {
-                    return sendResponse(res, null, "Additional charges are required when approving a booking with a special request.", STATUS_CODES.BAD_REQUEST);
-                }
-
-                // 3. Calculate new grand total
-                const currentTotalPrice = booking.priceDetails.totalPrice;
-                const newGrandTotalPrice = currentTotalPrice + additionalAmount;
-                
-                // 4. Update the fields using $set notation for reliable sub-document update
-                updateFields = {
-                    ...updateFields, // include status: 'approved'
-                    // Extension charges update: This object will now contain the final grand total
-                    extensionCharges: {
-                        additionalCharges: additionalAmount,
-                        totalPrice: newGrandTotalPrice, // ⬅️ Sets the NEW GRAND TOTAL here ONLY
-                    }
-                };
-            }
-
-            // 5. Generate OTP
-            pin = Math.floor(1000 + Math.random() * 9000).toString();
-            updateFields.otp = pin;
-        }
-
-        // Use findByIdAndUpdate to apply all changes atomically and reliably update nested fields
-        finalBooking = await Booking.findByIdAndUpdate(
-            id,
-            { $set: updateFields },
-            { new: true } // Return the updated document
-        ).populate("renter", "email name");
-
-        if (!finalBooking) {
-            return sendResponse(res, null, "Booking update failed (race condition or not found after update)", STATUS_CODES.INTERNAL_SERVER_ERROR);
-        }
-
-        // 6. Send Email if approved
-        if (status === "approved" && pin) {
-            const userInfo = finalBooking.renter as any;
-            
-            // Determine the final price to show in the email (using extensionCharges.totalPrice for accuracy)
-            const emailFinalPrice = finalBooking.extensionCharges?.totalPrice || finalBooking.priceDetails.totalPrice;
-            
-            await sendEmail({
-                to: userInfo.email,
-                name: userInfo.name,
-                subject: "Your Booking Confirmation PIN and Final Price",
-                content: `Dear ${userInfo.name},\n\nYour booking has been approved. ${
-                    finalBooking.specialRequest 
-                        ? `A charge of ${finalBooking.extensionCharges?.additionalCharges} was applied for your special request. The new total price is ${emailFinalPrice}. ` 
-                        : ''
-                }Your confirmation PIN is: ${pin}`,
-            });
-        }
-
-        // 🔧 Update MarketplaceListing (No change needed here)
-        const listing = await MarketplaceListing.findById(finalBooking.marketplaceListingId);
-        if (listing) {
-            if (status === "approved") {
-                listing.isAvailable = false;
-                listing.currentBookingId = [
-                    ...(listing.currentBookingId || []).filter(item => item.toString() !== bookingIdString), 
-                    finalBooking._id as mongoose.Types.ObjectId,
-                ];
-            } else {
-                listing.isAvailable = true;
-                listing.currentBookingId = (listing.currentBookingId || []).filter(item => item.toString() !== bookingIdString);
-            }
-            await listing.save();
-        }
-
-        sendResponse(res, finalBooking, `Booking status updated to ${status}`, STATUS_CODES.OK);
-    } catch (err) {
-        next(err);
+    const allowedStatuses = ["approved", "rejected", "completed", "cancelled"];
+    if (!allowedStatuses.includes(status)) {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(res, null, "Invalid status", STATUS_CODES.BAD_REQUEST);
     }
+
+    let booking = await Booking.findById(id)
+      .populate("renter", "email name")
+      .populate("leaser")
+      .populate("marketplaceListingId");
+
+    if (!booking) {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+    }
+
+    // ✅ Handle both populated and non-populated IDs correctly
+    const renterId =
+      typeof booking.renter === "object"
+        ? (booking.renter as any)?._id?.toString()
+        : (booking.renter as any)?.toString();
+
+    const leaserId =
+      typeof booking.leaser === "object"
+        ? (booking.leaser as any)?._id?.toString()
+        : (booking.leaser as any)?.toString();
+
+    console.log("Booking renter ID:", renterId);
+    console.log("Booking leaser ID:", leaserId);
+
+    const isRenter = userId?.toString() === renterId;
+    const isLeaser = userId?.toString() === leaserId;
+
+    console.log("isLeaser:", isLeaser, "isRenter:", isRenter);
+
+    const bookingIdString = booking._id?.toString() as string;
+
+    // ======================================================
+    // 🔹 Role Restrictions
+    // ======================================================
+    if (status === "cancelled" && !isRenter) {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(res, null, "Only renter can cancel the booking", STATUS_CODES.FORBIDDEN);
+    }
+
+    if (["approved", "rejected", "completed"].includes(status) && !isLeaser) {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(res, null, "Only leaser can change the booking status", STATUS_CODES.FORBIDDEN);
+    }
+
+    let updateFields: any = { status: status };
+    let finalBooking: IBooking | null = null;
+    let pin: string | undefined;
+
+    // ======================================================
+    // 🔹 EXTENSION APPROVAL
+    // ======================================================
+    if (isExtendApproval) {
+      const newCheckOut = (booking as any).extensionRequestedDate;
+
+      if (!newCheckOut) {
+        await session.abortTransaction();
+        session.endSession();
+        return sendResponse(res, null, "No pending extension request found", STATUS_CODES.BAD_REQUEST);
+      }
+
+      if (status === "approved") {
+        booking.dates.checkOut = newCheckOut;
+        (booking as any).isExtend = true;
+        booking.status = "approved";
+
+        await booking.save({ session });
+        await session.commitTransaction();
+        session.endSession();
+
+        return sendResponse(res, booking, "Extension approved successfully", STATUS_CODES.OK);
+      }
+
+      if (status === "rejected") {
+        (booking as any).extensionRequestedDate = undefined;
+        (booking as any).isExtend = false;
+        booking.status = "rejected";
+
+        await booking.save({ session });
+        await session.commitTransaction();
+        session.endSession();
+
+        return sendResponse(res, booking, "Extension request rejected", STATUS_CODES.OK);
+      }
+    }
+
+    // ======================================================
+    // 🔹 NORMAL APPROVAL (with optional additional charges)
+    // ======================================================
+    if (status === "approved" && !isExtendApproval) {
+      if (booking.specialRequest) {
+        const additionalAmount = Number(additionalCharges) || 0;
+
+        if (additionalAmount <= 0) {
+          await session.abortTransaction();
+          session.endSession();
+          return sendResponse(
+            res,
+            null,
+            "Additional charges are required when approving a booking with a special request.",
+            STATUS_CODES.BAD_REQUEST
+          );
+        }
+
+        const currentTotalPrice = booking.priceDetails.totalPrice;
+        const newGrandTotalPrice = currentTotalPrice + additionalAmount;
+
+        updateFields = {
+          ...updateFields,
+          extraRequestCharges: {
+            additionalCharges: additionalAmount,
+            totalPrice: newGrandTotalPrice,
+          },
+        };
+      }
+
+      // ✅ Generate a 4-digit OTP using helper
+      pin = generatePIN(4);
+      updateFields.otp = pin;
+    }
+
+    // ======================================================
+    // 🔹 UPDATE BOOKING RECORD
+    // ======================================================
+    finalBooking = await Booking.findByIdAndUpdate(id, { $set: updateFields }, { new: true }).populate(
+      "renter",
+      "email name"
+    );
+
+    if (!finalBooking) {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(res, null, "Booking update failed", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    }
+
+    // ======================================================
+    // 🔹 UPDATE MARKETPLACE LISTING AVAILABILITY
+    // ======================================================
+    const listing = await MarketplaceListing.findById(finalBooking.marketplaceListingId);
+
+    if (listing) {
+      if (status === "approved") {
+        listing.isAvailable = false;
+        listing.currentBookingId = [
+          ...(listing.currentBookingId || []).filter((item) => item.toString() !== bookingIdString),
+          finalBooking._id as mongoose.Types.ObjectId,
+        ];
+      } else {
+        listing.isAvailable = true;
+        listing.currentBookingId = (listing.currentBookingId || []).filter(
+          (item) => item.toString() !== bookingIdString
+        );
+      }
+
+      await listing.save();
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return sendResponse(res, finalBooking, `Booking status updated to ${status}`, STATUS_CODES.OK);
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    next(err);
+  }
 };
 
-//submit booking pin
-export const submitBookingPin = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
+
+
+// export const updateBookingStatus = async (req: Request, res: Response, next: NextFunction) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+
+//   try {
+//     const { id } = req.params;
+//     const { status, additionalCharges, isExtendApproval } = req.body;
+//     const user = (req as any).user;
+
+//     const allowedStatuses = ["approved", "rejected", "completed", "cancelled"];
+//     if (!allowedStatuses.includes(status)) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(res, null, "Invalid status", STATUS_CODES.BAD_REQUEST);
+//     }
+
+//     let booking = await Booking.findById(id)
+//       .populate("renter", "email name")
+//       .populate("leaser")
+//       .populate("marketplaceListingId");
+
+//     if (!booking) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+//     }
+
+//     const isRenter = user.id === booking.renter.toString();
+//     const isLeaser = user.id === booking.leaser?.toString();
+//     const bookingIdString = booking._id?.toString() as string;
+
+//     // ======================================================
+//     // 🔹 Role Restrictions
+//     // ======================================================
+//     if (status === "cancelled" && !isRenter) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(res, null, "Only renter can cancel the booking", STATUS_CODES.FORBIDDEN);
+//     }
+
+//     if (["approved", "rejected", "completed"].includes(status) && !isLeaser) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(res, null, "Only leaser can change the booking status", STATUS_CODES.FORBIDDEN);
+//     }
+
+//     let updateFields: any = { status: status };
+//     let finalBooking: IBooking | null = null;
+//     let pin: string | undefined;
+
+//     // ======================================================
+//     // 🔹 EXTENSION APPROVAL
+//     // ======================================================
+//     if (isExtendApproval) {
+//       const newCheckOut = (booking as any).extensionRequestedDate;
+
+//       if (!newCheckOut) {
+//         await session.abortTransaction();
+//         session.endSession();
+//         return sendResponse(
+//           res,
+//           null,
+//           "No pending extension request found",
+//           STATUS_CODES.BAD_REQUEST
+//         );
+//       }
+
+//       if (status === "approved") {
+//         booking.dates.checkOut = newCheckOut;
+//         (booking as any).isExtend = true;
+//         booking.status = "approved";
+
+//         await booking.save({ session });
+//         await session.commitTransaction();
+//         session.endSession();
+
+//         return sendResponse(res, booking, "Extension approved successfully", STATUS_CODES.OK);
+//       }
+
+//       if (status === "rejected") {
+//         (booking as any).extensionRequestedDate = undefined;
+//         (booking as any).isExtend = false;
+//         booking.status = "rejected";
+
+//         await booking.save({ session });
+//         await session.commitTransaction();
+//         session.endSession();
+
+//         return sendResponse(res, booking, "Extension request rejected", STATUS_CODES.OK);
+//       }
+//     }
+
+//     // ======================================================
+//     // 🔹 NORMAL APPROVAL (with optional additional charges)
+//     // ======================================================
+//     if (status === "approved" && !isExtendApproval) {
+//       if (booking.specialRequest) {
+//         const additionalAmount = Number(additionalCharges) || 0;
+
+//         if (additionalAmount <= 0) {
+//           await session.abortTransaction();
+//           session.endSession();
+//           return sendResponse(
+//             res,
+//             null,
+//             "Additional charges are required when approving a booking with a special request.",
+//             STATUS_CODES.BAD_REQUEST
+//           );
+//         }
+
+//         const currentTotalPrice = booking.priceDetails.totalPrice;
+//         const newGrandTotalPrice = currentTotalPrice + additionalAmount;
+
+//         updateFields = {
+//           ...updateFields,
+//           extensionCharges: {
+//             additionalCharges: additionalAmount,
+//             totalPrice: newGrandTotalPrice,
+//           },
+//         };
+//       }
+
+//       // Generate a 4-digit OTP and store in booking
+//       pin = Math.floor(1000 + Math.random() * 9000).toString();
+//       updateFields.otp = pin;
+//     }
+
+//     // ======================================================
+//     // 🔹 UPDATE BOOKING RECORD
+//     // ======================================================
+//     finalBooking = await Booking.findByIdAndUpdate(
+//       id,
+//       { $set: updateFields },
+//       { new: true }
+//     ).populate("renter", "email name");
+
+//     if (!finalBooking) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(res, null, "Booking update failed", STATUS_CODES.INTERNAL_SERVER_ERROR);
+//     }
+
+//     // ======================================================
+//     // 🔹 NO EMAIL — PIN SHOWN IN DETAILS
+//     // ======================================================
+//     // PIN (otp) is part of booking details, not emailed.
+
+//     // ======================================================
+//     // 🔹 UPDATE MARKETPLACE LISTING AVAILABILITY
+//     // ======================================================
+//     const listing = await MarketplaceListing.findById(finalBooking.marketplaceListingId);
+
+//     if (listing) {
+//       if (status === "approved") {
+//         listing.isAvailable = false;
+//         listing.currentBookingId = [
+//           ...(listing.currentBookingId || []).filter(
+//             (item) => item.toString() !== bookingIdString
+//           ),
+//           finalBooking._id as mongoose.Types.ObjectId,
+//         ];
+//       } else {
+//         listing.isAvailable = true;
+//         listing.currentBookingId = (listing.currentBookingId || []).filter(
+//           (item) => item.toString() !== bookingIdString
+//         );
+//       }
+
+//       await listing.save();
+//     }
+
+//     await session.commitTransaction();
+//     session.endSession();
+
+//     return sendResponse(res, finalBooking, `Booking status updated to ${status}`, STATUS_CODES.OK);
+//   } catch (err) {
+//     await session.abortTransaction();
+//     session.endSession();
+//     next(err);
+//   }
+// };
+
+
+// submitBookingPin
+export const submitBookingPin = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const { otp } = req.body;
 
-    if (!otp) {
-      return sendResponse(
-        res,
-        null,
-        "PIN is required",
-        STATUS_CODES.BAD_REQUEST
-      );
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendResponse(
-        res,
-        null,
-        "Invalid booking ID",
-        STATUS_CODES.BAD_REQUEST
-      );
-    }
+    if (!otp) return sendResponse(res, null, "PIN is required", STATUS_CODES.BAD_REQUEST);
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
 
     const booking = await Booking.findById(id).populate("renter", "email name");
-    if (!booking) {
-      return sendResponse(
-        res,
-        null,
-        "Booking not found",
-        STATUS_CODES.NOT_FOUND
-      );
-    }
+    if (!booking) return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
 
-    if (booking.otp !== otp) {
-      return sendResponse(
-        res,
-        null,
-        "Invalid or Expire PIN",
-        STATUS_CODES.UNAUTHORIZED
-      );
-    }
+    const now = new Date();
+    const checkIn = new Date(booking.dates.checkIn);
+    const checkOut = new Date(booking.dates.checkOut);
+
+    // Allow OTP submission only within checkIn → (checkOut - 12h)
+    const twelveHoursBeforeCheckout = new Date(checkOut.getTime() - 12 * 60 * 60 * 1000);
+
+    if (now < checkIn)
+      return sendResponse(res, null, "Cannot enter PIN before check-in time", STATUS_CODES.BAD_REQUEST);
+
+    if (now > twelveHoursBeforeCheckout)
+      return sendResponse(res, null, "PIN cannot be submitted after 12 hours before checkout", STATUS_CODES.BAD_REQUEST);
+
+    if (booking.otp !== otp)
+      return sendResponse(res, null, "Invalid or expired PIN", STATUS_CODES.UNAUTHORIZED);
 
     booking.otp = "";
     await booking.save();
 
     sendResponse(res, booking, "PIN verified successfully", STATUS_CODES.OK);
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+import { isBookingDateAvailable } from "../utils/dateValidator";
+
+export const requestExtendBooking = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+    const { newCheckOut } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+
+    const booking = await Booking.findById(id);
+    if (!booking) return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+
+    if (!user || String(booking.renter) !== String(user.id))
+      return sendResponse(res, null, "Only renter can request an extension", STATUS_CODES.FORBIDDEN);
+
+    const newCheckOutDate = new Date(newCheckOut);
+    if (newCheckOutDate <= new Date(booking.dates.checkOut))
+      return sendResponse(res, null, "New checkout date must be later than current checkout date", STATUS_CODES.BAD_REQUEST);
+
+    // check overlap with other approved/pending bookings
+    const isAvailable = await isBookingDateAvailable(
+      booking.marketplaceListingId,
+      booking.dates.checkIn,
+      newCheckOutDate,
+      booking._id as mongoose.Types.ObjectId
+
+    );
+
+    if (!isAvailable)
+      return sendResponse(res, null, "Extension not allowed — next booking overlaps with requested dates", STATUS_CODES.BAD_REQUEST);
+
+    // mark extension request
+    (booking as any).isExtend = false;
+    (booking as any).extensionRequestedDate = newCheckOutDate;
+
+    await booking.save();
+
+    sendResponse(res, booking, "Extension request submitted successfully", STATUS_CODES.OK);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const applyExtensionCharges = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+    const { extensionCharges } = req.body; // The extension charge amount (number)
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+    }
+
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+    }
+
+    // Only leaser can apply extension charges
+    if (!user || String(booking.leaser) !== String(user.id)) {
+      return sendResponse(res, null, "Only leaser can apply extension charges", STATUS_CODES.FORBIDDEN);
+    }
+
+    // Check if extension request exists
+    const newCheckOut = booking.extensionRequestedDate;
+    if (!newCheckOut) {
+      return sendResponse(res, null, "No pending extension request found", STATUS_CODES.BAD_REQUEST);
+    }
+
+    // Check for overlapping bookings
+    const isAvailable = await isBookingDateAvailable(
+      booking.marketplaceListingId,
+      booking.dates.checkIn,
+      newCheckOut,
+      booking._id as mongoose.Types.ObjectId
+    );
+
+    if (!isAvailable) {
+      return sendResponse(res, null, "Extension not allowed — dates overlap with another booking", STATUS_CODES.BAD_REQUEST);
+    }
+
+    // Apply extension
+    booking.dates.checkOut = newCheckOut;
+    booking.isExtend = true;
+    booking.extensionRequestedDate = undefined;
+
+    // Preserve previous totals
+    const baseTotal = booking.priceDetails.totalPrice; // price + adminFee + tax
+    const previousExtra = booking.extraRequestCharges?.additionalCharges || 0;
+    const previousExtraTotal = booking.extraRequestCharges?.totalPrice || baseTotal + previousExtra;
+
+    // Keep extraRequestCharges unchanged
+    booking.extraRequestCharges = {
+      additionalCharges: previousExtra,
+      totalPrice: previousExtraTotal,
+    };
+
+    // Apply extension charges
+    if (extensionCharges && extensionCharges > 0) {
+      (booking as any).extendCharges = {
+        extendCharges: extensionCharges,
+        totalPrice: previousExtraTotal + extensionCharges,
+      };
+    }
+
+    await booking.save();
+
+    return sendResponse(
+      res,
+      booking,
+      "Extension charges applied successfully",
+      STATUS_CODES.OK
+    );
   } catch (err) {
     next(err);
   }
