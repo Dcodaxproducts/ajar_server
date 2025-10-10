@@ -4,7 +4,7 @@ export interface IDamageReport extends Document {
   booking: mongoose.Types.ObjectId;
   rentalText: string;
   issueType: string;
-  additionalFees: number;
+  damagedCharges: number;
   attachments: string[];
   user: mongoose.Types.ObjectId;
   status: "pending" | "resolved";
@@ -25,7 +25,7 @@ const DamageReportSchema = new Schema<IDamageReport>(
       type: String,
       required: true,
     },
-    additionalFees: {
+    damagedCharges: {
       type: Number,
       required: true,
     },
