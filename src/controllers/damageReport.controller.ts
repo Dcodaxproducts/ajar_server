@@ -93,8 +93,6 @@ export const createDamageReport = async (
   }
 };
 
-
-
 // READ ALL (admin gets all, user gets their own)
 export const getAllDamageReports = async (
   req: AuthRequest,
@@ -255,6 +253,60 @@ export const deleteDamageReport = async (
     }
 
     sendResponse(res, null, "Deleted successfully", STATUS_CODES.OK);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PATCH /api/damage-report/:id/status
+export const updateDamageReportStatus = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const userRole = req.user?.role;
+
+    // Only admin can update status
+    if (userRole !== "admin") {
+      return sendResponse(res, null, "Unauthorized", STATUS_CODES.UNAUTHORIZED);
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return sendResponse(res, null, "Invalid report ID", STATUS_CODES.BAD_REQUEST);
+    }
+
+    if (!["pending", "resolved"].includes(status)) {
+      return sendResponse(res, null, "Invalid status value", STATUS_CODES.BAD_REQUEST);
+    }
+
+    const updatedReport = await DamageReport.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    )
+      .populate({
+        path: "booking",
+        populate: [
+          { path: "renter", select: "firstName lastName email" },
+          { path: "leaser", select: "firstName lastName email" },
+          { path: "marketplaceListingId", select: "title zone" },
+        ],
+      })
+      .populate("user", "firstName lastName email role");
+
+    if (!updatedReport) {
+      return sendResponse(res, null, "Report not found", STATUS_CODES.NOT_FOUND);
+    }
+
+    sendResponse(
+      res,
+      updatedReport,
+      "Damage report status updated successfully",
+      STATUS_CODES.OK
+    );
   } catch (err) {
     next(err);
   }
