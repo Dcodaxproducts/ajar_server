@@ -9,8 +9,6 @@ import {
   getBookingsByUserIdForAdmin,
   updateBookingStatus,
   submitBookingPin,
-  requestExtendBooking,
-  applyExtensionCharges,
 } from "../controllers/booking.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { Booking } from "../models/booking.model";
@@ -43,12 +41,6 @@ router.patch(
   asyncHandler(updateBooking)
 );
 
-router.post(
-  "/:id/request-extend",
-  authMiddleware,
-  asyncHandler(requestExtendBooking)
-);
-
 
 router.patch("/:id/status", authMiddleware, asyncHandler(updateBookingStatus));
 
@@ -56,7 +48,6 @@ router.delete("/:id", authMiddleware, deleteBooking);
 
 router.post("/:id/submit-pin", authMiddleware, asyncHandler(submitBookingPin));
 
-router.post("/:id/apply-extension-charges", authMiddleware, asyncHandler(applyExtensionCharges));
 
 
 export default router;
