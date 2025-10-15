@@ -5,6 +5,7 @@ import {
   getAllDamageReports,
   getDamageReportById,
   updateDamageReport,
+  updateDamageReportStatus,
 } from "../controllers/damageReport.controller";
 import upload from "../utils/multer";
 import { uploadFile, uploadFiles } from "../utils/multer";
@@ -39,5 +40,8 @@ router.patch(
 
 // Delete
 router.delete("/:id", asyncHandler(deleteDamageReport));
+
+// PATCH /api/damage-report/:id/status
+router.patch("/:id/status", authMiddleware, asyncHandler(updateDamageReportStatus));
 
 export default router;
