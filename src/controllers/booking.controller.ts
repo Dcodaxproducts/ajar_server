@@ -522,7 +522,6 @@ export const getBookingById = async (
     }
   };
 
-
 // UPDATE
 export const updateBooking = async (
   req: Request,
@@ -611,9 +610,8 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
     const user = (req as any).user;
     const userId = user.id || user._id;
 
-    // ======================================================
-    // 🔹 FETCH PARENT BOOKING
-    // ======================================================
+    //FETCH PARENT BOOKING
+ 
     let parentBooking = await Booking.findById(id)
       .populate("renter", "email name")
       .populate("leaser")
@@ -642,9 +640,9 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
 
     let finalStatus = status;
 
-    // ======================================================
-    // 🔹 EXTENSION APPROVAL LOGIC
-    // ======================================================
+    
+    // EXTENSION APPROVAL LOGIC
+ 
     if (isExtendApproval) {
       const childBooking = await Booking.findOne({
         previousBookingId: id,
@@ -682,15 +680,15 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
           );
         }
 
-        // ✅ Extract individual parts from parent booking
+        // Extract individual parts from parent booking
         const { price, adminFee, tax, totalPrice: baseTotal } = parentBooking.priceDetails || {};
         const previousExtra = parentBooking.extraRequestCharges?.additionalCharges || 0;
 
-        // ✅ Calculate updated totals
+        // Calculate updated totals
         const afterExtra = baseTotal + previousExtra;
         const newTotalPrice = afterExtra + extendChargeAmount;
 
-        // ✅ Update child booking
+        // Update child booking
         childBooking.isExtend = true;
         childBooking.status = "approved";
         childBooking.extendCharges = {
@@ -711,15 +709,15 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
 
         await childBooking.save({ session });
 
-        // ======================================================
-        // 🔹 HANDLE HANDOVER / RETURN DATE CHAINING LOGIC
-        // ======================================================
+ 
+        // HANDLE HANDOVER / RETURN DATE CHAINING LOGIC
+ 
         const parentId = childBooking.previousBookingId;
         if (parentId) {
           const previousBooking = await Booking.findById(parentId).session(session);
 
           if (previousBooking) {
-            // 🟢 UPDATED: Save handover & returnDate in child booking
+            // UPDATED: Save handover & returnDate in child booking
             const parentReturnDate =
               previousBooking.bookingDates?.returnDate || new Date();
             const handoverDate =
@@ -743,7 +741,7 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
             previousBooking.isExtend = true;
             await previousBooking.save({ session });
 
-            // 🔹 Find the main ancestor booking and mark it extended
+            // Find the main ancestor booking and mark it extended
             let topParent = previousBooking;
             while (topParent.previousBookingId) {
               const grandParent = await Booking.findById(topParent.previousBookingId).session(session);
@@ -760,7 +758,7 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
           }
         }
 
-        // ✅ Update parent booking — keep status as approved
+        // Update parent booking — keep status as approved
         parentBooking.isExtend = true;
         parentBooking.extendCharges = {
           extendCharges: extendChargeAmount,
@@ -793,9 +791,9 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
       }
     }
 
-    // ======================================================
-    // 🔹 NORMAL APPROVAL (non-extension)
-    // ======================================================
+
+    // NORMAL APPROVAL (non-extension)
+
     const allowedStatuses = ["approved", "rejected", "completed", "cancelled"];
     if (!allowedStatuses.includes(finalStatus)) {
       await session.abortTransaction();
@@ -850,7 +848,7 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
       updateFields.otp = pin;
     }
 
-    // ✅ When leaser completes booking → set returnDate
+    // When leaser completes booking → set returnDate
     if (finalStatus === "completed") {
       updateFields["bookingDates.returnDate"] = new Date();
     }
@@ -866,15 +864,15 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
       return sendResponse(res, null, "Booking update failed", STATUS_CODES.INTERNAL_SERVER_ERROR);
     }
 
-    // ======================================================
-    // 🔹 ADDITIONAL LOGIC FOR COMPLETION CHAIN
-    // ======================================================
+ 
+    // ADDITIONAL LOGIC FOR COMPLETION CHAIN
+
     if (finalStatus === "completed") {
-      // 🔸 Find the last child booking (if any)
+      // Find the last child booking (if any)
       const lastChild = await Booking.findOne({ previousBookingId: id }).sort({ createdAt: -1 });
 
       if (lastChild) {
-        // ✅ Set last child's returnDate
+        // Set last child's returnDate
         lastChild.bookingDates = {
           ...lastChild.bookingDates,
           returnDate: new Date(),
@@ -882,7 +880,7 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
         await lastChild.save({ session });
       }
 
-      // ✅ Update parent booking's returnDate as well (handover completed)
+      // Update parent booking's returnDate as well (handover completed)
       parentBooking.bookingDates = {
         ...parentBooking.bookingDates,
         returnDate: new Date(),
@@ -890,9 +888,8 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
       await parentBooking.save({ session });
     }
 
-    // ======================================================
-    // 🔹 UPDATE MARKETPLACE LISTING AVAILABILITY
-    // ======================================================
+    // UPDATE MARKETPLACE LISTING AVAILABILITY
+    
     const listing = await MarketplaceListing.findById(finalBooking.marketplaceListingId);
 
     if (listing) {
