@@ -8,11 +8,11 @@ import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { User } from "../models/user.model";
 
-// Create or get existing conversation
+
 // Create or get existing conversation
 export const createConversation = async (req: AuthRequest, res: Response) => {
   try {
-    // ✅ UPDATED: Support "receiverId" instead of "receiver"
+    // UPDATED: Support "receiverId" instead of "receiver"
     const receiverStr = req.body.receiverId || req.body.receiver;
 
     if (!receiverStr) {
@@ -34,7 +34,7 @@ export const createConversation = async (req: AuthRequest, res: Response) => {
     }
 
     const sender = new mongoose.Types.ObjectId(req.user!.id);
-    const receiver = new mongoose.Types.ObjectId(receiverStr); // ✅ uses correct receiver id
+    const receiver = new mongoose.Types.ObjectId(receiverStr); //uses correct receiver id
     const adId = req.body.adId
       ? new mongoose.Types.ObjectId(req.body.adId)
       : undefined;
@@ -52,7 +52,7 @@ export const createConversation = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // ✅ Only show participant IDs in response
+    // Only show participant IDs in response
     const responseData = {
       participants: conversation.participants,
       _id: conversation._id,
@@ -77,101 +77,6 @@ export const createConversation = async (req: AuthRequest, res: Response) => {
     );
   }
 };
-
-
-// Create or get existing conversation
-// export const createConversation = async (req: AuthRequest, res: Response) => {
-//   try {
-//     // ✅ Accept multiple possible keys (receiver, receiverId, receiver_id)
-//     const receiverStr =
-//       req.body.receiver ||
-//       req.body.receiverId ||
-//       req.body.receiver_id ||
-//       req.body.to; // optional aliases
-
-//     // ✅ Validate input presence
-//     if (!receiverStr) {
-//       return sendResponse(
-//         res,
-//         null,
-//         "Receiver id is required (body: { receiver: '<id>' })",
-//         STATUS_CODES.BAD_REQUEST
-//       );
-//     }
-
-//     // ✅ Validate as ObjectId
-//     if (!mongoose.Types.ObjectId.isValid(receiverStr)) {
-//       return sendResponse(
-//         res,
-//         null,
-//         "Invalid receiver id",
-//         STATUS_CODES.BAD_REQUEST
-//       );
-//     }
-
-//     const sender = new mongoose.Types.ObjectId(req.user!.id);
-//     const receiver = new mongoose.Types.ObjectId(receiverStr);
-
-//     // Prevent creating conversation with self
-//     if (sender.equals(receiver)) {
-//       return sendResponse(
-//         res,
-//         null,
-//         "You cannot start a conversation with yourself",
-//         STATUS_CODES.BAD_REQUEST
-//       );
-//     }
-
-//     const adId = req.body.adId ? new mongoose.Types.ObjectId(req.body.adId) : null;
-
-//     // ✅ Ensure receiver exists in users collection
-//     const receiverUser = await User.findById(receiver).select("_id name email");
-//     if (!receiverUser) {
-//       return sendResponse(
-//         res,
-//         null,
-//         "Receiver user not found",
-//         STATUS_CODES.NOT_FOUND
-//       );
-//     }
-
-//     // Build query (only include adId if provided)
-//     const query: any = { participants: { $all: [sender, receiver] } };
-//     if (adId) query.adId = adId;
-
-//     // Check if conversation already exists
-//     let conversation = await Conversation.findOne(query);
-
-//     if (!conversation) {
-//       conversation = await Conversation.create({
-//         participants: [sender, receiver],
-//         adId,
-//       });
-//     }
-
-//     // ✅ Populate participants so response contains user objects not raw ids
-//     await conversation.populate({
-//       path: "participants",
-//       select: "name email profilePicture",
-//     });
-
-//     sendResponse(
-//       res,
-//       conversation,
-//       "Conversation fetched/created successfully",
-//       STATUS_CODES.OK
-//     );
-//   } catch (error) {
-//     console.error("Create conversation error:", error);
-//     sendResponse(
-//       res,
-//       null,
-//       "Failed to create conversation",
-//       STATUS_CODES.INTERNAL_SERVER_ERROR
-//     );
-//   }
-// };
-
 
 // Get all conversations for logged-in user
 export const getAllConversations = async (
