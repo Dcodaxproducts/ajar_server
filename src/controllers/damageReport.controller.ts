@@ -57,20 +57,20 @@ export const createDamageReport = async (
     const extraTotal = booking.extraRequestCharges?.additionalCharges || 0;
     const extendTotal = booking.extendCharges?.extendCharges || 0;
 
-    // If booking already has damage charges, add to them
-    const existingDamage = booking.damagesCharges?.damagedCharges || 0;
-    const newTotalDamage = existingDamage + damageAmount;
+    // // If booking already has damage charges, add to them
+    // const existingDamage = booking.damagesCharges?.damagedCharges || 0;
+    // const newTotalDamage = existingDamage + damageAmount;
 
-    // Calculate final updated total
-    const updatedTotal = baseTotal + extraTotal + extendTotal + newTotalDamage;
+    // // Calculate final updated total
+    // const updatedTotal = baseTotal + extraTotal + extendTotal + newTotalDamage;
 
-    // Update booking damage details
-    booking.damagesCharges = {
-      damagedCharges: newTotalDamage,
-      totalPrice: updatedTotal,
-    };
+    // // Update booking damage details
+    // booking.damagesCharges = {
+    //   damagedCharges: newTotalDamage,
+    //   totalPrice: updatedTotal,
+    // };
 
-    await booking.save();
+    // await booking.save();
 
     // Populate for response
     const updatedBooking = await Booking.findById(bookingId)
@@ -269,19 +269,23 @@ export const updateDamageReportStatus = async (
     const { status } = req.body;
     const userRole = req.user?.role;
 
-    // Only admin can update status
+    // ✅ Only admin can update status
     if (userRole !== "admin") {
-      return sendResponse(res, null, "Unauthorized", STATUS_CODES.UNAUTHORIZED);
+      return sendResponse(res, null, "Only admin can update damage report status", STATUS_CODES.FORBIDDEN);
     }
 
+    // ✅ Validate report ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return sendResponse(res, null, "Invalid report ID", STATUS_CODES.BAD_REQUEST);
     }
 
-    if (!["pending", "resolved"].includes(status)) {
+    // ✅ Validate status value (according to your schema)
+    const allowedStatuses = ["pending", "approved", "paid", "rejected", "resolved"];
+    if (!allowedStatuses.includes(status)) {
       return sendResponse(res, null, "Invalid status value", STATUS_CODES.BAD_REQUEST);
     }
 
+    // ✅ Update report status
     const updatedReport = await DamageReport.findByIdAndUpdate(
       id,
       { status },
@@ -298,16 +302,70 @@ export const updateDamageReportStatus = async (
       .populate("user", "firstName lastName email role");
 
     if (!updatedReport) {
-      return sendResponse(res, null, "Report not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, "Damage report not found", STATUS_CODES.NOT_FOUND);
     }
 
-    sendResponse(
+    // ✅ Send success response
+    return sendResponse(
       res,
       updatedReport,
-      "Damage report status updated successfully",
+      `Damage report status updated to '${status}' successfully`,
       STATUS_CODES.OK
     );
   } catch (err) {
     next(err);
   }
 };
+
+// export const updateDamageReportStatus = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     const { id } = req.params;
+//     const { status } = req.body;
+//     const userRole = req.user?.role;
+
+//     // Only admin can update status
+//     if (userRole !== "admin") {
+//       return sendResponse(res, null, "Unauthorized", STATUS_CODES.UNAUTHORIZED);
+//     }
+
+//     if (!mongoose.Types.ObjectId.isValid(id)) {
+//       return sendResponse(res, null, "Invalid report ID", STATUS_CODES.BAD_REQUEST);
+//     }
+
+//     if (!["pending", "resolved"].includes(status)) {
+//       return sendResponse(res, null, "Invalid status value", STATUS_CODES.BAD_REQUEST);
+//     }
+
+//     const updatedReport = await DamageReport.findByIdAndUpdate(
+//       id,
+//       { status },
+//       { new: true }
+//     )
+//       .populate({
+//         path: "booking",
+//         populate: [
+//           { path: "renter", select: "firstName lastName email" },
+//           { path: "leaser", select: "firstName lastName email" },
+//           { path: "marketplaceListingId", select: "title zone" },
+//         ],
+//       })
+//       .populate("user", "firstName lastName email role");
+
+//     if (!updatedReport) {
+//       return sendResponse(res, null, "Report not found", STATUS_CODES.NOT_FOUND);
+//     }
+
+//     sendResponse(
+//       res,
+//       updatedReport,
+//       "Damage report status updated successfully",
+//       STATUS_CODES.OK
+//     );
+//   } catch (err) {
+//     next(err);
+//   }
+// };

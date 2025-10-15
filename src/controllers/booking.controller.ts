@@ -415,111 +415,112 @@ export const getBookingById = async (
 };
 
 // Get bookings by user (renter, leaser, or both) with optional zone + status filters
-export const getBookingsByUser = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const user = (req as any).user;
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
+  export const getBookingsByUser = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const user = (req as any).user;
+      const page = Number(req.query.page) || 1;
+      const limit = Number(req.query.limit) || 10;
 
-    const status = req.query.status as string | undefined;
-    const role = req.query.role as string | undefined;
-    const zone = req.query.zone as string | undefined;
+      const status = req.query.status as string | undefined;
+      const role = req.query.role as string | undefined;
+      const zone = req.query.zone as string | undefined;
 
-    // --- Build dynamic filter ---
-    const filter: any = {};
+      // --- Build dynamic filter ---
+      const filter: any = {};
 
-    if (role === "renter") {
-      filter.renter = user.id;
-    } else if (role === "leaser") {
-      filter.leaser = user.id;
-    } else {
-      filter.$or = [{ renter: user.id }, { leaser: user.id }];
-    }
-
-    if (status) filter.status = status;
-
-    // --- Query base ---
-    let baseQuery = Booking.find(filter)
-      .populate({
-        path: "marketplaceListingId",
-        match: zone ? { zone } : {},
-        populate: {
-          path: "zone",
-          select: "name",
-        },
-      })
-      .populate("renter", "firstName lastName email")
-      .populate("leaser", "firstName lastName email")
-      .sort({ createdAt: -1 })
-      .lean();
-
-    const allBookings = await baseQuery;
-
-    const filteredBookings = zone
-      ? allBookings.filter((b) => b.marketplaceListingId !== null)
-      : allBookings;
-
-    // ======================================================
-    // 🔹 CHANGE #1: Organise child (extension) bookings under parent
-    // ======================================================
-    const bookingsMap: Record<string, any> = {};
-
-    // First, store all bookings by ID
-    filteredBookings.forEach((booking) => {
-      bookingsMap[booking._id.toString()] = { ...booking, extensions: [] };
-    });
-
-    // Then, attach child bookings to their parent
-    filteredBookings.forEach((booking) => {
-      if (booking.previousBookingId) {
-        const parent = bookingsMap[booking.previousBookingId.toString()];
-        if (parent) {
-          const extensionCount = parent.extensions.length + 1;
-
-          // ✅ Only include limited details (handover, returnDate)
-          parent.extensions.push({
-            name: `Extension ${extensionCount}`,
-            handover: booking.bookingDates?.handover || null,
-            returnDate: booking.bookingDates?.returnDate || null,
-          });
-
-          delete bookingsMap[booking._id.toString()]; // remove child from root list
-        }
+      if (role === "renter") {
+        filter.renter = user.id;
+      } else if (role === "leaser") {
+        filter.leaser = user.id;
+      } else {
+        filter.$or = [{ renter: user.id }, { leaser: user.id }];
       }
-    });
 
-    // Final array of parent-only bookings (with extensions inside)
-    const mergedBookings = Object.values(bookingsMap);
+      if (status) filter.status = status;
 
-    // ======================================================
-    // 🔹 CHANGE #2: Pagination now applies after merge
-    // ======================================================
-    const total = mergedBookings.length;
-    const paginatedBookings = mergedBookings.slice(
-      (page - 1) * limit,
-      page * limit
-    );
+      // --- Query base ---
+      let baseQuery = Booking.find(filter)
+        .populate({
+          path: "marketplaceListingId",
+          match: zone ? { zone } : {},
+          populate: {
+            path: "zone",
+            select: "name",
+          },
+        })
+        .populate("renter", "firstName lastName email")
+        .populate("leaser", "firstName lastName email")
+        .sort({ createdAt: -1 })
+        .lean();
 
-    // --- Send response ---
-    return sendResponse(res, {
-      statusCode: STATUS_CODES.OK,
-      success: true,
-      message: "Bookings retrieved successfully",
-      data: {
-        bookings: paginatedBookings,
-        total,
-        page,
-        limit,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+      const allBookings = await baseQuery;
+
+      const filteredBookings = zone
+        ? allBookings.filter((b) => b.marketplaceListingId !== null)
+        : allBookings;
+
+      // ======================================================
+      // 🔹 CHANGE #1: Organise child (extension) bookings under parent
+      // ======================================================
+      const bookingsMap: Record<string, any> = {};
+
+      // First, store all bookings by ID
+      filteredBookings.forEach((booking) => {
+        bookingsMap[booking._id.toString()] = { ...booking, extensions: [] };
+      });
+
+      // Then, attach child bookings to their parent
+      filteredBookings.forEach((booking) => {
+        if (booking.previousBookingId) {
+          const parent = bookingsMap[booking.previousBookingId.toString()];
+          if (parent) {
+            const extensionCount = parent.extensions.length + 1;
+
+            // ✅ Only include limited details (handover, returnDate)
+            parent.extensions.push({
+              name: `Extension ${extensionCount}`,
+              handover: booking.bookingDates?.handover || null,
+              returnDate: booking.bookingDates?.returnDate || null,
+              extensionDate: booking.extensionRequestedDate || null, 
+            });
+
+            delete bookingsMap[booking._id.toString()]; // remove child from root list
+          }
+        }
+      });
+
+      // Final array of parent-only bookings (with extensions inside)
+      const mergedBookings = Object.values(bookingsMap);
+
+      // ======================================================
+      // 🔹 CHANGE #2: Pagination now applies after merge
+      // ======================================================
+      const total = mergedBookings.length;
+      const paginatedBookings = mergedBookings.slice(
+        (page - 1) * limit,
+        page * limit
+      );
+
+      // --- Send response ---
+      return sendResponse(res, {
+        statusCode: STATUS_CODES.OK,
+        success: true,
+        message: "Bookings retrieved successfully",
+        data: {
+          bookings: paginatedBookings,
+          total,
+          page,
+          limit,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
 
 // UPDATE
