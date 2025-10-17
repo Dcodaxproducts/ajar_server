@@ -32,10 +32,10 @@ function asyncHandler(fn: any) {
 router.get("/search", asyncHandler(searchMarketplaceListings));
 
 
-router.get("/listing", authMiddleware, getAllMarketplaceListingsforLeaser);
+router.get("/listing", authMiddleware, getAllMarketplaceListingsforLeaser);/////////
 
 
-router.get("/", authMiddleware, getAllMarketplaceListings);  ///////////////////
+router.get("/", authMiddleware, getAllMarketplaceListings);  
 
 router.get("/guest", getAllMarketplaceListings);
 

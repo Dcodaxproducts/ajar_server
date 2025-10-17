@@ -184,6 +184,7 @@ export const getAllMarketplaceListingsforLeaser = async (
       subCategory,
       category,
       all,
+      recent, // ✅ Added support for recent listings
     } = req.query;
 
     const filter: any = {};
@@ -218,7 +219,6 @@ export const getAllMarketplaceListingsforLeaser = async (
     }
 
     if (category && mongoose.Types.ObjectId.isValid(String(category))) {
-      // NOTE: SubCategory model is assumed to be imported
       const subCategoryIds = await SubCategory.find({
         category: category,
       }).distinct("_id");
@@ -229,6 +229,7 @@ export const getAllMarketplaceListingsforLeaser = async (
     // ---------------- AGGREGATION PIPELINE ----------------
     const pipeline: any[] = [
       { $match: filter },
+
       {
         $lookup: {
           from: "categories", // subCategory
@@ -238,6 +239,7 @@ export const getAllMarketplaceListingsforLeaser = async (
         },
       },
       { $unwind: "$subCategory" },
+
       {
         $lookup: {
           from: "users",
@@ -247,6 +249,7 @@ export const getAllMarketplaceListingsforLeaser = async (
         },
       },
       { $unwind: "$leaser" },
+
       {
         $lookup: {
           from: "zones",
@@ -256,6 +259,35 @@ export const getAllMarketplaceListingsforLeaser = async (
         },
       },
       { $unwind: "$zone" },
+
+      // 📍 Lookup all bookings for each listing
+      {
+        $lookup: {
+          from: "bookings",
+          localField: "_id",
+          foreignField: "marketplaceListingId",
+          as: "bookings",
+        },
+      },
+
+      // 📍 Lookup reviews for those bookings
+      {
+        $lookup: {
+          from: "reviews",
+          localField: "bookings._id",
+          foreignField: "bookingId",
+          as: "reviews",
+        },
+      },
+
+      // 📍 Calculate average rating & total reviews
+      {
+        $addFields: {
+          averageRating: { $avg: "$reviews.stars" },
+          totalReviews: { $size: "$reviews" },
+        },
+      },
+
       // 🔹 Lookup Form based on subCategory + zone
       {
         $lookup: {
@@ -282,6 +314,7 @@ export const getAllMarketplaceListingsforLeaser = async (
           as: "form",
         },
       },
+
       {
         $addFields: {
           userDocuments: {
@@ -292,16 +325,11 @@ export const getAllMarketplaceListingsforLeaser = async (
           },
         },
       },
-      { $project: { form: 0 } }, // remove form object
-      
-      //  CHANGE: Add $project stage to explicitly remove the 'documents' field
-      {
-          $project: {
-              documents: 0, // Exclude the confidential documents array from the final output
-              // Note: All other fields will be implicitly included because no other field is set to 0 or 1
-          }
-      },
-      
+      { $project: { form: 0, documents: 0 } }, // remove form + confidential documents
+
+      // ✅ Optional: Sort by recent if requested
+      ...(recent === "true" ? [{ $sort: { createdAt: -1 } }] : []),
+
       { $skip: (Number(page) - 1) * Number(limit) },
       { $limit: Number(limit) },
     ];
@@ -313,18 +341,14 @@ export const getAllMarketplaceListingsforLeaser = async (
     const final = listings.map((obj: any) => {
       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
       if (listingLang?.translations) {
-        obj.description =
-          listingLang.translations.description || obj.description;
+        obj.description = listingLang.translations.description || obj.description;
       }
       delete obj.languages;
       return obj;
     });
 
     // ---------------- STATS ----------------
-    const uniqueUserIds = await MarketplaceListing.distinct(
-      "leaser",
-      filter
-    ).session(session);
+    const uniqueUserIds = await MarketplaceListing.distinct("leaser", filter).session(session);
     const totalUsersWithListings = uniqueUserIds.length;
 
     await session.commitTransaction();
@@ -350,9 +374,8 @@ export const getAllMarketplaceListingsforLeaser = async (
   }
 };
 
-////////////////////////////////
-// ✅ UPDATED getAllMarketplaceListings — added reviews & average rating
 
+//UPDATED getAllMarketplaceListings — added reviews & average rating
 export const getAllMarketplaceListings = async (
   req: AuthRequest,
   res: Response,
@@ -548,12 +571,8 @@ export const getAllMarketplaceListings = async (
   }
 };
 
-
-
 // READ ONE BY ID with automatic cleanup
-//////////////////////////
-// 
-// ✅ UPDATED getMarketplaceListingByIdforLeaser — include all reviews & average rating
+// UPDATED getMarketplaceListingByIdforLeaser — include all reviews & average rating
 export const getMarketplaceListingByIdforLeaser = async (
   req: AuthRequest,
   res: Response,
@@ -746,7 +765,6 @@ export const getMarketplaceListingById = async (
     next(err);
   }
 };
-
 
 // Additional utility function to clean up all orphaned listings
 export const cleanupAllOrphanedListings = async (
