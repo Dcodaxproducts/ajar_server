@@ -19,6 +19,9 @@ export interface IForm extends Document {
   fields: Types.ObjectId[];
   zone: Types.ObjectId;
   name: string;
+  subTitle: string; // 🟩 Added
+  price: number; // 🟩 Added
+  rentalImages: string[]; // 🟩 Added
   slug?: string;
   description: string;
   language: string;
@@ -36,6 +39,10 @@ const FormSchema = new Schema<IForm>(
     zone: { type: Schema.Types.ObjectId, ref: "Zone", required: true },
 
     name: { type: String, trim: true, required: true },
+    subTitle: { type: String, trim: true, required: true }, // 🟩 Added required field
+    price: { type: Number, required: true }, // 🟩 Added required field
+    rentalImages: [{ type: String, required: true }], // 🟩 Added required field
+
     slug: { type: String, lowercase: true, trim: true },
     description: { type: String, trim: true, required: true },
 

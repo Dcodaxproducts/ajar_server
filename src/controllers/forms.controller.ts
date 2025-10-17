@@ -22,6 +22,9 @@ export const createNewForm = async (
       subCategory,
       zone,
       name,
+      subTitle, // 🟩 Added
+      price, // 🟩 Added
+      rentalImages, // 🟩 Added
       description,
       fields,
       language,
@@ -30,6 +33,17 @@ export const createNewForm = async (
       userDocuments,
       leaserDocuments, // 👈 Destructure leaserDocuments
     } = req.body;
+
+       // 🟩 Added new required field validation
+    if (!name || !subTitle || !price || !rentalImages || !Array.isArray(rentalImages) || rentalImages.length === 0) {
+      sendResponse(
+        res,
+        null,
+        "name, subTitle, price, and rentalImages are required",
+        STATUS_CODES.BAD_REQUEST
+      );
+      return;
+    }
 
     // Validate ObjectIds
     if (
@@ -122,6 +136,9 @@ export const createNewForm = async (
       subCategory,
       zone,
       name,
+      subTitle, // 🟩 Added
+      price, // 🟩 Added
+      rentalImages, // 🟩 Added
       description,
       language: language || "en",
       fields,

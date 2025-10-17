@@ -393,6 +393,7 @@ export const getBookingById = async (
       return;
     }
 
+    // 1️⃣ Fetch booking
     const booking = await Booking.findById(id)
       .populate("marketplaceListingId")
       .populate("renter")
@@ -403,9 +404,30 @@ export const getBookingById = async (
       return;
     }
 
+    // 2️⃣ Fetch all reviews for this booking
+    const reviews = await Review.find({ bookingId: id })
+      .populate("userId", "name email")
+      .lean();
+
+    // 3️⃣ Format reviews array
+    const formattedReviews = reviews.map((r) => ({
+      user: r.userId,
+      review: {
+        stars: r.stars,
+        comment: r.comment,
+        createdAt: r.createdAt,
+      },
+    }));
+
+    // 4️⃣ Combine booking + reviews
+    const result = {
+      ...booking,
+      reviews: formattedReviews,
+    };
+
     sendResponse(
       res,
-      booking,
+      result,
       `Booking found (locale: ${locale})`,
       STATUS_CODES.OK
     );
@@ -413,6 +435,48 @@ export const getBookingById = async (
     next(err);
   }
 };
+
+
+// export const getBookingById = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     const { id } = req.params;
+//     const languageHeader = req.headers["language"];
+//     const locale =
+//       typeof languageHeader === "string"
+//         ? languageHeader.toLowerCase()
+//         : Array.isArray(languageHeader) && languageHeader.length > 0
+//         ? languageHeader[0].toLowerCase()
+//         : "en";
+
+//     if (!mongoose.Types.ObjectId.isValid(id)) {
+//       sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+//       return;
+//     }
+
+//     const booking = await Booking.findById(id)
+//       .populate("marketplaceListingId")
+//       .populate("renter")
+//       .lean();
+
+//     if (!booking) {
+//       sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+//       return;
+//     }
+
+//     sendResponse(
+//       res,
+//       booking,
+//       `Booking found (locale: ${locale})`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (err) {
+//     next(err);
+//   }
+// };
 
 // Get bookings by user (renter, leaser, or both) with optional zone + status filters
   export const getBookingsByUser = async (
@@ -598,6 +662,7 @@ export const deleteBooking = async (
 
 // PATCH /bookings/:id/status
 import  {generatePIN}  from "../utils/generatePin"; // helper for generating 4 or 6 digit PIN
+import { Review } from "../models/review.model";
 
 //booking status update controller
 export const updateBookingStatus = async (req: Request, res: Response, next: NextFunction) => {
