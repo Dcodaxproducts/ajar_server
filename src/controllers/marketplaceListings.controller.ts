@@ -14,6 +14,7 @@ import { UserDocument } from "../models/userDocs.model";
 import { UserForm } from "../models/userForm.model";
 import { validateDocuments } from "../middlewares/documentvalidationhelper.middleware";
 import { User } from "../models/user.model";
+import { Review } from "../models/review.model";
 
 // controllers/marketplaceListings.controller.ts]
 const toCamelCase = (str: string) =>
@@ -349,6 +350,8 @@ export const getAllMarketplaceListingsforLeaser = async (
   }
 };
 
+////////////////////////////////
+// ✅ UPDATED getAllMarketplaceListings — added reviews & average rating
 
 export const getAllMarketplaceListings = async (
   req: AuthRequest,
@@ -360,14 +363,7 @@ export const getAllMarketplaceListings = async (
 
   try {
     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
-    const {
-      page = 1,
-      limit = 10,
-      zone,
-      subCategory,
-      category,
-      all,
-    } = req.query;
+    const { page = 1, limit = 10, zone, subCategory, category, all, recent } = req.query;
 
     const filter: any = {};
 
@@ -404,7 +400,6 @@ export const getAllMarketplaceListings = async (
       const subCategoryIds = await SubCategory.find({
         category: category,
       }).distinct("_id");
-
       filter.subCategory = { $in: subCategoryIds };
     }
 
@@ -438,6 +433,35 @@ export const getAllMarketplaceListings = async (
         },
       },
       { $unwind: "$zone" },
+
+      // 📍 NEW: Lookup all bookings for each listing
+      {
+        $lookup: {
+          from: "bookings",
+          localField: "_id",
+          foreignField: "marketplaceListingId",
+          as: "bookings",
+        },
+      },
+
+      // 📍 NEW: Lookup reviews for those bookings
+      {
+        $lookup: {
+          from: "reviews",
+          localField: "bookings._id",
+          foreignField: "bookingId",
+          as: "reviews",
+        },
+      },
+
+      // 📍 NEW: Calculate average rating
+      {
+        $addFields: {
+          averageRating: { $avg: "$reviews.stars" },
+          totalReviews: { $size: "$reviews" },
+        },
+      },
+
       // Lookup Form based on subCategory + zone
       {
         $lookup: {
@@ -479,6 +503,11 @@ export const getAllMarketplaceListings = async (
       { $limit: Number(limit) },
     ];
 
+      // ✅ Added: Sort by recently posted date (createdAt)
+    if (recent === "true") {
+      pipeline.push({ $sort: { createdAt: -1 } }); // most recent first
+    }
+
     const listings = await MarketplaceListing.aggregate(pipeline).session(session);
     const total = await MarketplaceListing.countDocuments(filter).session(session);
 
@@ -486,18 +515,14 @@ export const getAllMarketplaceListings = async (
     const final = listings.map((obj: any) => {
       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
       if (listingLang?.translations) {
-        obj.description =
-          listingLang.translations.description || obj.description;
+        obj.description = listingLang.translations.description || obj.description;
       }
       delete obj.languages;
       return obj;
     });
 
     // ---------------- STATS ----------------
-    const uniqueUserIds = await MarketplaceListing.distinct(
-      "leaser",
-      filter
-    ).session(session);
+    const uniqueUserIds = await MarketplaceListing.distinct("leaser", filter).session(session);
     const totalUsersWithListings = uniqueUserIds.length;
 
     await session.commitTransaction();
@@ -524,8 +549,11 @@ export const getAllMarketplaceListings = async (
 };
 
 
-// READ ONE BY ID with automatic cleanup
 
+// READ ONE BY ID with automatic cleanup
+//////////////////////////
+// 
+// ✅ UPDATED getMarketplaceListingByIdforLeaser — include all reviews & average rating
 export const getMarketplaceListingByIdforLeaser = async (
   req: AuthRequest,
   res: Response,
@@ -536,31 +564,49 @@ export const getMarketplaceListingByIdforLeaser = async (
   try {
     const { id } = req.params;
     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
-    // Validate ID
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       await session.abortTransaction();
       session.endSession();
       sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
       return;
     }
-    // Find listing
+
     const doc = await MarketplaceListing.findById(id)
       .populate({ path: "subCategory", populate: { path: "category" } })
       .populate("leaser")
-      .session(session)
       .lean();
+
     if (!doc) {
       await session.abortTransaction();
       session.endSession();
       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
       return;
     }
-    // ✅ Remove unwanted fields
+
+    // 📍 NEW: Fetch all bookings related to this listing
+    const bookings = await Booking.find({ marketplaceListingId: id }).select("_id");
+
+    // 📍 NEW: Fetch all reviews related to those bookings
+    const bookingIds = bookings.map((b) => b._id);
+    const reviews = await Review.find({ bookingId: { $in: bookingIds } })
+      .populate("userId", "name email")
+      .lean();
+
+    // 📍 NEW: Calculate average rating
+    const averageRating =
+      reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.stars, 0) / reviews.length : 0;
+
+    // 📍 Add reviews and average to the response
+    (doc as any).reviews = reviews;
+    (doc as any).averageRating = Number(averageRating.toFixed(2));
+
+    // ✅ Existing cleanup
     delete (doc as any).zone;
     delete (doc as any).documents;
     delete (doc as any).__v;
     delete (doc as any).languages;
-    // ✅ Clean up leaser object
+
     if (doc.leaser) {
       delete (doc.leaser as any).documents;
       delete (doc.leaser as any).password;
@@ -568,7 +614,7 @@ export const getMarketplaceListingByIdforLeaser = async (
       delete (doc.leaser as any).stripe;
       delete (doc.leaser as any).__v;
     }
-    // ✅ Fetch form docs (userDocuments & leaserDocuments)
+
     const form = await Form.findOne({
       subCategory: doc.subCategory?._id || doc.subCategory,
       zone: doc.zone,
@@ -576,52 +622,16 @@ export const getMarketplaceListingByIdforLeaser = async (
       .select("userDocuments leaserDocuments")
       .session(session)
       .lean();
+
     if (form) {
       (doc as any).userDocuments = form.userDocuments || [];
       (doc as any).leaserDocuments = form.leaserDocuments || [];
     }
-    // ✅ Ensure subCategory exists
-    const subCategoryExists = await SubCategory.exists({
-      _id: doc.subCategory,
-    }).session(session);
-    if (!subCategoryExists) {
-      await MarketplaceListing.findByIdAndDelete(id).session(session);
-      await session.commitTransaction();
-      session.endSession();
-      sendResponse(
-        res,
-        null,
-        "Listing not found (references invalid)",
-        STATUS_CODES.NOT_FOUND
-      );
-      return;
-    }
-    // ✅ Translate description if locale matches
-    if (Array.isArray((doc as any).languages)) {
-      const match = (doc as any).languages.find(
-        (l: any) => l.locale === locale
-      );
-      if (match?.translations) {
-        doc.description = match.translations.description || doc.description;
-      }
-    }
-    // ✅ Translate subCategory fields
-    const subCategoryObj = doc.subCategory as any;
-    if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
-      const match = subCategoryObj.languages.find(
-        (l: any) => l.locale === locale
-      );
-      if (match?.translations) {
-        subCategoryObj.name = match.translations.name || subCategoryObj.name;
-        subCategoryObj.description =
-          match.translations.description || subCategoryObj.description;
-      }
-      delete subCategoryObj.languages;
-      delete subCategoryObj.__v;
-    }
+
     await session.commitTransaction();
     session.endSession();
-    sendResponse(res, doc, "Listing fetched", STATUS_CODES.OK);
+
+    sendResponse(res, doc, "Listing fetched with reviews", STATUS_CODES.OK);
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -1059,5 +1069,117 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
       success: false,
       message: "Server error",
     });
+  }
+};
+
+
+export const getPopularMarketplaceListings = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
+    const { zone, subCategory, category } = req.query;
+
+    const filter: any = {};
+
+    if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+      filter.zone = new mongoose.Types.ObjectId(String(zone));
+    }
+
+    if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
+      filter.subCategory = new mongoose.Types.ObjectId(String(subCategory));
+    }
+
+    if (category && mongoose.Types.ObjectId.isValid(String(category))) {
+      const subCategoryIds = await SubCategory.find({
+        category: category,
+      }).distinct("_id");
+      filter.subCategory = { $in: subCategoryIds };
+    }
+
+    const pipeline: any[] = [
+      { $match: filter },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "subCategory",
+          foreignField: "_id",
+          as: "subCategory",
+        },
+      },
+      { $unwind: "$subCategory" },
+      {
+        $lookup: {
+          from: "users",
+          localField: "leaser",
+          foreignField: "_id",
+          as: "leaser",
+        },
+      },
+      { $unwind: "$leaser" },
+      {
+        $lookup: {
+          from: "zones",
+          localField: "zone",
+          foreignField: "_id",
+          as: "zone",
+        },
+      },
+      { $unwind: "$zone" },
+      {
+        $lookup: {
+          from: "bookings",
+          localField: "_id",
+          foreignField: "marketplaceListingId",
+          as: "bookings",
+        },
+      },
+      {
+        $lookup: {
+          from: "reviews",
+          localField: "bookings._id",
+          foreignField: "bookingId",
+          as: "reviews",
+        },
+      },
+      {
+        $addFields: {
+          averageRating: { $avg: "$reviews.stars" },
+          totalReviews: { $size: "$reviews" },
+        },
+      },
+      { $sort: { averageRating: -1, totalReviews: -1 } },
+      { $limit: 20 },
+    ];
+
+    const listings = await MarketplaceListing.aggregate(pipeline).session(session);
+
+    const final = listings.map((obj: any) => {
+      const listingLang = obj.languages?.find((l: any) => l.locale === locale);
+      if (listingLang?.translations) {
+        obj.description = listingLang.translations.description || obj.description;
+      }
+      delete obj.languages;
+      return obj;
+    });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    sendResponse(
+      res,
+      { popularListings: final, total: final.length },
+      `Fetched top ${final.length} popular listings`,
+      STATUS_CODES.OK
+    );
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    next(err);
   }
 };

@@ -10,5 +10,8 @@ export const allowedOrigins: string[] = [
   "https://test-ajar.vercel.app",
   "http://192.168.18.36:3000",
   "http://192.168.18.74:5000",
+  "https://ajar-frontend.vercel.app",
+  "http://104.128.190.131:2223",
+  "http://104.128.190.131:2224"
   
 ];

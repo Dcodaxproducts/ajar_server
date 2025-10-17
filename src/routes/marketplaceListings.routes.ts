@@ -13,6 +13,7 @@ import {
   updateListingStatus,
   getAllMarketplaceListingsforLeaser,
   getMarketplaceListingByIdforLeaser,
+  getPopularMarketplaceListings,
 } from "../controllers/marketplaceListings.controller";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
@@ -34,11 +35,13 @@ router.get("/search", asyncHandler(searchMarketplaceListings));
 router.get("/listing", authMiddleware, getAllMarketplaceListingsforLeaser);
 
 
-router.get("/", authMiddleware, getAllMarketplaceListings);
+router.get("/", authMiddleware, getAllMarketplaceListings);  ///////////////////
 
 router.get("/guest", getAllMarketplaceListings);
 
-router.get("/listing/:id", asyncHandler(getMarketplaceListingByIdforLeaser));
+router.get("/listing/:id", asyncHandler(getMarketplaceListingByIdforLeaser)); //////////
+router.get("/popular", getPopularMarketplaceListings); ///////////
+
 router.get("/:id", asyncHandler(getMarketplaceListingById));
 
 
