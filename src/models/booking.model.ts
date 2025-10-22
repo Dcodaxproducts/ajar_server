@@ -33,6 +33,7 @@ export interface IBooking extends Document {
   };
   language?: string;
   otp?: string;
+  isVerified?: boolean;
   priceDetails: IPriceDetails;
   extraRequestCharges?: IExtraRequestCharges;
   specialRequest?: string;
@@ -45,6 +46,7 @@ export interface IBooking extends Document {
     returnDate?: Date;
   };
   previousBookingId?: mongoose.Types.ObjectId;
+  
 }
 
 const BookingSchema = new Schema<IBooking>(
@@ -74,6 +76,7 @@ const BookingSchema = new Schema<IBooking>(
     },
     language: { type: String, default: "en" },
     otp: { type: String, default: "" },
+    isVerified: { type: Boolean, default: false },
 
     priceDetails: {
       price: { type: Number, required: true },
@@ -110,6 +113,9 @@ const BookingSchema = new Schema<IBooking>(
       type: Schema.Types.ObjectId,
       ref: "Booking",
     },
+
+     
+
   },
   { timestamps: true }
 );
