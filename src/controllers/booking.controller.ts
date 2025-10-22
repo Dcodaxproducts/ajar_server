@@ -1050,11 +1050,8 @@ export const submitBookingPin = async (
     const now = new Date();
     const checkIn = new Date(booking.dates.checkIn);
     const checkOut = new Date(booking.dates.checkOut);
-    const twelveHoursBeforeCheckout = new Date(
-      checkOut.getTime() - 12 * 60 * 60 * 1000
-    );
 
-    // Strict time validation
+    // UPDATED LOGIC: OTP is valid anytime between checkIn and checkOut
     if (now < checkIn) {
       return sendResponse(
         res,
@@ -1064,17 +1061,17 @@ export const submitBookingPin = async (
       );
     }
 
-    if (now > twelveHoursBeforeCheckout) {
+    if (now > checkOut) {
       return sendResponse(
         res,
         null,
-        "PIN submission not allowed within 12 hours before checkout.",
+        "PIN has expired after checkout date.",
         STATUS_CODES.BAD_REQUEST
       );
     }
 
-    // Between check-in and (check-out - 12h)
-    const isRunning = now >= checkIn && now <= twelveHoursBeforeCheckout;
+    // UPDATED: OTP valid for entire duration between checkIn and checkOut
+    const isRunning = now >= checkIn && now <= checkOut;
 
     // CASE A: Active booking — record handover
     if (booking.status === "approved" && isRunning) {
@@ -1083,12 +1080,13 @@ export const submitBookingPin = async (
         booking.bookingDates.handover = now;
       }
       booking.otp = "";
+      booking.isVerified = true; //MARK OTP AS VERIFIED
       await booking.save();
 
       return sendResponse(
         res,
         booking,
-        "PIN verified and handover recorded",
+        "PIN verified successfully and handover recorded",
         STATUS_CODES.OK
       );
     }
@@ -1102,6 +1100,7 @@ export const submitBookingPin = async (
       dates: booking.dates,
       language: booking.language,
       otp: "",
+      isVerified: true, //Also true for new booking when OTP verified
       priceDetails: booking.priceDetails,
       extraRequestCharges: booking.extraRequestCharges,
       specialRequest: booking.specialRequest,
@@ -1139,6 +1138,7 @@ export const submitBookingPin = async (
 
     const createdNewBooking = await Booking.create(newBookingData);
     booking.otp = "";
+    booking.isVerified = true; //Mark parent booking verified too
     await booking.save();
 
     return sendResponse(
@@ -1151,3 +1151,151 @@ export const submitBookingPin = async (
     next(err);
   }
 };
+
+// export const submitBookingPin = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     const { id } = req.params;
+//     const { otp } = req.body;
+
+//     if (!otp)
+//       return sendResponse(
+//         res,
+//         null,
+//         "PIN is required",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//     if (!mongoose.Types.ObjectId.isValid(id))
+//       return sendResponse(
+//         res,
+//         null,
+//         "Invalid booking ID",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+
+//     // fetch booking
+//     const booking = await Booking.findById(id).populate("renter", "email name");
+//     if (!booking)
+//       return sendResponse(
+//         res,
+//         null,
+//         "Booking not found",
+//         STATUS_CODES.NOT_FOUND
+//       );
+
+//     // check OTP
+//     if (booking.otp !== otp)
+//       return sendResponse(
+//         res,
+//         null,
+//         "Invalid or expired PIN",
+//         STATUS_CODES.UNAUTHORIZED
+//       );
+
+//     const now = new Date();
+//     const checkIn = new Date(booking.dates.checkIn);
+//     const checkOut = new Date(booking.dates.checkOut);
+//     const twelveHoursBeforeCheckout = new Date(
+//       checkOut.getTime() - 12 * 60 * 60 * 1000
+//     );
+
+//     // Strict time validation
+//     if (now < checkIn) {
+//       return sendResponse(
+//         res,
+//         null,
+//         "PIN submission not allowed before check-in time.",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//     }
+
+//     if (now > twelveHoursBeforeCheckout) {
+//       return sendResponse(
+//         res,
+//         null,
+//         "PIN submission not allowed within 12 hours before checkout.",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//     }
+
+//     // Between check-in and (check-out - 12h)
+//     const isRunning = now >= checkIn && now <= twelveHoursBeforeCheckout;
+
+//     // CASE A: Active booking — record handover
+//     if (booking.status === "approved" && isRunning) {
+//       if (!booking.bookingDates) booking.bookingDates = {};
+//       if (!booking.bookingDates.handover) {
+//         booking.bookingDates.handover = now;
+//       }
+//       booking.otp = "";
+//       await booking.save();
+
+//       return sendResponse(
+//         res,
+//         booking,
+//         "PIN verified and handover recorded",
+//         STATUS_CODES.OK
+//       );
+//     }
+
+//     // CASE B: Create new booking (handover for new one)
+//     const newBookingData: any = {
+//       status: "approved",
+//       renter: booking.renter,
+//       leaser: booking.leaser,
+//       marketplaceListingId: booking.marketplaceListingId,
+//       dates: booking.dates,
+//       language: booking.language,
+//       otp: "",
+//       priceDetails: booking.priceDetails,
+//       extraRequestCharges: booking.extraRequestCharges,
+//       specialRequest: booking.specialRequest,
+//       isExtend: false,
+//       extensionRequestedDate: undefined,
+//       bookingDates: {
+//         handover: now,
+//         returnDate: null,
+//       },
+//       createdAt: new Date(),
+//       updatedAt: new Date(),
+//     };
+
+//     // Find active booking for renter+listing
+//     const existingActive = await Booking.findOne({
+//       renter: booking.renter,
+//       marketplaceListingId: booking.marketplaceListingId,
+//       "bookingDates.returnDate": { $in: [null, undefined] },
+//       _id: { $ne: booking._id },
+//       status: "approved",
+//     });
+
+//     if (existingActive) {
+//       newBookingData.previousBookingId = existingActive._id;
+//       existingActive.isExtend = true;
+
+//       const prevTotal = existingActive.priceDetails?.totalPrice || 0;
+//       const prevExtendTotal = existingActive.extendCharges?.totalPrice || 0;
+//       existingActive.extendCharges = {
+//         extendCharges: prevTotal,
+//         totalPrice: prevTotal + prevExtendTotal,
+//       };
+//       await existingActive.save();
+//     }
+
+//     const createdNewBooking = await Booking.create(newBookingData);
+//     booking.otp = "";
+//     await booking.save();
+
+//     return sendResponse(
+//       res,
+//       createdNewBooking,
+//       "New running booking created and handover recorded",
+//       STATUS_CODES.OK
+//     );
+//   } catch (err) {
+//     next(err);
+//   }
+// };
