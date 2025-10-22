@@ -19,7 +19,7 @@ const adminOnly = (
 ): void => {
   if (req.user?.role !== "admin") {
     res.status(403).json({ success: false, message: "Forbidden: Admins only" });
-    return; //Ensure void return
+    return;
   }
   next();
 };

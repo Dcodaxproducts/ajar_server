@@ -9,16 +9,15 @@ export interface ILanguageTranslation {
   };
 }
 
-// NEW: document-specific interface
 export interface IDocumentField {
-    name: string;
-    filesUrl: string[];
-    expiryDate?: Date;
+  name: string;
+  filesUrl: string[];
+  expiryDate?: Date;
 }
 
 export interface IField extends Document {
   name: string;
-  type?: string; // e.g. "text", "number", "document"
+  type?: string;
   placeholder?: string;
   label?: string;
   isMultiple?: boolean;
@@ -39,13 +38,11 @@ export interface IField extends Document {
   language?: string;
   languages?: ILanguageTranslation[];
 
-  // NEW: for "document" type fields
   documentConfig?: IDocumentField[];
 }
 
 const FieldSchema = new Schema<IField>(
-
-    {
+  {
     name: { type: String, required: true },
     type: { type: String, required: true },
     placeholder: { type: String, required: true },
@@ -76,7 +73,6 @@ const FieldSchema = new Schema<IField>(
         },
       },
     ],
- 
 
     //documentConfig supports multiple documents
     documentConfig: [
@@ -89,8 +85,6 @@ const FieldSchema = new Schema<IField>(
     ],
   },
   { timestamps: true }
-  
 );
 
 export const Field = model<IField>("Field", FieldSchema);
-

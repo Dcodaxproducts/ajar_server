@@ -35,7 +35,6 @@ const BaseCategorySchema = new Schema<ICategory>(
     description: { type: String, trim: true },
     language: { type: String, default: "en" },
 
-    //CHANGED: Added enum + default for discriminator key here
     type: {
       type: String,
       required: true,

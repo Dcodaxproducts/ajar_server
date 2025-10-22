@@ -47,7 +47,7 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
       .populate("sender", "name email profilePicture")
       .populate("receiver", "name email profilePicture");
 
-    // 🔹 Emit directly to receiver’s room
+    //Emit directly to receiver’s room
     getIO().to(`user:${receiver}`).emit("message:new", populatedMessage);
 
     res.status(201).json({
@@ -71,7 +71,7 @@ export const markMessageDelivered = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: "Message not found" });
     }
 
-    // Only the intended receiver can mark delivered
+    //Only the intended receiver can mark delivered
     if (!message.receiver.equals(userId)) {
       return res.status(403).json({ error: "Not authorised" });
     }
@@ -81,7 +81,7 @@ export const markMessageDelivered = async (req: AuthRequest, res: Response) => {
       message.deliveredAt = new Date();
       await message.save();
 
-      // ✅ Notify sender via their personal room
+      //Notify sender via their personal room
       getIO().to(`user:${message.sender}`).emit("message:delivered", {
         messageId: message._id,
         chatId: message.chatId,
@@ -105,7 +105,7 @@ export const markMessagesSeen = async (req: AuthRequest, res: Response) => {
     const { chatId } = req.params;
     const userId = new mongoose.Types.ObjectId(req.user!.id);
 
-    // Find unseen messages for this user
+    //Find unseen messages for this user
     const unseenMessages = await Message.find({
       chatId,
       receiver: userId,
@@ -118,14 +118,14 @@ export const markMessagesSeen = async (req: AuthRequest, res: Response) => {
         .json({ success: true, message: "No unseen messages" });
     }
 
-    // ✅ Update all unseen messages
+    //Update all unseen messages
     const now = new Date();
     await Message.updateMany(
       { _id: { $in: unseenMessages.map((m) => m._id) } },
       { $set: { seen: true, readAt: now } }
     );
 
-    // ✅ Notify each sender (looping is fine here, but could be batched later)
+    //Notify each sender (looping is fine here, but could be batched later)
     unseenMessages.forEach((msg) => {
       getIO().to(`user:${msg.sender}`).emit("message:seen", {
         messageId: msg._id,

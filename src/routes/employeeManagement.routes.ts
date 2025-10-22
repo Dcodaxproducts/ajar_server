@@ -95,7 +95,6 @@ router.patch(
 
 router.get("/zones", authMiddleware, asyncHandler(zoneController.getAllZones));
 
-// router.get("/zones", employeeAuthMiddleware("zone", "read"), asyncHandler(zoneController.getAllZones));
 router.get(
   "/zones/:id",
   employeeAuthMiddleware("zone", "read"),

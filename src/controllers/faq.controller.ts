@@ -11,7 +11,7 @@ export const createFAQ = asyncHandler(async (req: Request, res: Response) => {
   const faq = await FAQ.create({ question, answer, order });
 
   sendResponse(res, faq, "FAQ created successfully", STATUS_CODES.CREATED);
-}); 
+});
 
 // Get all FAQs
 export const getAllFAQs = asyncHandler(async (req: Request, res: Response) => {
@@ -23,7 +23,6 @@ export const getAllFAQs = asyncHandler(async (req: Request, res: Response) => {
 
   sendResponse(res, result, "FAQs fetched successfully", STATUS_CODES.OK);
 });
-
 
 // Get single FAQ by ID
 export const getFAQById = asyncHandler(async (req: Request, res: Response) => {

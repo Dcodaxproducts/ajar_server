@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
-import { IUser, User } from "../models/user.model";
+import { User } from "../models/user.model";
 import { Form } from "../models/form.model";
 import {
   generateAccessToken,
@@ -12,7 +11,6 @@ import {
 } from "../utils/jwt.utils";
 import { sendEmail } from "../helpers/node-mailer";
 import { createCustomer } from "../helpers/stripe-functions";
-import { redis } from "../utils/redis.client";
 import { generateZodSchema } from "../utils/generate-zod-schema";
 import { UserDocument } from "../models/userDocs.model";
 import { Category } from "../models/category.model";
@@ -238,7 +236,7 @@ export const logout = async (
 interface AuthRequest extends Request {
   user?: {
     _id: string;
-    id?: string;   
+    id?: string;
     role: string | string[];
   };
 }
@@ -277,7 +275,7 @@ export const getUserDetails = async (
           path: "allowAccess",
           select: "-__v",
         })
-        .select("-__v") // Remove -password to match login response
+        .select("-__v")
         .lean();
 
       if (user) {
@@ -285,7 +283,6 @@ export const getUserDetails = async (
         user.role = "staff";
 
         // Check if name already exists (from the database)
-        // If not, create it from firstName and lastName if they exist
         if (!user.name) {
           if (user.firstName && user.lastName) {
             user.name = `${user.firstName} ${user.lastName}`;
@@ -447,7 +444,6 @@ export const forgotPassword = async (
   }
 };
 
-
 export const resetPassword = async (
   req: Request,
   res: Response,
@@ -563,8 +559,7 @@ export const getAllUsersWithStats = async (
   }
 };
 
-// controllers/user.controller.ts
-
+// update user profile
 export const updateUserProfile = async (
   req: AuthRequest,
   res: Response,
@@ -577,25 +572,24 @@ export const updateUserProfile = async (
     const updates: any = { ...req.body };
 
     // Handle documents upload dynamically
-if (req.files) {
-  for (const [key, files] of Object.entries(req.files)) {
-    // Each `key` corresponds to a fieldId
-    const fieldId = key; // field._id from Form schema
-    const uploadedFiles = (files as Express.Multer.File[]).map(file => ({
-      url: `/uploads/${file.filename}`,
-      side: "single", // you can infer from field definition if needed
-      status: "pending"
-    }));
+    if (req.files) {
+      for (const [key, files] of Object.entries(req.files)) {
+        // Each `key` corresponds to a fieldId
+        const fieldId = key; // field._id from Form schema
+        const uploadedFiles = (files as Express.Multer.File[]).map((file) => ({
+          url: `/uploads/${file.filename}`,
+          side: "single", // you can infer from field definition if needed
+          status: "pending",
+        }));
 
-    // Upsert into UserDocument collection
-    await UserDocument.findOneAndUpdate(
-      { user: userId, field: fieldId },
-      { $push: { values: { $each: uploadedFiles } } },
-      { upsert: true, new: true }
-    );
-  }
-}
-
+        // Upsert into UserDocument collection
+        await UserDocument.findOneAndUpdate(
+          { user: userId, field: fieldId },
+          { $push: { values: { $each: uploadedFiles } } },
+          { upsert: true, new: true }
+        );
+      }
+    }
 
     // Update user in DB
     const user = await User.findByIdAndUpdate(
@@ -975,7 +969,6 @@ export const deleteUser = async (
   }
 };
 
-
 // for documents get dropdown
 
 import { Dropdown } from "../models/dropdown.model";
@@ -1007,4 +1000,3 @@ export const getListingDocuments = async (
     next(error);
   }
 };
-

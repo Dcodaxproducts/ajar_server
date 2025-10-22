@@ -52,8 +52,6 @@ router.post(
 router.get("/onboarding", authMiddleware, onBoardVendor);
 router.get("/onboarding/status", authMiddleware, confirmOnboarding);
 
-// transfrer to connected account
-
 router.post(
   "/transfer",
   authMiddleware,

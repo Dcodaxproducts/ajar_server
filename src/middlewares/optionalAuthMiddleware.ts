@@ -30,7 +30,7 @@ export const optionalAuth = async (
 
     req.user = { id: decoded.id, role: decoded.role };
 
-    // 🔹 For staff, you can still do RBAC like your `authMiddleware`
+    //For staff, you can still do RBAC like your `authMiddleware`
     if (decoded.role === "staff") {
       const employee = await Employee.findById(decoded.id)
         .populate("allowAccess")

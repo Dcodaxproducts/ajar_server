@@ -2,11 +2,9 @@ import { NextFunction, Response } from "express";
 import { AuthRequest } from "../types/express";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
-import { date } from "zod";
 import { User } from "../models/user.model";
 import {
   attachAndSetDefaultPaymentMethod,
-  attachPaymentMethod,
   checkAccountStatus,
   createConnectedAccount,
   createPaymentIntent,
@@ -72,15 +70,6 @@ export const createPayment = async (
       user?.stripe.customerId
     );
 
-    // const transaction = new Transaction({
-    //   user: userId,
-    //   amount,
-    //   currency,
-    //   paymentIntentId: paymentIntent.id,
-    // });
-
-    // await transaction.save();
-
     sendResponse(
       res,
       { client_secret: paymentIntent.client_secret },
@@ -93,7 +82,6 @@ export const createPayment = async (
 };
 
 // verify payment
-
 export const verifyPayment = async (
   req: AuthRequest,
   res: Response,
@@ -366,7 +354,7 @@ export const transferToVendor = async (
   }
 };
 
-//// refund payment
+// refund payment
 export const handleRefund = async (
   req: AuthRequest,
   res: Response,
@@ -387,7 +375,7 @@ export const sanitizeAmount = (amount: number): number => {
   return Math.round(amount * 100);
 };
 
-/// handle subscription
+//handle subscription
 export const handleCreateSubscription = async (
   req: AuthRequest,
   res: Response,

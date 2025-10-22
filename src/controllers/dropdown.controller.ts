@@ -121,7 +121,6 @@ export const removeValueFromDropdown = async (
       return;
     }
 
-    // if value is of userDocument remove it from userDocuments array field in all documents of form as well in which it exisits
     if (name === "userDocuments") {
       await Form.updateMany(
         { userDocuments: value },
@@ -160,7 +159,6 @@ export const deleteDropdown = async (
       return;
     }
 
-    // if its usrDocuments dropdown then remove whole userDocuments array field in all documents of form as well in which it exisits
     if (name === "userDocuments") {
       await Form.updateMany({}, { $set: { userDocuments: [] } });
     }

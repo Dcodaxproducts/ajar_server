@@ -19,7 +19,7 @@ function asyncHandler(fn: any) {
 // Create ticket
 router.post("/", authMiddleware, asyncHandler(createHelpSupport));
 
-// Update status (admin or self - you can enhance this logic)
+// Update status
 router.patch("/:id", authMiddleware, asyncHandler(updateHelpSupportStatus));
 
 // Get user's own tickets

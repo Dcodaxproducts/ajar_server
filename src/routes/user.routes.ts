@@ -13,14 +13,11 @@ import {
   refreshToken,
   resendOtp,
   resetPassword,
-  // updateDocumentStatus,
   updateUserProfile,
   updateUserStatus,
-
   verifyOtp,
 } from "../controllers/user.controller";
 import {
-  
   getAllUsers,
   getUserById,
   reviewUserDocument,
@@ -35,7 +32,6 @@ import {
   resendOtpSchema,
   resetPasswordSchema,
   updateUserSchema,
-  userDetailsSchema,
   verifyOtpSchema,
 } from "../schemas/user.schema";
 
@@ -109,24 +105,19 @@ router.put(
 
 router.delete("/:userId", authMiddleware, deleteUser);
 
-// documents routes 
+// documents routes
 router.get("/userdocs", getUserDocuments);
 router.get("/listingdocs", getListingDocuments);
 
 // User uploads document
-// User uploads document(s)
 router.post(
   "/documents/upload",
   authMiddleware,
-  upload.array("filesUrl", 10), //accepts up to 10 files per document
+  upload.array("filesUrl", 10),
   asyncHandler(uploadUserDocuments)
 );
 // Admin approves/rejects
-router.patch(
-  "/documents/review",
-  authMiddleware,
-  reviewUserDocument
-);
+router.patch("/documents/review", authMiddleware, reviewUserDocument);
 
 // Get all users
 router.get("/all", authMiddleware, asyncHandler(getAllUsers));

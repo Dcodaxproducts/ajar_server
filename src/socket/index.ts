@@ -1,4 +1,3 @@
-// sockets/index.ts
 import { Server as SocketIOServer, Socket } from "socket.io";
 import { allowedOrigins } from "../config/corsOrigins";
 import { authMiddleware } from "./auth";

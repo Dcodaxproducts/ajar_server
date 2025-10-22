@@ -233,7 +233,7 @@ export const createRefundRequest = asyncHandler(
       flatFee: policy.flatFee,
       time: policy.time,
       note: policy.note,
-      user: req.user?.id, // now storing the user
+      user: req.user?.id,
     });
 
     res.status(201).json({
