@@ -1,4 +1,3 @@
-// models/faq.model.ts
 import mongoose, { Schema, Document } from "mongoose";
 
 interface LanguageTranslation {

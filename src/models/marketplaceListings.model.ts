@@ -1,8 +1,8 @@
 import mongoose, { Schema, Document, model } from "mongoose";
 
 export interface IListingDocument {
-  name: string;         // e.g. "property_paper"
-  filesUrl: string[];      // uploaded file link
+  name: string; // e.g. "property_paper"
+  filesUrl: string[]; // uploaded file link
   expiryDate?: Date;
   verified?: boolean;
 }
@@ -45,7 +45,11 @@ const ListingDocumentSchema = new Schema<IListingDocument>({
 const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
   {
     leaser: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    subCategory: { type: Schema.Types.ObjectId, ref: "subCategory", required: true },
+    subCategory: {
+      type: Schema.Types.ObjectId,
+      ref: "subCategory",
+      required: true,
+    },
     zone: { type: Schema.Types.ObjectId, ref: "Zone", required: true },
 
     ratings: {
@@ -75,7 +79,7 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
     currentBookingId: [
       { type: Schema.Types.ObjectId, ref: "Booking", default: null },
     ],
-     // 🔹 NEW status field
+
     status: {
       type: String,
       enum: ["pending", "approved", "rejected"],

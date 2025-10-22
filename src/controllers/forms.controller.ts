@@ -5,12 +5,9 @@ import { STATUS_CODES } from "../config/constants";
 import { Field } from "../models/field.model";
 import mongoose from "mongoose";
 import { SubCategory } from "../models/category.model";
-import { IZone } from "../models/zone.model";
-import { ICategory } from "../models/category.model";
 import { paginateQuery } from "../utils/paginate";
 import slugify from "slugify";
 import { Dropdown } from "../models/dropdown.model";
-
 
 export const createNewForm = async (
   req: Request,
@@ -22,20 +19,27 @@ export const createNewForm = async (
       subCategory,
       zone,
       name,
-      subTitle, // 🟩 Added
-      price, // 🟩 Added
-      rentalImages, // 🟩 Added
+      subTitle,
+      price,
+      rentalImages,
       description,
       fields,
       language,
       setting,
       context,
       userDocuments,
-      leaserDocuments, // 👈 Destructure leaserDocuments
+      leaserDocuments,
     } = req.body;
 
-       // 🟩 Added new required field validation
-    if (!name || !subTitle || !price || !rentalImages || !Array.isArray(rentalImages) || rentalImages.length === 0) {
+    // Added new required field validation
+    if (
+      !name ||
+      !subTitle ||
+      !price ||
+      !rentalImages ||
+      !Array.isArray(rentalImages) ||
+      rentalImages.length === 0
+    ) {
       sendResponse(
         res,
         null,
@@ -105,19 +109,18 @@ export const createNewForm = async (
       ? leaserDropdowns.values.map((v) => v.value)
       : [];
     if (leaserDocuments && Array.isArray(leaserDocuments)) {
-        for (const doc of leaserDocuments) {
-            if (!allowedLeaserDocs.includes(doc)) {
-                sendResponse(
-                    res,
-                    null,
-                    `Invalid leaser document: ${doc}`,
-                    STATUS_CODES.BAD_REQUEST
-                );
-                return;
-            }
+      for (const doc of leaserDocuments) {
+        if (!allowedLeaserDocs.includes(doc)) {
+          sendResponse(
+            res,
+            null,
+            `Invalid leaser document: ${doc}`,
+            STATUS_CODES.BAD_REQUEST
+          );
+          return;
         }
+      }
     }
-
 
     // Validate userDocuments inside setting
     if (setting && setting.userDocuments) {
@@ -136,9 +139,9 @@ export const createNewForm = async (
       subCategory,
       zone,
       name,
-      subTitle, // 🟩 Added
-      price, // 🟩 Added
-      rentalImages, // 🟩 Added
+      subTitle,
+      price,
+      rentalImages,
       description,
       language: language || "en",
       fields,

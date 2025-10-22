@@ -96,14 +96,12 @@ export const removeFavourite = async (req: AuthRequest, res: Response) => {
     });
 
     if (existingFavourite) {
-      // Remove it
       await existingFavourite.deleteOne();
       return res.status(200).json({
         message: "Removed from favourites successfully",
         action: "removed",
       });
     } else {
-      // Add it
       const newFavourite = new FavouriteCheck({
         user: userId,
         ...(listingId ? { listing: listingId } : { booking: bookingId }),
@@ -127,7 +125,7 @@ export const removeFavourite = async (req: AuthRequest, res: Response) => {
 export const getAllFavourites = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.id;
-    const role = req.user?.role; // assuming role is added in the token payload
+    const role = req.user?.role;
 
     if (!userId || !role) {
       return res.status(401).json({ message: "Unauthorized" });
@@ -136,7 +134,7 @@ export const getAllFavourites = async (req: AuthRequest, res: Response) => {
     let query: any = {};
 
     if (role === "user") {
-      query.user = userId; // show only logged-in user's favourites
+      query.user = userId;
     }
     // If role is admin, query remains empty (fetches all)
 
@@ -144,10 +142,11 @@ export const getAllFavourites = async (req: AuthRequest, res: Response) => {
       .populate("user", "name email") // only admin will see this populated user info
       .populate({
         path: "listing",
-        select: "title price location images name description subCategory rentalImages",
+        select:
+          "title price location images name description subCategory rentalImages",
         populate: {
           path: "subCategory",
-          select: "name description", // you can add translations if needed
+          select: "name description",
         },
       })
       .populate("booking", "bookingName startDate endDate status")

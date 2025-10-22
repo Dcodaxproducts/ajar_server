@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { Booking, IBooking }   from "../models/booking.model";
+import { Booking, IBooking } from "../models/booking.model";
 import { sendResponse } from "../utils/response";
 import mongoose from "mongoose";
 import { STATUS_CODES } from "../config/constants";
@@ -10,6 +10,8 @@ import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { Types } from "mongoose";
 import { Form } from "../models/form.model";
+import { generatePIN } from "../utils/generatePin";
+import { Review } from "../models/review.model";
 
 import { isBookingDateAvailable } from "../utils/dateValidator";
 
@@ -32,8 +34,7 @@ async function updateListingAvailability(
     bookingId
   ) {
     listing.currentBookingIds = listing.currentBookingIds.filter(
-      (id: mongoose.Types.ObjectId) =>
-        id.toString() !== bookingId.toString()
+      (id: mongoose.Types.ObjectId) => id.toString() !== bookingId.toString()
     );
 
     if (listing.currentBookingIds.length === 0) {
@@ -50,19 +51,20 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     const user = req.user;
     if (!user) return res.status(401).json({ message: "Unauthorised" });
 
-    const { marketplaceListingId, dates, extensionDate, ...bookingData } = req.body;
+    const { marketplaceListingId, dates, extensionDate, ...bookingData } =
+      req.body;
 
     // Validate listing id
     if (!mongoose.Types.ObjectId.isValid(marketplaceListingId)) {
-      return res.status(400).json({ message: "Invalid Marketplace Listing ID" });
+      return res
+        .status(400)
+        .json({ message: "Invalid Marketplace Listing ID" });
     }
 
     const listing = await MarketplaceListing.findById(marketplaceListingId);
     if (!listing) return res.status(404).json({ message: "Listing not found" });
 
-    // -----------------------------------------------------
     // Detect extension if renter already has active booking
-    // -----------------------------------------------------
     const existingActiveBooking = await Booking.findOne({
       renter: user.id,
       marketplaceListingId: listing._id,
@@ -80,13 +82,15 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         return res.status(400).json({ message: "Extension date is required" });
       }
 
-      // ✅ FIXED: use existingActiveBooking.dates instead of bookingDates
-      const checkInDate = new Date(existingActiveBooking.dates?.checkIn as Date);
+      const checkInDate = new Date(
+        existingActiveBooking.dates?.checkIn as Date
+      );
       const checkOutDate = new Date(extensionDate);
 
       if (checkOutDate <= checkInDate) {
         return res.status(400).json({
-          message: "Extension date must be after the current booking's check-in date",
+          message:
+            "Extension date must be after the current booking's check-in date",
         });
       }
 
@@ -100,16 +104,20 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
       if (!isAvailableForExtend) {
         return res.status(400).json({
-          message: "The listing is not available for the selected extended date.",
+          message:
+            "The listing is not available for the selected extended date.",
         });
       }
 
-      // ✅ Create extension booking request
+      // Create extension booking request
       const form = await Form.findOne({
         subCategory: listing.subCategory,
         zone: listing.zone,
       });
-      if (!form) return res.status(400).json({ message: "Form not found for this listing" });
+      if (!form)
+        return res
+          .status(400)
+          .json({ message: "Form not found for this listing" });
 
       const basePrice = listing.price;
       const renterCommissionRate = form.setting.renterCommission.value / 100;
@@ -131,7 +139,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       const extendedBooking = await Booking.create({
         ...bookingData,
         dates: {
-          // ✅ FIXED: use dates.checkIn instead of bookingDates.checkIn
+          // FIXED: use dates.checkIn instead of bookingDates.checkIn
           checkIn: existingActiveBooking.dates?.checkIn,
           checkOut: checkOutDate,
         },
@@ -142,8 +150,8 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         priceDetails,
         isExtend: false,
         previousBookingId: existingActiveBooking._id,
-        
-        // ✅ ADD THIS LINE
+
+        // ADD THIS LINE
         extensionRequestedDate: checkOutDate,
       });
 
@@ -153,9 +161,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // -----------------------------------------------------
     // Normal booking
-    // -----------------------------------------------------
     if (!dates?.checkIn || !dates?.checkOut) {
       return res
         .status(400)
@@ -183,32 +189,43 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       subCategory: listing.subCategory,
       zone: listing.zone,
     });
-    if (!form) return res.status(400).json({ message: "Form not found for this listing" });
+    if (!form)
+      return res
+        .status(400)
+        .json({ message: "Form not found for this listing" });
 
     // Document checks
     const requiredUserDocs = form.userDocuments || [];
     if (requiredUserDocs.length > 0) {
       const renterProfile = await User.findById(user.id);
-      if (!renterProfile) return res.status(404).json({ message: "Renter profile not found" });
+      if (!renterProfile)
+        return res.status(404).json({ message: "Renter profile not found" });
 
       const missingDocs: string[] = [];
       const unapprovedDocs: string[] = [];
 
       for (const requiredDoc of requiredUserDocs) {
-        const userDoc = renterProfile.documents.find((doc: any) => doc.name === requiredDoc);
+        const userDoc = renterProfile.documents.find(
+          (doc: any) => doc.name === requiredDoc
+        );
         if (!userDoc) missingDocs.push(requiredDoc);
-        else if (userDoc.status !== "approved") unapprovedDocs.push(requiredDoc);
+        else if (userDoc.status !== "approved")
+          unapprovedDocs.push(requiredDoc);
       }
 
       if (missingDocs.length > 0) {
         return res.status(400).json({
-          message: `Booking requires the following document(s): ${missingDocs.join(", ")}`,
+          message: `Booking requires the following document(s): ${missingDocs.join(
+            ", "
+          )}`,
         });
       }
 
       if (unapprovedDocs.length > 0) {
         return res.status(400).json({
-          message: `The following document(s) are not approved yet: ${unapprovedDocs.join(", ")}.`,
+          message: `The following document(s) are not approved yet: ${unapprovedDocs.join(
+            ", "
+          )}.`,
         });
       }
     }
@@ -254,7 +271,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
   }
 };
 
-
 // GET ALL BOOKINGS (Admin)
 export const getAllBookings = async (
   req: Request,
@@ -283,7 +299,6 @@ export const getAllBookings = async (
       filter.status = status;
     }
 
-    // FIX: Remove `.lean()` from baseQuery
     const baseQuery = Booking.find(filter).populate("marketplaceListingId");
 
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
@@ -307,7 +322,7 @@ export const getAllBookings = async (
 
     const totalEarning = allBookings.reduce((acc, booking) => {
       const price = booking.priceDetails?.totalPrice || 0;
-     const extension = booking.extraRequestCharges?.totalPrice || 0;
+      const extension = booking.extraRequestCharges?.totalPrice || 0;
       return acc + price + extension;
     }, 0);
 
@@ -393,7 +408,7 @@ export const getBookingById = async (
       return;
     }
 
-    // 1️⃣ Fetch booking
+    // Fetch booking
     const booking = await Booking.findById(id)
       .populate("marketplaceListingId")
       .populate("renter")
@@ -404,12 +419,12 @@ export const getBookingById = async (
       return;
     }
 
-    // 2️⃣ Fetch all reviews for this booking
+    //Fetch all reviews for this booking
     const reviews = await Review.find({ bookingId: id })
       .populate("userId", "name email")
       .lean();
 
-    // 3️⃣ Format reviews array
+    //Format reviews array
     const formattedReviews = reviews.map((r) => ({
       user: r.userId,
       review: {
@@ -419,7 +434,7 @@ export const getBookingById = async (
       },
     }));
 
-    // 4️⃣ Combine booking + reviews
+    //Combine booking + reviews
     const result = {
       ...booking,
       reviews: formattedReviews,
@@ -436,155 +451,106 @@ export const getBookingById = async (
   }
 };
 
-
-// export const getBookingById = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction
-// ) => {
-//   try {
-//     const { id } = req.params;
-//     const languageHeader = req.headers["language"];
-//     const locale =
-//       typeof languageHeader === "string"
-//         ? languageHeader.toLowerCase()
-//         : Array.isArray(languageHeader) && languageHeader.length > 0
-//         ? languageHeader[0].toLowerCase()
-//         : "en";
-
-//     if (!mongoose.Types.ObjectId.isValid(id)) {
-//       sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
-//       return;
-//     }
-
-//     const booking = await Booking.findById(id)
-//       .populate("marketplaceListingId")
-//       .populate("renter")
-//       .lean();
-
-//     if (!booking) {
-//       sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
-//       return;
-//     }
-
-//     sendResponse(
-//       res,
-//       booking,
-//       `Booking found (locale: ${locale})`,
-//       STATUS_CODES.OK
-//     );
-//   } catch (err) {
-//     next(err);
-//   }
-// };
-
 // Get bookings by user (renter, leaser, or both) with optional zone + status filters
-  export const getBookingsByUser = async (
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ) => {
-    try {
-      const user = (req as any).user;
-      const page = Number(req.query.page) || 1;
-      const limit = Number(req.query.limit) || 10;
+export const getBookingsByUser = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const user = (req as any).user;
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
 
-      const status = req.query.status as string | undefined;
-      const role = req.query.role as string | undefined;
-      const zone = req.query.zone as string | undefined;
+    const status = req.query.status as string | undefined;
+    const role = req.query.role as string | undefined;
+    const zone = req.query.zone as string | undefined;
 
-      // --- Build dynamic filter ---
-      const filter: any = {};
+    //Build dynamic filter
+    const filter: any = {};
 
-      if (role === "renter") {
-        filter.renter = user.id;
-      } else if (role === "leaser") {
-        filter.leaser = user.id;
-      } else {
-        filter.$or = [{ renter: user.id }, { leaser: user.id }];
-      }
-
-      if (status) filter.status = status;
-
-      // --- Query base ---
-      let baseQuery = Booking.find(filter)
-        .populate({
-          path: "marketplaceListingId",
-          match: zone ? { zone } : {},
-          populate: {
-            path: "zone",
-            select: "name",
-          },
-        })
-        .populate("renter", "firstName lastName email")
-        .populate("leaser", "firstName lastName email")
-        .sort({ createdAt: -1 })
-        .lean();
-
-      const allBookings = await baseQuery;
-
-      const filteredBookings = zone
-        ? allBookings.filter((b) => b.marketplaceListingId !== null)
-        : allBookings;
-
-      // ======================================================
-      // 🔹 CHANGE #1: Organise child (extension) bookings under parent
-      // ======================================================
-      const bookingsMap: Record<string, any> = {};
-
-      // First, store all bookings by ID
-      filteredBookings.forEach((booking) => {
-        bookingsMap[booking._id.toString()] = { ...booking, extensions: [] };
-      });
-
-      // Then, attach child bookings to their parent
-      filteredBookings.forEach((booking) => {
-        if (booking.previousBookingId) {
-          const parent = bookingsMap[booking.previousBookingId.toString()];
-          if (parent) {
-            const extensionCount = parent.extensions.length + 1;
-
-            // ✅ Only include limited details (handover, returnDate)
-            parent.extensions.push({
-              name: `Extension ${extensionCount}`,
-              handover: booking.bookingDates?.handover || null,
-              returnDate: booking.bookingDates?.returnDate || null,
-              extensionDate: booking.extensionRequestedDate || null, 
-            });
-
-            delete bookingsMap[booking._id.toString()]; // remove child from root list
-          }
-        }
-      });
-
-      // Final array of parent-only bookings (with extensions inside)
-      const mergedBookings = Object.values(bookingsMap);
-
-      // ======================================================
-      // 🔹 CHANGE #2: Pagination now applies after merge
-      // ======================================================
-      const total = mergedBookings.length;
-      const paginatedBookings = mergedBookings.slice(
-        (page - 1) * limit,
-        page * limit
-      );
-
-      // --- Send response ---
-      return sendResponse(res, {
-        statusCode: STATUS_CODES.OK,
-        success: true,
-        message: "Bookings retrieved successfully",
-        data: {
-          bookings: paginatedBookings,
-          total,
-          page,
-          limit,
-        },
-      });
-    } catch (error) {
-      next(error);
+    if (role === "renter") {
+      filter.renter = user.id;
+    } else if (role === "leaser") {
+      filter.leaser = user.id;
+    } else {
+      filter.$or = [{ renter: user.id }, { leaser: user.id }];
     }
-  };
+
+    if (status) filter.status = status;
+
+    //Query base
+    let baseQuery = Booking.find(filter)
+      .populate({
+        path: "marketplaceListingId",
+        match: zone ? { zone } : {},
+        populate: {
+          path: "zone",
+          select: "name",
+        },
+      })
+      .populate("renter", "firstName lastName email")
+      .populate("leaser", "firstName lastName email")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const allBookings = await baseQuery;
+
+    const filteredBookings = zone
+      ? allBookings.filter((b) => b.marketplaceListingId !== null)
+      : allBookings;
+
+    const bookingsMap: Record<string, any> = {};
+
+    // First, store all bookings by ID
+    filteredBookings.forEach((booking) => {
+      bookingsMap[booking._id.toString()] = { ...booking, extensions: [] };
+    });
+
+    // Then, attach child bookings to their parent
+    filteredBookings.forEach((booking) => {
+      if (booking.previousBookingId) {
+        const parent = bookingsMap[booking.previousBookingId.toString()];
+        if (parent) {
+          const extensionCount = parent.extensions.length + 1;
+
+          // Only include limited details (handover, returnDate)
+          parent.extensions.push({
+            name: `Extension ${extensionCount}`,
+            handover: booking.bookingDates?.handover || null,
+            returnDate: booking.bookingDates?.returnDate || null,
+            extensionDate: booking.extensionRequestedDate || null,
+          });
+
+          delete bookingsMap[booking._id.toString()]; // remove child from root list
+        }
+      }
+    });
+
+    // Final array of parent-only bookings (with extensions inside)
+    const mergedBookings = Object.values(bookingsMap);
+
+    const total = mergedBookings.length;
+    const paginatedBookings = mergedBookings.slice(
+      (page - 1) * limit,
+      page * limit
+    );
+
+    return sendResponse(res, {
+      statusCode: STATUS_CODES.OK,
+      success: true,
+      message: "Bookings retrieved successfully",
+      data: {
+        bookings: paginatedBookings,
+        total,
+        page,
+        limit,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 // UPDATE
 export const updateBooking = async (
@@ -620,7 +586,6 @@ export const updateBooking = async (
       );
     }
 
-    //Apply all updates (safe since schema is dynamic via `strict: false`)
     Object.assign(booking, req.body);
 
     const updatedBooking = await booking.save(); //Save after manual update
@@ -660,23 +625,21 @@ export const deleteBooking = async (
   }
 };
 
-// PATCH /bookings/:id/status
-import  {generatePIN}  from "../utils/generatePin"; // helper for generating 4 or 6 digit PIN
-import { Review } from "../models/review.model";
-
 //booking status update controller
-export const updateBookingStatus = async (req: Request, res: Response, next: NextFunction) => {
+export const updateBookingStatus = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const { id } = req.params; // this is the PARENT booking id
+    const { id } = req.params;
     const { status, additionalCharges, isExtendApproval } = req.body;
     const user = (req as any).user;
     const userId = user.id || user._id;
 
-    //FETCH PARENT BOOKING
- 
     let parentBooking = await Booking.findById(id)
       .populate("renter", "email name")
       .populate("leaser")
@@ -685,7 +648,12 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
     if (!parentBooking) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(
+        res,
+        null,
+        "Booking not found",
+        STATUS_CODES.NOT_FOUND
+      );
     }
 
     const renterId =
@@ -705,9 +673,8 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
 
     let finalStatus = status;
 
-    
     // EXTENSION APPROVAL LOGIC
- 
+
     if (isExtendApproval) {
       const childBooking = await Booking.findOne({
         previousBookingId: id,
@@ -746,8 +713,14 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
         }
 
         // Extract individual parts from parent booking
-        const { price, adminFee, tax, totalPrice: baseTotal } = parentBooking.priceDetails || {};
-        const previousExtra = parentBooking.extraRequestCharges?.additionalCharges || 0;
+        const {
+          price,
+          adminFee,
+          tax,
+          totalPrice: baseTotal,
+        } = parentBooking.priceDetails || {};
+        const previousExtra =
+          parentBooking.extraRequestCharges?.additionalCharges || 0;
 
         // Calculate updated totals
         const afterExtra = baseTotal + previousExtra;
@@ -774,12 +747,13 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
 
         await childBooking.save({ session });
 
- 
         // HANDLE HANDOVER / RETURN DATE CHAINING LOGIC
- 
+
         const parentId = childBooking.previousBookingId;
         if (parentId) {
-          const previousBooking = await Booking.findById(parentId).session(session);
+          const previousBooking = await Booking.findById(parentId).session(
+            session
+          );
 
           if (previousBooking) {
             // UPDATED: Save handover & returnDate in child booking
@@ -809,7 +783,9 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
             // Find the main ancestor booking and mark it extended
             let topParent = previousBooking;
             while (topParent.previousBookingId) {
-              const grandParent = await Booking.findById(topParent.previousBookingId).session(session);
+              const grandParent = await Booking.findById(
+                topParent.previousBookingId
+              ).session(session);
               if (!grandParent) break;
               topParent = grandParent;
             }
@@ -840,7 +816,12 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
         await session.commitTransaction();
         session.endSession();
 
-        return sendResponse(res, childBooking, "Extension approved successfully", STATUS_CODES.OK);
+        return sendResponse(
+          res,
+          childBooking,
+          "Extension approved successfully",
+          STATUS_CODES.OK
+        );
       }
 
       if (finalStatus === "rejected") {
@@ -852,30 +833,51 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
         await session.commitTransaction();
         session.endSession();
 
-        return sendResponse(res, childBooking, "Extension request rejected", STATUS_CODES.OK);
+        return sendResponse(
+          res,
+          childBooking,
+          "Extension request rejected",
+          STATUS_CODES.OK
+        );
       }
     }
 
-
     // NORMAL APPROVAL (non-extension)
-
     const allowedStatuses = ["approved", "rejected", "completed", "cancelled"];
     if (!allowedStatuses.includes(finalStatus)) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Invalid status", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "Invalid status",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
 
     if (finalStatus === "cancelled" && !isRenter) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Only renter can cancel the booking", STATUS_CODES.FORBIDDEN);
+      return sendResponse(
+        res,
+        null,
+        "Only renter can cancel the booking",
+        STATUS_CODES.FORBIDDEN
+      );
     }
 
-    if (["approved", "rejected", "completed"].includes(finalStatus) && !isLeaser) {
+    if (
+      ["approved", "rejected", "completed"].includes(finalStatus) &&
+      !isLeaser
+    ) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Only leaser can change the booking status", STATUS_CODES.FORBIDDEN);
+      return sendResponse(
+        res,
+        null,
+        "Only leaser can change the booking status",
+        STATUS_CODES.FORBIDDEN
+      );
     }
 
     let updateFields: any = { status: finalStatus };
@@ -918,23 +920,30 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
       updateFields["bookingDates.returnDate"] = new Date();
     }
 
-    finalBooking = await Booking.findByIdAndUpdate(id, { $set: updateFields }, { new: true }).populate(
-      "renter",
-      "email name"
-    );
+    finalBooking = await Booking.findByIdAndUpdate(
+      id,
+      { $set: updateFields },
+      { new: true }
+    ).populate("renter", "email name");
 
     if (!finalBooking) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Booking update failed", STATUS_CODES.INTERNAL_SERVER_ERROR);
+      return sendResponse(
+        res,
+        null,
+        "Booking update failed",
+        STATUS_CODES.INTERNAL_SERVER_ERROR
+      );
     }
 
- 
     // ADDITIONAL LOGIC FOR COMPLETION CHAIN
 
     if (finalStatus === "completed") {
       // Find the last child booking (if any)
-      const lastChild = await Booking.findOne({ previousBookingId: id }).sort({ createdAt: -1 });
+      const lastChild = await Booking.findOne({ previousBookingId: id }).sort({
+        createdAt: -1,
+      });
 
       if (lastChild) {
         // Set last child's returnDate
@@ -954,14 +963,18 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
     }
 
     // UPDATE MARKETPLACE LISTING AVAILABILITY
-    
-    const listing = await MarketplaceListing.findById(finalBooking.marketplaceListingId);
+
+    const listing = await MarketplaceListing.findById(
+      finalBooking.marketplaceListingId
+    );
 
     if (listing) {
       if (finalStatus === "approved") {
         listing.isAvailable = false;
         listing.currentBookingId = [
-          ...(listing.currentBookingId || []).filter((item) => item.toString() !== bookingIdString),
+          ...(listing.currentBookingId || []).filter(
+            (item) => item.toString() !== bookingIdString
+          ),
           finalBooking._id as mongoose.Types.ObjectId,
         ];
       } else {
@@ -977,7 +990,12 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
     await session.commitTransaction();
     session.endSession();
 
-    return sendResponse(res, finalBooking, `Booking status updated to ${finalStatus}`, STATUS_CODES.OK);
+    return sendResponse(
+      res,
+      finalBooking,
+      `Booking status updated to ${finalStatus}`,
+      STATUS_CODES.OK
+    );
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -986,29 +1004,57 @@ export const updateBookingStatus = async (req: Request, res: Response, next: Nex
 };
 
 // submitBookingPin
-export const submitBookingPin = async (req: Request, res: Response, next: NextFunction) => {
+export const submitBookingPin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const { id } = req.params;
     const { otp } = req.body;
 
-    if (!otp) return sendResponse(res, null, "PIN is required", STATUS_CODES.BAD_REQUEST);
+    if (!otp)
+      return sendResponse(
+        res,
+        null,
+        "PIN is required",
+        STATUS_CODES.BAD_REQUEST
+      );
     if (!mongoose.Types.ObjectId.isValid(id))
-      return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "Invalid booking ID",
+        STATUS_CODES.BAD_REQUEST
+      );
 
     // fetch booking
     const booking = await Booking.findById(id).populate("renter", "email name");
-    if (!booking) return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+    if (!booking)
+      return sendResponse(
+        res,
+        null,
+        "Booking not found",
+        STATUS_CODES.NOT_FOUND
+      );
 
     // check OTP
     if (booking.otp !== otp)
-      return sendResponse(res, null, "Invalid or expired PIN", STATUS_CODES.UNAUTHORIZED);
+      return sendResponse(
+        res,
+        null,
+        "Invalid or expired PIN",
+        STATUS_CODES.UNAUTHORIZED
+      );
 
     const now = new Date();
     const checkIn = new Date(booking.dates.checkIn);
     const checkOut = new Date(booking.dates.checkOut);
-    const twelveHoursBeforeCheckout = new Date(checkOut.getTime() - 12 * 60 * 60 * 1000);
+    const twelveHoursBeforeCheckout = new Date(
+      checkOut.getTime() - 12 * 60 * 60 * 1000
+    );
 
-    // ✅ Strict time validation
+    // Strict time validation
     if (now < checkIn) {
       return sendResponse(
         res,
@@ -1027,7 +1073,7 @@ export const submitBookingPin = async (req: Request, res: Response, next: NextFu
       );
     }
 
-    // ✅ Between check-in and (check-out - 12h)
+    // Between check-in and (check-out - 12h)
     const isRunning = now >= checkIn && now <= twelveHoursBeforeCheckout;
 
     // CASE A: Active booking — record handover
@@ -1039,7 +1085,12 @@ export const submitBookingPin = async (req: Request, res: Response, next: NextFu
       booking.otp = "";
       await booking.save();
 
-      return sendResponse(res, booking, "PIN verified and handover recorded", STATUS_CODES.OK);
+      return sendResponse(
+        res,
+        booking,
+        "PIN verified and handover recorded",
+        STATUS_CODES.OK
+      );
     }
 
     // CASE B: Create new booking (handover for new one)
@@ -1090,10 +1141,13 @@ export const submitBookingPin = async (req: Request, res: Response, next: NextFu
     booking.otp = "";
     await booking.save();
 
-    return sendResponse(res, createdNewBooking, "New running booking created and handover recorded", STATUS_CODES.OK);
+    return sendResponse(
+      res,
+      createdNewBooking,
+      "New running booking created and handover recorded",
+      STATUS_CODES.OK
+    );
   } catch (err) {
     next(err);
   }
 };
-
-

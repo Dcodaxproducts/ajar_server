@@ -1,4 +1,3 @@
-// sockets/events/message.ts
 import { Server as SocketIOServer, Socket } from "socket.io";
 import { UserSocketHelpers } from "../index";
 import { Conversation } from "../../models/conversation.model";

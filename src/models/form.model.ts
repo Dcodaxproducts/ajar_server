@@ -19,29 +19,32 @@ export interface IForm extends Document {
   fields: Types.ObjectId[];
   zone: Types.ObjectId;
   name: string;
-  subTitle: string; // 🟩 Added
-  price: number; // 🟩 Added
-  rentalImages: string[]; // 🟩 Added
+  subTitle: string;
+  price: number;
+  rentalImages: string[];
   slug?: string;
   description: string;
   language: string;
   languages?: IZoneLanguage[];
   setting: ISetting;
-  userDocuments: string[]; 
-  leaserDocuments: string[]; 
+  userDocuments: string[];
+  leaserDocuments: string[];
 }
-
 
 const FormSchema = new Schema<IForm>(
   {
-    subCategory: { type: Schema.Types.ObjectId, ref: "subCategory", required: true },
+    subCategory: {
+      type: Schema.Types.ObjectId,
+      ref: "subCategory",
+      required: true,
+    },
     fields: [{ type: Schema.Types.ObjectId, ref: "Field", required: true }],
     zone: { type: Schema.Types.ObjectId, ref: "Zone", required: true },
 
     name: { type: String, trim: true, required: true },
-    subTitle: { type: String, trim: true, required: true }, // 🟩 Added required field
-    price: { type: Number, required: true }, // 🟩 Added required field
-    rentalImages: [{ type: String, required: true }], // 🟩 Added required field
+    subTitle: { type: String, trim: true, required: true },
+    price: { type: Number, required: true },
+    rentalImages: [{ type: String, required: true }],
 
     slug: { type: String, lowercase: true, trim: true },
     description: { type: String, trim: true, required: true },
@@ -55,7 +58,11 @@ const FormSchema = new Schema<IForm>(
     ],
 
     setting: {
-      commissionType: { type: String, enum: ["fixed", "percentage"], default: "fixed" },
+      commissionType: {
+        type: String,
+        enum: ["fixed", "percentage"],
+        default: "fixed",
+      },
       leaserCommission: {
         value: { type: Number, min: 0, max: 100, default: 0 },
         min: { type: Number, default: 0 },
@@ -71,19 +78,17 @@ const FormSchema = new Schema<IForm>(
     },
 
     userDocuments: {
-      type: [String], 
+      type: [String],
       default: [],
     },
     leaserDocuments: {
-      type: [String], 
+      type: [String],
       default: [],
     },
-   
   },
   { timestamps: true }
 );
 
-// Generate slug before saving
 FormSchema.pre("validate", function (next) {
   if (this.isModified("name") || !this.slug) {
     this.slug = this.name

@@ -5,7 +5,7 @@ export interface IReview extends Document {
   bookingId: mongoose.Types.ObjectId;
   stars: number;
   comment: string;
-    createdAt?: Date; // ✅ Add these two
+  createdAt?: Date;
   updatedAt?: Date;
 }
 

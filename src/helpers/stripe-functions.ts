@@ -5,9 +5,8 @@ dotenv.config();
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
-// ===============================
 // CREATE CUSTOMER
-// ===============================
+
 export const createCustomer = async (
   email: string,
   name: string
@@ -24,7 +23,6 @@ export const createCustomer = async (
 };
 
 // attach payment method to customer
-
 export const attachPaymentMethod = async (
   paymentMethodId: string,
   customerId: string
@@ -61,9 +59,7 @@ export const attachAndSetDefaultPaymentMethod = async (
   }
 };
 
-// ===============================
 // CREATE PAYMENT INTENT
-// ===============================
 export const createPaymentIntent = async (
   amount: number,
   currency: string,
@@ -86,10 +82,7 @@ export const createPaymentIntent = async (
   }
 };
 
-// ===============================
 // CAPTURE PAYMENT INTENT for vendor
-// ===============================
-
 export const createPaymentIntentForVendor = async (
   amount: number,
   currency: string,
@@ -120,9 +113,7 @@ export const createPaymentIntentForVendor = async (
   }
 };
 
-// ===============================
 // VERIFY PAYMENT INTENT
-// ===============================
 export const verifyPaymentIntent = async (
   paymentIntentId: string
 ): Promise<Stripe.PaymentIntent> => {
@@ -134,9 +125,7 @@ export const verifyPaymentIntent = async (
   }
 };
 
-// ===============================
 // ONBOARD CONNECTED ACCOUNT
-// ===============================
 export const createConnectedAccount = async (
   email: string
 ): Promise<Stripe.Account> => {
@@ -159,10 +148,7 @@ export const createConnectedAccount = async (
   }
 };
 
-// ===============================
 // CHECK ACCOUNT STATUS
-// ===============================
-
 export const checkAccountStatus = async (
   accountId: string
 ): Promise<Stripe.Account> => {
@@ -175,10 +161,7 @@ export const checkAccountStatus = async (
   }
 };
 
-// ===============================
 // GET CONNECTED ACCOUNT LINK
-// ===============================
-
 export const getOnboardingLink = async (accountId: string): Promise<string> => {
   try {
     const accountLink = await stripe.accountLinks.create({
@@ -196,10 +179,7 @@ export const getOnboardingLink = async (accountId: string): Promise<string> => {
   }
 };
 
-// ===============================
 // CHECK ACCOUNT status
-// ===============================
-
 export const isAccountEligibleForTransfer = async (
   accountId: string
 ): Promise<boolean> => {
@@ -215,10 +195,7 @@ export const isAccountEligibleForTransfer = async (
   }
 };
 
-// ===============================
 // DELETE CONNECTED ACCOUNT
-// ===============================
-
 export const deleteConnectedAccount = async (
   accountId: string
 ): Promise<boolean> => {
@@ -232,9 +209,7 @@ export const deleteConnectedAccount = async (
   }
 };
 
-// ===============================
 // TRANSFER FUNDS TO CONNECTED ACCOUNT
-// ===============================
 export const transferFunds = async (
   accountId: string,
   amount: number,
@@ -253,10 +228,7 @@ export const transferFunds = async (
   }
 };
 
-// ===============================
 // CAPTURE PAYMENT ( release payment to vendor )
-// ===============================
-
 export const capturePayment = async (
   paymentIntentId: string
 ): Promise<Stripe.PaymentIntent> => {
@@ -270,9 +242,7 @@ export const capturePayment = async (
   }
 };
 
-// ===============================
 // REFUND PAYMENT
-// ===============================
 export const refundPayment = async (
   paymentIntentId: string,
   amount?: number
@@ -289,9 +259,7 @@ export const refundPayment = async (
   }
 };
 
-// ===============================
 // CHECK PAYMENT INTENT STATUS
-// ===============================
 export const getPaymentIntentStatus = async (
   paymentIntentId: string
 ): Promise<string> => {
@@ -304,7 +272,6 @@ export const getPaymentIntentStatus = async (
 };
 
 // payouts
-
 export const createPayout = async (
   connectedAccountId: string,
   amount: number,
@@ -328,7 +295,6 @@ export const createPayout = async (
 };
 
 // admin payout
-
 export const createAdminPayout = async (
   amount: number,
   currency: string
@@ -345,8 +311,7 @@ export const createAdminPayout = async (
   }
 };
 
-/// subscriptions
-
+//subscriptions
 export const createSubscriptionPlan = async (
   name: string,
   description: string,
@@ -404,7 +369,6 @@ export const createSubscription = async (
 };
 
 // cancel subscription ( immediately )
-
 export const cancelSubscription = async (
   subscriptionId: string
 ): Promise<Stripe.Subscription> => {

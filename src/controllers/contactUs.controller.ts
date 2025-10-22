@@ -9,23 +9,45 @@ export const createContact = async (req: Request, res: Response) => {
 
     const contact = await ContactUs.create({ phone, email, address, order });
 
-    sendResponse(res, contact, "Contact information created successfully", STATUS_CODES.CREATED);
+    sendResponse(
+      res,
+      contact,
+      "Contact information created successfully",
+      STATUS_CODES.CREATED
+    );
   } catch (error) {
-    sendResponse(res, null, "Failed to create contact information", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    sendResponse(
+      res,
+      null,
+      "Failed to create contact information",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
 export const getAllContacts = async (req: Request, res: Response) => {
   try {
     const contacts = await ContactUs.find().sort({ order: 1 });
-    sendResponse(res, contacts, "Contacts retrieved successfully", STATUS_CODES.OK);
+    sendResponse(
+      res,
+      contacts,
+      "Contacts retrieved successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
-    sendResponse(res, null, "Failed to retrieve contacts", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    sendResponse(
+      res,
+      null,
+      "Failed to retrieve contacts",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
-
-export const getContactById = async (req: Request, res: Response): Promise<void> => {
+export const getContactById = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const contact = await ContactUs.findById(req.params.id);
 
@@ -34,16 +56,30 @@ export const getContactById = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    sendResponse(res, contact, "Contact retrieved successfully", STATUS_CODES.OK);
+    sendResponse(
+      res,
+      contact,
+      "Contact retrieved successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
-    sendResponse(res, null, "Failed to retrieve contact", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    sendResponse(
+      res,
+      null,
+      "Failed to retrieve contact",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
-
-export const updateContact = async (req: Request, res: Response): Promise<void> => {
+export const updateContact = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
-    const contact = await ContactUs.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const contact = await ContactUs.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
 
     if (!contact) {
       res.status(404).json({ success: false, message: "Contact not found" });
@@ -56,7 +92,10 @@ export const updateContact = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-export const deleteContact = async (req: Request, res: Response): Promise<void> => {
+export const deleteContact = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const contact = await ContactUs.findByIdAndDelete(req.params.id);
 
@@ -65,7 +104,9 @@ export const deleteContact = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    res.status(200).json({ success: true, message: "Contact deleted successfully" });
+    res
+      .status(200)
+      .json({ success: true, message: "Contact deleted successfully" });
   } catch (error) {
     res.status(500).json({ success: false, message: "Server error", error });
   }

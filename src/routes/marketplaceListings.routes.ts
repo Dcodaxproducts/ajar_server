@@ -31,21 +31,16 @@ function asyncHandler(fn: any) {
 
 router.get("/search", asyncHandler(searchMarketplaceListings));
 
+router.get("/listing", authMiddleware, getAllMarketplaceListingsforLeaser);
 
-router.get("/listing", authMiddleware, getAllMarketplaceListingsforLeaser);/////////
-
-
-router.get("/", authMiddleware, getAllMarketplaceListings);  
+router.get("/", authMiddleware, getAllMarketplaceListings);
 
 router.get("/guest", getAllMarketplaceListings);
 
-router.get("/listing/:id", asyncHandler(getMarketplaceListingByIdforLeaser)); //////////
-router.get("/popular", getPopularMarketplaceListings); ///////////
+router.get("/listing/:id", asyncHandler(getMarketplaceListingByIdforLeaser));
+router.get("/popular", getPopularMarketplaceListings);
 
 router.get("/:id", asyncHandler(getMarketplaceListingById));
-
-
-
 
 router.get(
   "/:id/bookings",
@@ -56,13 +51,16 @@ router.get(
 router.post(
   "/",
   authMiddleware,
-  uploadAny, // Middleware to accept any file field
+  uploadAny,
   asyncHandler(createMarketplaceListing)
 );
 
-
 // Admin approves/rejects listing
-router.patch("/:listingId/status", authMiddleware, asyncHandler(updateListingStatus));
+router.patch(
+  "/:listingId/status",
+  authMiddleware,
+  asyncHandler(updateListingStatus)
+);
 
 router.patch(
   "/:id",
