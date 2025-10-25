@@ -1,6 +1,7 @@
 import express from "express";
 import {
   addForm,
+  appleLogin,
   createUser,
   deleteUser,
   forgotPassword,
@@ -9,6 +10,7 @@ import {
   getListingDocuments,
   getUserDetails,
   getUserDocuments,
+  googleLogin,
   loginUser,
   refreshToken,
   resendOtp,
@@ -47,6 +49,14 @@ function asyncHandler(fn: any) {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 }
+
+
+//social logins 
+// Social logins
+// POST /api/auth/google
+router.post("/google", googleLogin);
+router.post("/apple", appleLogin);
+
 
 router.post(
   "/signup",

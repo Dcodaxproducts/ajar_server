@@ -1000,3 +1000,278 @@ export const getListingDocuments = async (
     next(error);
   }
 };
+
+
+//socail logins 
+// Controller: Google Login
+import { OAuth2Client, LoginTicket  } from "google-auth-library";
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const googleClient = new OAuth2Client();
+
+
+ //Google Login Controller
+
+// Safely define allowed Google OAuth client IDs
+const ALLOWED_AUDIENCES = new Set(
+  [
+    process.env.GOOGLE_WEB_CLIENT_ID,
+    process.env.GOOGLE_ANDROID_CLIENT_ID,
+    process.env.GOOGLE_IOS_CLIENT_ID,
+  ].filter((id): id is string => Boolean(id))
+);
+
+export const googleLogin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { idToken, platform } = req.body;
+
+    //1. Validate request
+    if (!idToken) {
+      sendResponse(res, null, "Missing Google ID token", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    //2. Verify Google ID token
+    const ticket: LoginTicket = await googleClient.verifyIdToken({
+      idToken,
+      audience: Array.from(ALLOWED_AUDIENCES),
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload) {
+      sendResponse(res, null, "Invalid token", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
+    //3. Check valid audience
+    if (!ALLOWED_AUDIENCES.has(payload.aud)) {
+      sendResponse(res, null, "Invalid audience", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
+    //4. Extract user data from Google
+    const { email, name = "Google User", picture } = payload;
+    if (!email) {
+      sendResponse(res, null, "Email not found in token", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    //5. Find existing user or create new
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      const hashedPassword = await bcrypt.hash("google-login", 10);
+
+      user = new User({
+        email,
+        password: hashedPassword,
+        name,
+        role: "user",
+        otp: { isVerified: true },
+        profilePicture: picture || "",
+      });
+
+      // Optional: Create Stripe customer
+      const stripeCustomer = await createCustomer(email, name);
+      if (stripeCustomer?.id) {
+        user.stripe.customerId = stripeCustomer.id;
+      }
+
+      await user.save();
+
+      // Optional: Send welcome email
+      await sendEmail({
+        to: email,
+        name,
+        subject: "Welcome to our App",
+        content: `Hi ${name}, your account has been created via Google login.`,
+      });
+    }
+
+    //6. Generate JWT for app session
+    const token = jwt.sign(
+      { uid: user._id, email: user.email },
+      process.env.JWT_SECRET as string,
+      { expiresIn: "12h" }
+    );
+
+    //7. Success response
+    sendResponse(
+      res,
+      {
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          avatar: user.profilePicture,
+          provider: "google",
+          platform: platform || "web",
+        },
+      },
+      "Google login successful",
+      STATUS_CODES.OK
+    );
+  } catch (error) {
+    console.error("Google login error:", error);
+    next(error);
+  }
+};
+
+// Controller: Apple Login
+import jwksClient from "jwks-rsa";
+
+
+dotenv.config();
+
+// Apple JWKS client to get Apple public keys
+const client = jwksClient({
+  jwksUri: "https://appleid.apple.com/auth/keys",
+});
+
+// Helper: Get Apple public key for verifying token
+const getApplePublicKey = (kid: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    client.getSigningKey(kid, (err, key) => {
+      if (err) return reject(err);
+      const signingKey = key?.getPublicKey();
+      if (!signingKey) return reject("Unable to get Apple public key");
+      resolve(signingKey);
+    });
+  });
+};
+
+// Safely define allowed Apple client IDs (per platform)
+const ALLOWED_APPLE_AUDIENCES = new Set(
+  [
+    process.env.APPLE_WEB_CLIENT_ID,
+    process.env.APPLE_IOS_CLIENT_ID,
+    process.env.APPLE_ANDROID_CLIENT_ID,
+  ].filter((id): id is string => Boolean(id))
+);
+
+export const appleLogin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { idToken, platform } = req.body;
+
+    //Validate input
+    if (!idToken) {
+      sendResponse(res, null, "Missing Apple ID token", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    //Decode header to get the 'kid'
+    const decodedHeader = jwt.decode(idToken, { complete: true }) as {
+      header: { kid: string; alg: string };
+    };
+    if (!decodedHeader?.header?.kid) {
+      sendResponse(res, null, "Invalid Apple token header", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
+    //Fetch Apple public key and verify token
+    const publicKey = await getApplePublicKey(decodedHeader.header.kid);
+
+    const applePayload = jwt.verify(idToken, publicKey, {
+      algorithms: ["RS256"],
+    }) as {
+      email?: string;
+      email_verified?: string;
+      sub: string;
+      aud: string;
+      iss: string;
+    };
+
+    //Validate issuer & audience
+    if (applePayload.iss !== "https://appleid.apple.com") {
+      sendResponse(res, null, "Invalid issuer", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
+    if (!ALLOWED_APPLE_AUDIENCES.has(applePayload.aud)) {
+      sendResponse(res, null, "Invalid audience", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
+    //Extract user data
+    const email = applePayload.email;
+    const name = "Apple User";
+    const picture = "";
+
+    if (!email) {
+      sendResponse(res, null, "Email not found in token", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    //Find or create user
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      const hashedPassword = await bcrypt.hash("apple-login", 10);
+
+      user = new User({
+        email,
+        password: hashedPassword,
+        name,
+        role: "user",
+        otp: { isVerified: true },
+        profilePicture: picture,
+      });
+
+      // Optional: Create Stripe customer
+      const stripeCustomer = await createCustomer(email, name);
+      if (stripeCustomer?.id) {
+        user.stripe.customerId = stripeCustomer.id;
+      }
+
+      await user.save();
+
+      // Optional: Send welcome email
+      await sendEmail({
+        to: email,
+        name,
+        subject: "Welcome to our App",
+        content: `Hi ${name}, your account has been created via Apple login.`,
+      });
+    }
+
+    //Generate JWT for app session
+    const token = jwt.sign(
+      { uid: user._id, email: user.email },
+      process.env.JWT_SECRET as string,
+      { expiresIn: "12h" }
+    );
+
+    //Success response
+    sendResponse(
+      res,
+      {
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          avatar: user.profilePicture,
+          provider: "apple",
+          platform: platform || "ios",
+        },
+      },
+      "Apple login successful",
+      STATUS_CODES.OK
+    );
+  } catch (error) {
+    console.error("Apple login error:", error);
+    next(error);
+  }
+};
