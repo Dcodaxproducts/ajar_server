@@ -9,6 +9,9 @@ import { paginateQuery } from "../utils/paginate";
 import slugify from "slugify";
 import { Dropdown } from "../models/dropdown.model";
 
+
+
+// CREATE NEW FORM
 export const createNewForm = async (
   req: Request,
   res: Response,
@@ -16,40 +19,29 @@ export const createNewForm = async (
 ): Promise<void> => {
   try {
     const {
+      name,
+      description,
       subCategory,
       zone,
-      name,
-      subTitle,
-      price,
-      rentalImages,
-      description,
       fields,
       language,
       setting,
-      context,
       userDocuments,
       leaserDocuments,
     } = req.body;
 
-    // Added new required field validation
-    if (
-      !name ||
-      !subTitle ||
-      !price ||
-      !rentalImages ||
-      !Array.isArray(rentalImages) ||
-      rentalImages.length === 0
-    ) {
+    // ✅ Validate required name and description
+    if (!name || !description) {
       sendResponse(
         res,
         null,
-        "name, subTitle, price, and rentalImages are required",
+        "Form name and description are required",
         STATUS_CODES.BAD_REQUEST
       );
       return;
     }
 
-    // Validate ObjectIds
+    // ✅ Validate ObjectIds and fields array
     if (
       !mongoose.Types.ObjectId.isValid(subCategory) ||
       !mongoose.Types.ObjectId.isValid(zone) ||
@@ -59,114 +51,70 @@ export const createNewForm = async (
       sendResponse(
         res,
         null,
-        "Invalid subCategoryId, zoneId or fieldsIds",
+        "Invalid subCategoryId, zoneId, or fieldsIds",
         STATUS_CODES.BAD_REQUEST
       );
       return;
     }
 
-    // Check SubCategory exists
-    const subCatExists = await SubCategory.findById(subCategory);
-    if (!subCatExists) {
+    // ✅ Check SubCategory existence
+    const subCategoryExists = await SubCategory.findById(subCategory);
+    if (!subCategoryExists) {
       sendResponse(res, null, "SubCategory not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    // Optional: Validate that all fieldIds actually exist
+    // ✅ Check that all fields exist
     const validFields = await Field.find({ _id: { $in: fields } });
     if (validFields.length !== fields.length) {
+      sendResponse(res, null, "Some fields are invalid", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    // ✅ Ensure mandatory field names exist in Field documents
+    const requiredFieldNames = [
+      "name",
+      "subTitle",
+      "description",
+      "price",
+      "rentalImages",
+    ];
+    const fieldNames = validFields.map((f) => f.name);
+    const missingRequired = requiredFieldNames.filter(
+      (reqField) => !fieldNames.includes(reqField)
+    );
+
+    if (missingRequired.length > 0) {
       sendResponse(
         res,
         null,
-        "One or more fieldIds are invalid",
+        `Missing required fields in field collection: ${missingRequired.join(", ")}`,
         STATUS_CODES.BAD_REQUEST
       );
       return;
     }
 
-    // Validate userDocuments against dropdown
-    const userDropdowns = await Dropdown.findOne({ name: "userDocuments" });
-    const allowedUserDocs = userDropdowns
-      ? userDropdowns.values.map((v) => v.value)
-      : [];
-    if (userDocuments && Array.isArray(userDocuments)) {
-      for (const doc of userDocuments) {
-        if (!allowedUserDocs.includes(doc)) {
-          sendResponse(
-            res,
-            null,
-            `Invalid user document: ${doc}`,
-            STATUS_CODES.BAD_REQUEST
-          );
-          return;
-        }
-      }
-    }
-
-    // Validate leaserDocuments against dropdown
-    const leaserDropdowns = await Dropdown.findOne({ name: "leaserDocuments" });
-    const allowedLeaserDocs = leaserDropdowns
-      ? leaserDropdowns.values.map((v) => v.value)
-      : [];
-    if (leaserDocuments && Array.isArray(leaserDocuments)) {
-      for (const doc of leaserDocuments) {
-        if (!allowedLeaserDocs.includes(doc)) {
-          sendResponse(
-            res,
-            null,
-            `Invalid leaser document: ${doc}`,
-            STATUS_CODES.BAD_REQUEST
-          );
-          return;
-        }
-      }
-    }
-
-    // Validate userDocuments inside setting
-    if (setting && setting.userDocuments) {
-      if (!Array.isArray(setting.userDocuments)) {
-        sendResponse(
-          res,
-          null,
-          "userDocuments must be an array",
-          STATUS_CODES.BAD_REQUEST
-        );
-        return;
-      }
-    }
-
-    const newForm = await Form.create({
+    // ✅ Create new form
+    const form = new Form({
+      name,
+      description,
       subCategory,
       zone,
-      name,
-      subTitle,
-      price,
-      rentalImages,
-      description,
-      language: language || "en",
       fields,
-      setting: setting || {},
-      context,
-      userDocuments: userDocuments || [],
-      leaserDocuments: leaserDocuments || [],
-      slug: slugify(name, { lower: true, strict: true }),
+      language,
+      setting,
+      userDocuments,
+      leaserDocuments,
     });
 
-    const populatedForm = await Form.findById(newForm._id)
-      .populate("fields")
-      .populate("zone")
-      .populate("subCategory");
+    await form.save();
 
-    sendResponse(
-      res,
-      populatedForm,
-      "Form created successfully",
-      STATUS_CODES.CREATED
-    );
+    sendResponse(res, form, "Form created successfully", STATUS_CODES.CREATED);
   } catch (error) {
     next(error);
   }
 };
+
 
 export const getAllForms = async (
   req: Request,

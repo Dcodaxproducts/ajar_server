@@ -1,5 +1,4 @@
 import { Schema, model, Document, Types } from "mongoose";
-import slugify from "slugify";
 
 interface IZoneLanguage {
   locale: string;
@@ -15,15 +14,11 @@ interface ISetting {
 }
 
 export interface IForm extends Document {
+  name: string;
+  description: string;
   subCategory: Types.ObjectId;
   fields: Types.ObjectId[];
   zone: Types.ObjectId;
-  name: string;
-  subTitle: string;
-  price: number;
-  rentalImages: string[];
-  slug?: string;
-  description: string;
   language: string;
   languages?: IZoneLanguage[];
   setting: ISetting;
@@ -33,6 +28,16 @@ export interface IForm extends Document {
 
 const FormSchema = new Schema<IForm>(
   {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    description: {
+      type: String,
+      required: true,
+      trim: true,
+    },
     subCategory: {
       type: Schema.Types.ObjectId,
       ref: "subCategory",
@@ -40,14 +45,6 @@ const FormSchema = new Schema<IForm>(
     },
     fields: [{ type: Schema.Types.ObjectId, ref: "Field", required: true }],
     zone: { type: Schema.Types.ObjectId, ref: "Zone", required: true },
-
-    name: { type: String, trim: true, required: true },
-    subTitle: { type: String, trim: true, required: true },
-    price: { type: Number, required: true },
-    rentalImages: [{ type: String, required: true }],
-
-    slug: { type: String, lowercase: true, trim: true },
-    description: { type: String, trim: true, required: true },
 
     language: { type: String, default: "en" },
     languages: [
@@ -88,14 +85,5 @@ const FormSchema = new Schema<IForm>(
   },
   { timestamps: true }
 );
-
-FormSchema.pre("validate", function (next) {
-  if (this.isModified("name") || !this.slug) {
-    this.slug = this.name
-      ? slugify(this.name, { lower: true, strict: true })
-      : undefined;
-  }
-  next();
-});
 
 export const Form = model<IForm>("Form", FormSchema);
