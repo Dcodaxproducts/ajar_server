@@ -14,14 +14,16 @@ function asyncHandler(fn: any) {
   };
 }
 
-router.post("/", authMiddleware, asyncHandler(sendMessage));
+const useAuth = authMiddleware as any;
+
+router.post("/", useAuth, asyncHandler(sendMessage));
 
 router.patch(
   "/:messageId/delivered",
-  authMiddleware,
+  useAuth,
   asyncHandler(markMessageDelivered)
 );
 
-router.patch("/:chatId/seen", authMiddleware, asyncHandler(markMessagesSeen));
+router.patch("/:chatId/seen", useAuth, asyncHandler(markMessagesSeen));
 
 export default router;

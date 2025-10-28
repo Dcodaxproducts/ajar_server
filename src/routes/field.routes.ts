@@ -15,12 +15,14 @@ import { Field } from "../models/field.model";
 
 const router = Router();
 
+const useAuth = authMiddleware as any;
+
 router.get("/", getAllFields);
 router.get("/list", getAllFieldsWithoutPagination);
 router.get("/:id", getFieldDetails);
 router.post(
   "/",
-  authMiddleware,
+  useAuth,
   validateRequest({ body: fieldSchema }),
   createNewField
 );
@@ -37,6 +39,6 @@ router.patch(
   updateField
 );
 
-router.delete("/:id", authMiddleware, deleteField);
+router.delete("/:id", useAuth, deleteField);
 
 export default router;

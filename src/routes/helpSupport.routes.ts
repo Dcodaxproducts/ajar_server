@@ -16,14 +16,16 @@ function asyncHandler(fn: any) {
   };
 }
 
+const useAuth = authMiddleware as any;
+
 // Create ticket
-router.post("/", authMiddleware, asyncHandler(createHelpSupport));
+router.post("/", useAuth, asyncHandler(createHelpSupport));
 
 // Update status
-router.patch("/:id", authMiddleware, asyncHandler(updateHelpSupportStatus));
+router.patch("/:id", useAuth, asyncHandler(updateHelpSupportStatus));
 
 // Get user's own tickets
-router.get("/", authMiddleware, asyncHandler(getMyHelpSupportTickets));
+router.get("/", useAuth, asyncHandler(getMyHelpSupportTickets));
 
 router.get("/:id", asyncHandler(getHelpSupportById));
 

@@ -4,6 +4,8 @@ import { authMiddleware } from "../middlewares/auth.middleware";
 
 const router = Router();
 
-router.get("/", authMiddleware, getAdminAnalytics);
+const useAuth = authMiddleware as any;
+
+router.get("/", useAuth, getAdminAnalytics);
 
 export default router;

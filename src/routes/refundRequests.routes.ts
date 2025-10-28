@@ -11,13 +11,15 @@ import { authMiddleware } from "../middlewares/auth.middleware";
 
 const router = express.Router();
 
-router.post("/", authMiddleware, createRefundRequest);
+const useAuth = authMiddleware as any;
+
+router.post("/", useAuth, createRefundRequest);
 router.get("/", getMyRefundRequests);
 router.get("/:id", getRefundRequestById);
-router.patch("/:id", authMiddleware, updateRefundRequest);
-router.delete("/:id", authMiddleware, deleteRefundRequest);
+router.patch("/:id", useAuth, updateRefundRequest);
+router.delete("/:id", useAuth, deleteRefundRequest);
 
 // Admin can update status of requests
-router.patch("/:id/status", authMiddleware, updateRefundStatus);
+router.patch("/:id/status", useAuth, updateRefundStatus);
 
 export default router;

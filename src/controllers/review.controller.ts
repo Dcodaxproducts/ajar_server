@@ -5,9 +5,7 @@ import { Booking } from "../models/booking.model";
 
 //AuthRequest interface
 interface AuthRequest extends Request {
-  user?: {
-    id: string;
-  };
+  user?: any; // TODO: Replace 'any' with your actual User type from your auth system
 }
 
 // Create Review

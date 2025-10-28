@@ -4,7 +4,9 @@ import { authMiddleware } from "../middlewares/auth.middleware";
 
 const router = express.Router();
 
-router.post("/", authMiddleware, createReview);
+const useAuth = authMiddleware as any;
+
+router.post("/", useAuth, createReview);
 router.get("/", getAllReviews);
 
 export default router;
