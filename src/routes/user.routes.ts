@@ -37,7 +37,7 @@ import {
   verifyOtpSchema,
 } from "../schemas/user.schema";
 
-import upload from "../utils/multer";
+import upload, { uploadAny } from "../utils/multer";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { validateDocuments } from "../middlewares/validateDocuments.middleware";
 import expressAsyncHandler from "express-async-handler";
@@ -52,7 +52,6 @@ function asyncHandler(fn: any) {
 
 
 //social logins 
-// Social logins
 // POST /api/auth/google
 router.post("/google", googleLogin);
 router.post("/apple", appleLogin);
@@ -103,15 +102,26 @@ router.post("/form", addForm);
 router.put(
   "/profile",
   authMiddleware,
-  upload.fields([
-    { name: "profilePicture", maxCount: 1 },
-    { name: "cnic", maxCount: 1 },
-    { name: "passport", maxCount: 1 },
-    { name: "drivingLicense", maxCount: 1 },
-  ]),
+  uploadAny,
   validateRequest({ body: updateUserSchema }),
   updateUserProfile
 );
+
+
+// router.put(
+//   "/profile",
+//   authMiddleware,
+//   upload.fields([
+//     { name: "profilePicture", maxCount: 1 },
+//     { name: "cnic", maxCount: 1 },
+//     { name: "passport", maxCount: 1 },
+//     { name: "drivingLicense", maxCount: 1 },
+//   ]),
+//   validateRequest({ body: updateUserSchema }),
+//   updateUserProfile
+// );
+
+
 
 router.delete("/:userId", authMiddleware, deleteUser);
 

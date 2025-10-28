@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
-import { User } from "../models/user.model";
+import { IUserDocument, User } from "../models/user.model";
 import { Form } from "../models/form.model";
 import {
   generateAccessToken,
@@ -330,28 +330,41 @@ export const resendOtp = async (
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
+
     if (!user) {
       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    const otp = Math.floor(1000 + Math.random() * 9000);
-    user.otp.isVerified = false;
-    user.otp.code = otp.toString();
-    user.otp.expiry = new Date(Date.now() + 5 * 60 * 1000);
+    // Generate new OTP
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    user.otp = {
+      code: otp,
+      expiry: new Date(Date.now() + 5 * 60 * 1000),
+      isVerified: false,
+    };
     await user.save();
+
     await sendEmail({
       to: email,
       name: user.name,
-      subject: "Your OTP Code",
-      content: `Your OTP is: ${otp}`,
+      subject: "Your New OTP Code",
+      content: `
+        <p>Hello ${user.name || "User"},</p>
+        <p>Your new OTP is:</p>
+        <div style="background: #f4f4f4; padding: 10px; color: #2e7d32; border-radius: 5px; border: 1px solid #ccc; display: inline-block;">
+          <strong>${otp}</strong>
+        </div>
+        <p>This OTP will expire in 5 minutes.</p>
+      `,
     });
 
-    sendResponse(res, null, "OTP sent successfully", STATUS_CODES.OK);
+    sendResponse(res, null, "OTP resent successfully", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
 };
+
 
 export const verifyOtp = async (
   req: Request,
@@ -367,29 +380,21 @@ export const verifyOtp = async (
       user.otp.code !== otp ||
       user.otp.expiry.getTime() < Date.now()
     ) {
-      sendResponse(
-        res,
-        null,
-        "Invalid or expired OTP",
-        STATUS_CODES.BAD_REQUEST
-      );
+      sendResponse(res, null, "Invalid or expired OTP", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
+    // Mark OTP as verified
     user.otp.isVerified = true;
-    user.otp.code = "";
-    user.otp.expiry = new Date(0);
     await user.save();
 
     const accessToken = generateAccessToken({ id: user._id, role: user.role });
-    const userWithoutPassword = user.toObject();
-    const { password: _, ...userWithoutPasswordDetails } = userWithoutPassword;
 
     sendResponse(
       res,
       {
         token: accessToken,
-        user: userWithoutPasswordDetails,
+        userId: user._id,
       },
       "OTP verified successfully",
       STATUS_CODES.OK
@@ -405,38 +410,48 @@ export const forgotPassword = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { email } = req.body;
-    const user = await User.findOne({ email });
+    const email = req.body.email?.trim();
 
+    // Check if user exists
+    const user = await User.findOne({ email: { $regex: `^${email}$`, $options: "i" } });
     if (!user) {
       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    const resetToken = generateResetToken({ id: user._id });
-    user.otp.resetToken = resetToken;
-    user.otp.resetTokenExpiry = new Date(Date.now() + 30 * 60 * 1000);
+    // Generate a 4-digit OTP
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+
+    // Save OTP and expiry (5 minutes)
+    user.otp = {
+      code: otp,
+      expiry: new Date(Date.now() + 5 * 60 * 1000),
+      isVerified: false,
+    };
     await user.save();
 
+    // Send OTP via email
     await sendEmail({
       to: email,
       name: user.name,
-      subject: "Reset Your Password",
+      subject: "Your Password Reset OTP",
       content: `
-      <p style="color: #555;">Use the token below to reset your password:</p>
-      <div style="background: #f4f4f4; padding: 10px; color: green; border-radius: 5px; border: 1px solid #ccc; display: inline-block;" id="token">${resetToken}</div>
-      <p style="text-align: center;">
-    `,
+        <p>Hello ${user.name || "User"},</p>
+        <p>Your OTP for password reset is:</p>
+        <div style="background: #f4f4f4; padding: 10px; color: #2e7d32; border-radius: 5px; border: 1px solid #ccc; display: inline-block;">
+          <strong>${otp}</strong>
+        </div>
+        <p>This OTP will expire in 5 minutes.</p>
+      `,
     });
 
     sendResponse(
       res,
       {
-        resetToken,
-        resetTokenExpiry: user.otp.resetTokenExpiry,
-        userId: user._id,
+        email: user.email,
+        otpExpiry: user.otp.expiry,
       },
-      "Password reset token sent",
+      "OTP sent to your email",
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -450,26 +465,30 @@ export const resetPassword = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { password } = req.body;
-    const userId = (req as any).user?.id;
-
-    if (!userId) {
-      sendResponse(res, null, "Unauthorized", STATUS_CODES.UNAUTHORIZED);
-      return;
-    }
-
-    const user = await User.findById(userId);
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
 
     if (!user) {
       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
+    // Ensure OTP was verified
+    if (!user.otp.isVerified) {
+      sendResponse(res, null, "OTP not verified", STATUS_CODES.FORBIDDEN);
+      return;
+    }
+
+    // Hash and save new password
     const hashedPassword = await bcrypt.hash(password, 10);
     user.password = hashedPassword;
 
-    user.otp.resetToken = "";
-    user.otp.resetTokenExpiry = new Date(0);
+    // Clear OTP fields
+    user.otp = {
+      code: "",
+      expiry: new Date(0),
+      isVerified: false,
+    };
 
     await user.save();
 
@@ -478,6 +497,7 @@ export const resetPassword = async (
     next(error);
   }
 };
+
 
 // Embedded pagination logic directly inside the controller
 const paginateQuery = async <T>(
@@ -559,51 +579,55 @@ export const getAllUsersWithStats = async (
   }
 };
 
-// update user profile
+
 export const updateUserProfile = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const userId = req.user?._id;
-
-    // Start collecting updates
-    const updates: any = { ...req.body };
-
-    // Handle documents upload dynamically
-    if (req.files) {
-      for (const [key, files] of Object.entries(req.files)) {
-        // Each `key` corresponds to a fieldId
-        const fieldId = key; // field._id from Form schema
-        const uploadedFiles = (files as Express.Multer.File[]).map((file) => ({
-          url: `/uploads/${file.filename}`,
-          side: "single", // you can infer from field definition if needed
-          status: "pending",
-        }));
-
-        // Upsert into UserDocument collection
-        await UserDocument.findOneAndUpdate(
-          { user: userId, field: fieldId },
-          { $push: { values: { $each: uploadedFiles } } },
-          { upsert: true, new: true }
-        );
-      }
+    const userId = req.user?.id;
+    if (!userId) {
+      sendResponse(res, null, "User not authenticated", STATUS_CODES.UNAUTHORIZED);
+      return;
     }
 
-    // Update user in DB
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
-
+    const updates: any = { ...req.body };
+    const user = await User.findById(userId);
     if (!user) {
       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    const { password, ...userWithoutPassword } = user.toObject();
+    // Handle uploaded files (any field name)
+    if (req.files && Array.isArray(req.files)) {
+      for (const file of req.files as Express.Multer.File[]) {
+        const fieldId = file.fieldname; // the admin-defined field name
+        const uploadedFile = {
+          url: `/uploads/${file.filename}`, // adapt if using S3/Firebase
+          side: "single",
+          status: "pending",
+        };
+
+        // Check if document with same field exists
+        const existingDocIndex = user.documents.findIndex(d => d.name === fieldId);
+        if (existingDocIndex >= 0) {
+          user.documents[existingDocIndex].filesUrl.push(uploadedFile.url);
+        } else {
+          user.documents.push({
+            name: fieldId,
+            filesUrl: [uploadedFile.url],
+            status: "pending",
+          });
+        }
+      }
+    }
+
+    // Update other profile fields
+    Object.assign(user, updates);
+
+    const updatedUser = await user.save();
+    const { password, ...userWithoutPassword } = updatedUser.toObject();
 
     sendResponse(
       res,
@@ -615,6 +639,7 @@ export const updateUserProfile = async (
     next(error);
   }
 };
+
 
 // add dynamic form
 export const addForm = async (
