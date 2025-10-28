@@ -24,12 +24,10 @@ export interface IUser extends Document {
     connectedAccountId: string;
     connectedAccountLink: string;
   };
-  otp: {
+    otp: {
     isVerified: boolean;
     code: string;
     expiry: Date;
-    resetToken: string;
-    resetTokenExpiry: Date;
   };
   status: "active" | "inactive" | "blocked" | "unblocked";
   documents: IUserDocument[];
@@ -53,12 +51,10 @@ const UserSchema: Schema<IUser> = new Schema(
       lowercase: true,
       index: true,
     },
-    otp: {
+ otp: {
       isVerified: { type: Boolean, default: false },
-      code: { type: String },
-      expiry: { type: Date },
-      resetToken: { type: String },
-      resetTokenExpiry: { type: Date },
+      code: { type: String, default: "" },
+      expiry: { type: Date, default: null },
     },
     stripe: {
       customerId: { type: String },
