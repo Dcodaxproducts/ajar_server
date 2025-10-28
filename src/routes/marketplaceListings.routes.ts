@@ -29,13 +29,15 @@ function asyncHandler(fn: any) {
   };
 }
 
+const useAuth = authMiddleware as any;
+
 router.get("/search", asyncHandler(searchMarketplaceListings));
 
-router.get("/listing", authMiddleware, getAllMarketplaceListingsforLeaser);
+router.get("/listing", useAuth, asyncHandler(getAllMarketplaceListingsforLeaser));
 
-router.get("/", authMiddleware, getAllMarketplaceListings);
+router.get("/", useAuth, asyncHandler(getAllMarketplaceListings));
 
-router.get("/guest", getAllMarketplaceListings);
+router.get("/guest", asyncHandler(getAllMarketplaceListings));
 
 router.get("/listing/:id", asyncHandler(getMarketplaceListingByIdforLeaser));
 router.get("/popular", getPopularMarketplaceListings);
@@ -44,13 +46,13 @@ router.get("/:id", asyncHandler(getMarketplaceListingById));
 
 router.get(
   "/:id/bookings",
-  authMiddleware,
+  useAuth,
   asyncHandler(getBookingsForListing)
 );
 
 router.post(
   "/",
-  authMiddleware,
+  useAuth,
   uploadAny,
   asyncHandler(createMarketplaceListing)
 );
@@ -58,18 +60,18 @@ router.post(
 // Admin approves/rejects listing
 router.patch(
   "/:listingId/status",
-  authMiddleware,
+  useAuth,
   asyncHandler(updateListingStatus)
 );
 
 router.patch(
   "/:id",
   uploadFiles(["images", "rentalImages"]),
-  authMiddleware,
+  useAuth,
   asyncHandler(languageTranslationMiddleware(MarketplaceListing)),
-  updateMarketplaceListing
+  asyncHandler(updateMarketplaceListing)
 );
 
-router.delete("/:id", authMiddleware, deleteMarketplaceListing);
+router.delete("/:id", useAuth, asyncHandler(deleteMarketplaceListing));
 
 export default router;

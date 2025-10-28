@@ -26,46 +26,54 @@ import {
 
 const router = express.Router();
 
-router.get("/", authMiddleware, getAllPayments);
+function asyncHandler(fn: any) {
+  return function (req: any, res: any, next: any) {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
+const useAuth = authMiddleware as any;
+
+router.get("/", useAuth, asyncHandler(getAllPayments));
 router.post(
   "/",
-  authMiddleware,
+  useAuth,
   validateRequest({ body: createPaymentSchema }),
-  createPayment
+  asyncHandler(createPayment)
 );
 
 // attach payment method
 router.post(
   "/attach-payment-method",
   //   authMiddleware,
-  attachPaymentMethodToCustomer
+  asyncHandler(attachPaymentMethodToCustomer)
 );
 
 /// verify payment
 router.post(
   "/verify",
-  authMiddleware,
+  useAuth,
   validateRequest({ body: verifyPaymentSchema }),
-  verifyPayment
+  asyncHandler(verifyPayment)
 );
 
-router.get("/onboarding", authMiddleware, onBoardVendor);
-router.get("/onboarding/status", authMiddleware, confirmOnboarding);
+router.get("/onboarding", useAuth, asyncHandler(onBoardVendor));
+router.get("/onboarding/status", useAuth, asyncHandler(confirmOnboarding));
 
 router.post(
   "/transfer",
-  authMiddleware,
+  useAuth,
   validateRequest({ body: transferSchema }),
-  transferToVendor
+  asyncHandler(transferToVendor)
 );
 
 // delete connected account
-router.delete("/onboarding", authMiddleware, deleteOnboardedAccount);
+router.delete("/onboarding", useAuth, asyncHandler(deleteOnboardedAccount));
 
 // refund payment
-router.post("/refund", authMiddleware, handleRefund);
+router.post("/refund", useAuth, asyncHandler(handleRefund));
 
 /// subscription
-router.post("/subscribe", authMiddleware, handleCreateSubscription);
+router.post("/subscribe", useAuth, asyncHandler(handleCreateSubscription));
 
 export default router;

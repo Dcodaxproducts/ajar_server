@@ -5,10 +5,12 @@ import { authMiddleware } from "../middlewares/auth.middleware";
 
 const router = express.Router();
 
-router.post("/", authMiddleware, asyncHandler(roleController.createRole));
-router.get("/", authMiddleware, asyncHandler(roleController.getAllRoles));
-router.get("/:id", authMiddleware, asyncHandler(roleController.getRoleById));
-router.patch("/:id", authMiddleware, asyncHandler(roleController.updateRole));
-router.delete("/:id", authMiddleware, asyncHandler(roleController.deleteRole));
+const useAuth = authMiddleware as any;
+
+router.post("/", useAuth, asyncHandler(roleController.createRole));
+router.get("/", useAuth, asyncHandler(roleController.getAllRoles));
+router.get("/:id", useAuth, asyncHandler(roleController.getRoleById));
+router.patch("/:id", useAuth, asyncHandler(roleController.updateRole));
+router.delete("/:id", useAuth, asyncHandler(roleController.deleteRole));
 
 export default router;

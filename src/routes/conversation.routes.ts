@@ -16,10 +16,12 @@ function asyncHandler(fn: any) {
   };
 }
 
-router.use(authMiddleware);
+const useAuth = authMiddleware as any;
+
+router.use(useAuth);
 
 router.post("/", asyncHandler(createConversation));
-router.post("/send-message", authMiddleware, asyncHandler(sendMessage));
+router.post("/send-message", useAuth, asyncHandler(sendMessage));
 router.get("/", asyncHandler(getAllConversations));
 router.get("/:chatId", asyncHandler(getConversationById));
 router.get("/:chatId/messages", asyncHandler(getConversationMessages));

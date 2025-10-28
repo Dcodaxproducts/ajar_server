@@ -18,15 +18,17 @@ function asyncHandler(fn: any) {
   };
 }
 
+const useAuth = authMiddleware as any;
+
 router.post(
   "/",
   uploadFiles(["attachments"]),
-  authMiddleware,
+  useAuth,
   asyncHandler(createDamageReport)
 );
 
 // Read all
-router.get("/", authMiddleware, asyncHandler(getAllDamageReports));
+router.get("/", useAuth, asyncHandler(getAllDamageReports));
 
 // Read by ID
 router.get("/:id", asyncHandler(getDamageReportById));
@@ -42,6 +44,6 @@ router.patch(
 router.delete("/:id", asyncHandler(deleteDamageReport));
 
 // PATCH /api/damage-report/:id/status
-router.patch("/:id/status", authMiddleware, asyncHandler(updateDamageReportStatus));
+router.patch("/:id/status", useAuth, asyncHandler(updateDamageReportStatus));
 
 export default router;

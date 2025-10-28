@@ -6,6 +6,7 @@ import path from "path";
 import { allowedOrigins } from "./config/corsOrigins";
 import { errorHandler } from "./middlewares/errorHandler";
 import routes from "./routes";
+import "./config/passport";
 
 // export const app: Application = express();
 // export const server: HTTPServer = http.createServer(app);
@@ -13,6 +14,7 @@ export const app = express();
 export const server = http.createServer(app);
 
 import compression from "compression";
+import passport from "passport";
 
 app.use(compression());
 
@@ -44,8 +46,18 @@ app.get("/uploads/:filename", (req: Request, res: Response) => {
   });
 });
 
+app.use(passport.initialize());
+
 // API routes
 app.use("/api", routes);
+
+
+// Root
+app.get("/", (req: Request, res: Response) => {
+  console.log(`HTTP Version: ${req.httpVersion}`);
+  res.send("Server with Google OAuth + MongoDB + JWT is running...");
+});
+
 
 // Root
 app.get("/", (req: Request, res: Response) => {

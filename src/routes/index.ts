@@ -24,8 +24,7 @@ import analyticsRoutes from "./analytics.routes";
 import refundPoliciesRoutes from "./refundPolicies.routes";
 import refundRequestsRoutes from "./refundRequests.routes";
 import dashboardRoutes from "./dashboard.routes";
-import userForm from "./userForm.routes";
-
+import userGoogleRoutes from "./usergoogle.routes";
 const router = express.Router();
 
 router.use("/users", userRoutes);
@@ -52,5 +51,6 @@ router.use("/queries", helpSupportRoutes);
 router.use("/contact-us", contactUsRoutes);
 router.use("/favourites", favouritesRoutes);
 router.use("/analytics", analyticsRoutes);
+router.use("/oauth", userGoogleRoutes); 
 
 export default router;
