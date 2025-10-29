@@ -55,33 +55,6 @@ function asyncHandler(fn: any) {
 const useAuth = authMiddleware as any;
 
 
-//for web 
-// Step 1: Redirect user to Google
-router.get(
-  "/google",
-  passport.authenticate("google", { scope: ["profile", "email"] })
-);
-
-// Step 2: Google redirects back here
-router.get(
-  "/google/callback",
-  passport.authenticate("google", { failureRedirect: "/login" }),
-  (req: any, res) => {
-    const user = req.user;
-
-    // Generate JWT
-    const token = jwt.sign(
-      { uid: user._id, email: user.email },
-      process.env.JWT_SECRET as string,
-      { expiresIn: "12h" }
-    );
-
-    // Redirect to frontend with token (example)
-    res.redirect(`${process.env.FRONTEND_URL}/login-success?token=${token}`);
-  }
-);
-
-
 //social logins 
 // POST /api/auth/google
 router.post("/google", googleLogin);
