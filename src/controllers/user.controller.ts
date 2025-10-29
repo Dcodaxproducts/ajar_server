@@ -365,7 +365,6 @@ export const resendOtp = async (
   }
 };
 
-
 export const verifyOtp = async (
   req: Request,
   res: Response,
@@ -497,7 +496,6 @@ export const resetPassword = async (
     next(error);
   }
 };
-
 
 // Embedded pagination logic directly inside the controller
 const paginateQuery = async <T>(
@@ -639,7 +637,6 @@ export const updateUserProfile = async (
     next(error);
   }
 };
-
 
 // add dynamic form
 export const addForm = async (
@@ -995,7 +992,6 @@ export const deleteUser = async (
 };
 
 // for documents get dropdown
-
 import { Dropdown } from "../models/dropdown.model";
 
 export const getUserDocuments = async (
@@ -1029,25 +1025,20 @@ export const getListingDocuments = async (
 
 //socail logins 
 // Controller: Google Login
-import { OAuth2Client, LoginTicket  } from "google-auth-library";
+// import { OAuth2Client, LoginTicket  } from "google-auth-library";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import admin from "firebase-admin";
 
 dotenv.config();
 
-const googleClient = new OAuth2Client();
-
-
- //Google Login Controller
-
-// Safely define allowed Google OAuth client IDs
-const ALLOWED_AUDIENCES = new Set(
-  [
-    process.env.GOOGLE_WEB_CLIENT_ID,
-    process.env.GOOGLE_ANDROID_CLIENT_ID,
-    process.env.GOOGLE_IOS_CLIENT_ID,
-  ].filter((id): id is string => Boolean(id))
-);
+//  Initialize Firebase Admin once
+if (!admin.apps.length) {
+  const serviceAccount = require("../config/ajar-48a79-firebase-adminsdk-fbsvc-50588602d0.json");
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
 
 export const googleLogin = async (
   req: Request,
@@ -1057,98 +1048,221 @@ export const googleLogin = async (
   try {
     const { idToken, platform } = req.body;
 
-    //1. Validate request
+    // Validate Firebase token input
     if (!idToken) {
-      sendResponse(res, null, "Missing Google ID token", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, "Missing Firebase ID token", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    //2. Verify Google ID token
-    const ticket: LoginTicket = await googleClient.verifyIdToken({
-      idToken,
-      audience: Array.from(ALLOWED_AUDIENCES),
-    });
+    //  Verify Firebase token with Admin SDK
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    console.log("Firebase decoded token:", decodedToken);
 
-    const payload = ticket.getPayload();
-    if (!payload) {
-      sendResponse(res, null, "Invalid token", STATUS_CODES.UNAUTHORIZED);
-      return;
-    }
+    const { email, name, picture, uid } = decodedToken;
 
-    //3. Check valid audience
-    if (!ALLOWED_AUDIENCES.has(payload.aud)) {
-      sendResponse(res, null, "Invalid audience", STATUS_CODES.UNAUTHORIZED);
-      return;
-    }
-
-    //4. Extract user data from Google
-    const { email, name = "Google User", picture } = payload;
     if (!email) {
-      sendResponse(res, null, "Email not found in token", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, "Email not found in Firebase token", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    //5. Find existing user or create new
+    //  Check if user exists
     let user = await User.findOne({ email });
 
     if (!user) {
-      const hashedPassword = await bcrypt.hash("google-login", 10);
+      const hashedPassword = await bcrypt.hash("firebase-login", 10);
 
       user = new User({
         email,
         password: hashedPassword,
-        name,
+        name: name || "Google User",
         role: "user",
         otp: { isVerified: true },
         profilePicture: picture || "",
+        firebaseUid: uid,
       });
 
-      // Optional: Create Stripe customer
+      // Optional: Stripe customer
       const stripeCustomer = await createCustomer(email, name);
       if (stripeCustomer?.id) {
-        user.stripe.customerId = stripeCustomer.id;
+        user.stripe = {
+          customerId: stripeCustomer.id,
+          subscriptionId: "",
+          connectedAccountId: "",
+          connectedAccountLink: "",
+        };
       }
 
       await user.save();
 
-      // Optional: Send welcome email
+      // Optional: Welcome email
       await sendEmail({
         to: email,
         name,
         subject: "Welcome to our App",
-        content: `Hi ${name}, your account has been created via Google login.`,
+        content: `Hi ${name || "there"}, your account has been created via Google (Firebase) login.`,
       });
     }
 
-    //6. Generate JWT for app session
-    const token = jwt.sign(
-      { uid: user._id, email: user.email },
-      process.env.JWT_SECRET as string,
-      { expiresIn: "12h" }
-    );
+    // Generate Access Token using your util (same as loginUser)
+    const accessToken = generateAccessToken({
+      id: user._id,
+      role: user.role,
+    });
 
-    //7. Success response
+    console.log("Access Token:", accessToken);
+
+    // Send success response
     sendResponse(
       res,
       {
-        token,
+        token: accessToken,
         user: {
           id: user._id,
           name: user.name,
           email: user.email,
           avatar: user.profilePicture,
           provider: "google",
-          platform: platform || "web",
+          platform: platform || "mobile",
         },
       },
-      "Google login successful",
+      "Firebase Google login successful",
       STATUS_CODES.OK
     );
   } catch (error) {
-    console.error("Google login error:", error);
+    console.error("Firebase Google login error:", error);
     next(error);
   }
 };
+
+
+
+
+
+
+
+
+
+//this is for googleoauth login {
+
+// dotenv.config();
+
+// const googleClient = new OAuth2Client();
+
+
+ //Google Login Controller
+
+// Safely define allowed Google OAuth client IDs
+// const ALLOWED_AUDIENCES = new Set(
+//   [
+
+//     process.env.GOOGLE_ANDROID_CLIENT_ID,
+//     process.env.GOOGLE_IOS_CLIENT_ID,
+//   ].filter((id): id is string => Boolean(id))
+// );
+
+// export const googleLogin = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const { idToken, platform } = req.body;
+
+//     //1. Validate request
+//     if (!idToken) {
+//       sendResponse(res, null, "Missing Google ID token", STATUS_CODES.BAD_REQUEST);
+//       return;
+//     }
+
+//     //2. Verify Google ID token
+//     const ticket: LoginTicket = await googleClient.verifyIdToken({
+//       idToken,
+//       audience: Array.from(ALLOWED_AUDIENCES),
+//     });
+//     console.log("Google login ticket:", ticket);
+
+//     const payload = ticket.getPayload();
+//     if (!payload) {
+//       sendResponse(res, null, "Invalid token", STATUS_CODES.UNAUTHORIZED);
+//       return;
+//     }
+//     console.log("Google login payload:", payload);
+
+//     //3. Check valid audience
+//     if (!ALLOWED_AUDIENCES.has(payload.aud)) {
+//       sendResponse(res, null, "Invalid audience", STATUS_CODES.UNAUTHORIZED);
+//       return;
+//     }
+
+//     //4. Extract user data from Google
+//     const { email, name = "Google User", picture } = payload;
+//     if (!email) {
+//       sendResponse(res, null, "Email not found in token", STATUS_CODES.BAD_REQUEST);
+//       return;
+//     }
+
+//     //5. Find existing user or create new
+//     let user = await User.findOne({ email });
+
+//     if (!user) {
+//       const hashedPassword = await bcrypt.hash("google-login", 10);
+
+//       user = new User({
+//         email,
+//         password: hashedPassword,
+//         name,
+//         role: "user",
+//         otp: { isVerified: true },
+//         profilePicture: picture || "",
+//       });
+
+//       // Optional: Create Stripe customer
+//       const stripeCustomer = await createCustomer(email, name);
+//       if (stripeCustomer?.id) {
+//         user.stripe.customerId = stripeCustomer.id;
+//       }
+
+//       await user.save();
+
+//       // Optional: Send welcome email
+//       await sendEmail({
+//         to: email,
+//         name,
+//         subject: "Welcome to our App",
+//         content: `Hi ${name}, your account has been created via Google login.`,
+//       });
+//     }
+
+//     //6. Generate JWT for app session
+//     const token = jwt.sign(
+//       { uid: user._id, email: user.email },
+//       process.env.JWT_SECRET as string,
+//       { expiresIn: "12h" }
+//     );
+
+//     //7. Success response
+//     sendResponse(
+//       res,
+//       {
+//         token,
+//         user: {
+//           id: user._id,
+//           name: user.name,
+//           email: user.email,
+//           avatar: user.profilePicture,
+//           provider: "google",
+//           platform: platform || "web",
+//         },
+//       },
+//       "Google login successful",
+//       STATUS_CODES.OK
+//     );
+//   } catch (error) {
+//     console.error("Google login error:", error);
+//     next(error);
+//   }
+// };
+// }
 
 // Controller: Apple Login
 import jwksClient from "jwks-rsa";
