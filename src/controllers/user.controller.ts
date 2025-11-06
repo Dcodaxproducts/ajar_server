@@ -1290,9 +1290,7 @@ const getApplePublicKey = (kid: string): Promise<string> => {
 // Safely define allowed Apple client IDs (per platform)
 const ALLOWED_APPLE_AUDIENCES = new Set(
   [
-    process.env.APPLE_WEB_CLIENT_ID,
-    process.env.APPLE_IOS_CLIENT_ID,
-    process.env.APPLE_ANDROID_CLIENT_ID,
+    process.env.IOS_CLIENT_ID
   ].filter((id): id is string => Boolean(id))
 );
 

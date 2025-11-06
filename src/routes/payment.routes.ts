@@ -1,79 +1,17 @@
 import express from "express";
-
-import { authMiddleware } from "../middlewares/auth.middleware";
-import { validateRequest } from "../middlewares/validateRequest";
-import {
-  attachPaymentMethodToCustomer,
-  confirmOnboarding,
-  createPayment,
-  deleteOnboardedAccount,
-  getAllPayments,
-  handleCreateSubscription,
-  handleRefund,
-  onBoardVendor,
-  transferToVendor,
-  verifyPayment,
-} from "../controllers/payment.controller";
-import {
-  createPaymentSchema,
-  transferSchema,
-  verifyPaymentSchema,
-} from "../schemas/payment.schema";
-import {
-  attachPaymentMethod,
-  refundPayment,
-} from "../helpers/stripe-functions";
+import { createBookingPayment, stripeWebhook } from "../controllers/payment.controller";
 
 const router = express.Router();
 
-function asyncHandler(fn: any) {
-  return function (req: any, res: any, next: any) {
-    Promise.resolve(fn(req, res, next)).catch(next);
-  };
-}
+//Create Payment Intent for a Booking
+router.post("/stripe/intent", createBookingPayment as express.RequestHandler);
 
-const useAuth = authMiddleware as any;
-
-router.get("/", useAuth, asyncHandler(getAllPayments));
+//Stripe Webhook endpoint
+// NOTE: Must use raw body parser for Stripe signature verification
 router.post(
-  "/",
-  useAuth,
-  validateRequest({ body: createPaymentSchema }),
-  asyncHandler(createPayment)
+  "/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhook as express.RequestHandler
 );
-
-// attach payment method
-router.post(
-  "/attach-payment-method",
-  //   authMiddleware,
-  asyncHandler(attachPaymentMethodToCustomer)
-);
-
-/// verify payment
-router.post(
-  "/verify",
-  useAuth,
-  validateRequest({ body: verifyPaymentSchema }),
-  asyncHandler(verifyPayment)
-);
-
-router.get("/onboarding", useAuth, asyncHandler(onBoardVendor));
-router.get("/onboarding/status", useAuth, asyncHandler(confirmOnboarding));
-
-router.post(
-  "/transfer",
-  useAuth,
-  validateRequest({ body: transferSchema }),
-  asyncHandler(transferToVendor)
-);
-
-// delete connected account
-router.delete("/onboarding", useAuth, asyncHandler(deleteOnboardedAccount));
-
-// refund payment
-router.post("/refund", useAuth, asyncHandler(handleRefund));
-
-/// subscription
-router.post("/subscribe", useAuth, asyncHandler(handleCreateSubscription));
 
 export default router;

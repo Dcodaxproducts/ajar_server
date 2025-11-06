@@ -86,7 +86,7 @@ const BookingSchema = new Schema<IBooking>(
     },
 
     extraRequestCharges: {
-      additionalCharges: { type: Number },
+      additionalCharges: { type: Number, default: 0 },
       totalPrice: { type: Number },
     },
 
