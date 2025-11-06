@@ -1,432 +1,134 @@
-import { NextFunction, Response } from "express";
-import { AuthRequest } from "../types/express";
-import { sendResponse } from "../utils/response";
-import { STATUS_CODES } from "../config/constants";
+import { Booking } from "../models/booking.model";
 import { User } from "../models/user.model";
-import {
-  attachAndSetDefaultPaymentMethod,
-  checkAccountStatus,
-  createConnectedAccount,
-  createPaymentIntent,
-  createSubscription,
-  createSubscriptionPlan,
-  deleteConnectedAccount,
-  getOnboardingLink,
-  refundPayment,
-  transferFunds,
-  verifyPaymentIntent,
-} from "../helpers/stripe-functions";
-import { Transaction } from "../models/transaction.model";
+import { Payment } from "../models/payment.model";
+import stripe from "../utils/stripe";
+import mongoose from "mongoose";
+import { Request, Response } from "express";
 
-export const getAllPayments = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+export const createBookingPayment = async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.id;
-    const user = await User.findById(userId).select("role");
+    const { bookingId } = req.body;
+console.log("Creating payment for booking ID:", bookingId);
+    if (!mongoose.Types.ObjectId.isValid(bookingId))
+      return res.status(400).json({ message: "Invalid booking ID" });
 
-    let filter: Record<string, any> = {};
+    const booking = await Booking.findById(bookingId).populate("renter");
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+console.log("Booking found:", booking);
+    const user = booking.renter as any;
+    if (!user.stripe?.customerId)
+      return res.status(400).json({ message: "Stripe customer not found for user" });
 
-    if (user?.role === "admin") {
-      filter.vendor = userId;
-    } else if (user?.role === "user") {
-      filter.user = userId;
+  console.log("User Stripe Customer ID:", user.stripe.customerId);
+
+    // Calculate total amount
+    let amount = booking.priceDetails.totalPrice;
+
+    if (booking.isExtend && booking.extendCharges?.extendCharges) {
+      amount = booking.extendCharges.extendCharges;
+    } else if (booking.extraRequestCharges?.additionalCharges) {
+      amount = booking.extraRequestCharges.additionalCharges;
     }
 
-    const transactions = await Transaction.find(filter).sort({ createdAt: -1 });
-
-    sendResponse(
-      res,
-      transactions,
-      "Transactions retrieved successfully",
-      STATUS_CODES.OK
-    );
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const createPayment = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const { amount, currency, paymentMethodId } = req.body;
-    const userId = req.user?.id;
-
-    const user = await User.findById(userId).select("stripeCustomerId");
-    if (!user) {
-      sendResponse(res, {}, "User not found", STATUS_CODES.NOT_FOUND);
-      return;
-    }
-
-    const paymentIntent = await createPaymentIntent(
-      sanitizeAmount(amount),
-      currency,
-      paymentMethodId,
-      user?.stripe.customerId
-    );
-
-    sendResponse(
-      res,
-      { client_secret: paymentIntent.client_secret },
-      "Payment created successfully",
-      STATUS_CODES.CREATED
-    );
-  } catch (error) {
-    next(error);
-  }
-};
-
-// verify payment
-export const verifyPayment = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const { paymentIntentId } = req.body;
-
-    const paymentIntent = await verifyPaymentIntent(paymentIntentId);
-
-    console.log({ paymentIntent });
-
-    if (paymentIntent.status === "succeeded") {
-      const transaction = new Transaction({
-        user: req.user?.id,
-        amount: paymentIntent.amount / 100,
-        currency: paymentIntent.currency,
-        paymentIntentId: paymentIntent.id,
-      });
-
-      await transaction.save();
-
-      sendResponse(
-        res,
-        transaction,
-        "Payment verified successfully",
-        STATUS_CODES.OK
-      );
-    } else {
-      sendResponse(res, {}, "Payment failed ", STATUS_CODES.BAD_REQUEST);
-    }
-  } catch (error) {
-    next(error);
-  }
-};
-
-/// attach payment method to customer ( attachPaymentMethodToCustomer )
-export const attachPaymentMethodToCustomer = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const { paymentMethodId } = req.body;
-    console.log(req.body);
-    const userId = req.user?.id;
-
-    const user = await User.findById(userId).select("name email stripe");
-
-    if (!user) {
-      sendResponse(res, {}, "User not found", STATUS_CODES.NOT_FOUND);
-      return;
-    }
-
-    //  attachPaymentMethod || attachAndSetDefaultPaymentMethod
-    const attached = await attachAndSetDefaultPaymentMethod(
-      paymentMethodId,
-      user.stripe.customerId
-      //   customerId
-    );
-
-    if (!attached) {
-      sendResponse(
-        res,
-        {},
-        "Failed to attach payment method",
-        STATUS_CODES.BAD_REQUEST
-      );
-      return;
-    }
-
-    sendResponse(
-      res,
-      attached,
-      "Payment method attached successfully",
-      STATUS_CODES.CREATED
-    );
-  } catch (error) {
-    next(error);
-  }
-};
-
-// onborad connected acount  ( createConnectedAccount )
-export const onBoardVendor = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const userId = req.user?.id;
-
-    const user = await User.findById(userId).select("email stripe");
-
-    if (!user) {
-      sendResponse(res, {}, "User not found", STATUS_CODES.NOT_FOUND);
-      return;
-    }
-
-    if (user.stripe.connectedAccountId) {
-      sendResponse(
-        res,
-        {
-          accountLinks: user.stripe.connectedAccountLink,
-        },
-        "User already onboarded with Stripe , use the above link to complete onboarding",
-        STATUS_CODES.BAD_REQUEST
-      );
-      return;
-    }
-
-    const account = await createConnectedAccount(user?.email as string);
-    if (!account) {
-      sendResponse(
-        res,
-        {},
-        "Failed to create connected account",
-        STATUS_CODES.BAD_REQUEST
-      );
-      return;
-    }
-    const accountLinks = await getOnboardingLink(account.id);
-
-    if (!accountLinks) {
-      sendResponse(
-        res,
-        {},
-        "Failed to create connected account",
-        STATUS_CODES.BAD_REQUEST
-      );
-      return;
-    }
-
-    user.stripe.connectedAccountId = account.id;
-    user.stripe.connectedAccountLink = accountLinks;
-    await user.save();
-
-    sendResponse(
-      res,
-      { accountLinks },
-      "Connected account created successfully",
-      STATUS_CODES.CREATED
-    );
-  } catch (error) {
-    next(error);
-  }
-};
-
-// delte connected account ( deleteConnectedAccount )
-export const deleteOnboardedAccount = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const userId = req.user?.id;
-
-    const user = await User.findById(userId).select(
-      "stripe.connectedAccountId"
-    );
-
-    if (!user) {
-      sendResponse(res, {}, "User not found", STATUS_CODES.NOT_FOUND);
-      return;
-    }
-
-    const connectedAccountId = user.stripe.connectedAccountId;
-    if (!connectedAccountId) {
-      sendResponse(
-        res,
-        {},
-        "User not onboarded with Stripe",
-        STATUS_CODES.BAD_REQUEST
-      );
-      return;
-    }
-
-    const deleted = await deleteConnectedAccount(connectedAccountId);
-
-    if (!deleted) {
-      sendResponse(
-        res,
-        {},
-        "Failed to delete connected account",
-        STATUS_CODES.BAD_REQUEST
-      );
-      return;
-    }
-
-    user.stripe.connectedAccountId = "";
-    user.stripe.connectedAccountLink = "";
-    await user.save();
-
-    sendResponse(
-      res,
-      {},
-      "Connected account deleted successfully",
-      STATUS_CODES.OK
-    );
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const confirmOnboarding = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const userId = req.user?.id;
-    const user = await User.findById(userId).select(
-      "stripe.connectedAccountId"
-    );
-
-    if (!user) {
-      sendResponse(res, {}, "User not found", STATUS_CODES.NOT_FOUND);
-      return;
-    }
-
-    const connectedAccountId = user?.stripe.connectedAccountId;
-    const connectedAccountDetails = await checkAccountStatus(
-      connectedAccountId
-    );
-
-    sendResponse(
-      res,
-      connectedAccountDetails,
-      "Connected account status retrieved successfully",
-      STATUS_CODES.OK
-    );
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const transferToVendor = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const { amount, currency, vendorId } = req.body;
-    const vendor = await User.findById(vendorId)
-      .select("stripe.connectedAccountId")
-      .lean();
-    if (!vendor || !vendor.stripe.connectedAccountId) {
-      sendResponse(
-        res,
-        null,
-        "Vendor not onboarded with Stripe",
-        STATUS_CODES.BAD_REQUEST
-      );
-      return;
-    }
-
-    const transfer = await transferFunds(
-      vendor.stripe.connectedAccountId,
-      amount,
-      currency
-    );
-
-    sendResponse(
-      res,
-      transfer,
-      "Funds transferred successfully",
-      STATUS_CODES.OK
-    );
-  } catch (error) {
-    next(error);
-  }
-};
-
-// refund payment
-export const handleRefund = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const { paymentIntentId, amount } = req.body;
-
-    const refund = await refundPayment(paymentIntentId, sanitizeAmount(amount));
-
-    sendResponse(res, refund, "Payment refunded successfully", STATUS_CODES.OK);
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const sanitizeAmount = (amount: number): number => {
-  return Math.round(amount * 100);
-};
-
-//handle subscription
-export const handleCreateSubscription = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const { plan } = req.body;
-    const user = await User.findById(req.user?.id).select("name  email stripe");
-    if (!user) {
-      sendResponse(res, {}, "User not found", STATUS_CODES.NOT_FOUND);
-      return;
-    }
-
-    const subscriptionPlan = await createSubscriptionPlan(
-      "title",
-      "description",
-      2000,
-      "usd",
-      "month"
-    );
-
-    console.log({ subscriptionPlan });
-
-    if (!subscriptionPlan || !subscriptionPlan.price.id) {
-      sendResponse(
-        res,
-        {},
-        "Failed to create subscription plan",
-        STATUS_CODES.BAD_REQUEST
-      );
-      return;
-    }
-
-    const subscription = await createSubscription(
-      "cus_RvyQfm3DFZ1aNa",
-      subscriptionPlan.price.id,
-      "acct_1R28aaRnaLCjh1jY"
-    );
-
-    console.log({ subscription });
-
-    sendResponse(
-      res,
-      {
-        subscription,
-        subscriptionPlan,
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(amount * 100), // cents
+      currency: "usd",
+      // customer: user.stripe.customerId,
+      metadata: {
+        bookingId: (booking._id as mongoose.Types.ObjectId).toString(),
+        userId: user._id.toString(),
       },
-      "Subscription created successfully",
-      STATUS_CODES.CREATED
-    );
+    });
+    console.log("stripe", stripe);
+console.log("Payment Intent created:", paymentIntent.id);
+
+    // Save payment record
+    await Payment.create({
+      bookingId: booking._id,
+      userId: user._id,
+      amount,
+      currency: "usd",
+      status: "pending",
+      paymentIntentId: paymentIntent.id,
+      method: "stripe",
+    });
+
+    res.status(200).json({
+      clientSecret: paymentIntent.client_secret,
+      message: "Payment initiated",
+    });
   } catch (error) {
-    next(error);
+    console.error(error);
+    res.status(500).json({ message: "Server error", error });
   }
+};
+
+
+
+export const stripeWebhook = async (req: Request, res: Response) => {
+  const sig = req.headers["stripe-signature"]!;
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET!
+    );
+  } catch (err: any) {
+    console.error("Webhook signature verification failed.", err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  switch (event.type) {
+    case "payment_intent.succeeded": {
+      const paymentIntent = event.data.object as any;
+      const bookingId = paymentIntent.metadata.bookingId;
+      const userId = paymentIntent.metadata.userId;
+
+      const booking = await Booking.findById(bookingId);
+      if (!booking) break;
+
+      // Update booking status
+      booking.status = "approved";
+
+      // Deduct logic
+      if (booking.isExtend && booking.extendCharges) {
+        // Deduct only from extendCharges
+        booking.extendCharges.extendCharges += 150; 
+        booking.extendCharges.totalPrice += 150;
+      } else if (booking.extraRequestCharges) {
+        booking.extraRequestCharges.additionalCharges += 150;
+        booking.extraRequestCharges.totalPrice += 150;
+      } else {
+        booking.priceDetails.totalPrice += 150;
+      }
+
+      await booking.save();
+
+      // Update payment record
+      await Payment.findOneAndUpdate(
+        { paymentIntentId: paymentIntent.id },
+        { status: "succeeded" }
+      );
+
+      break;
+    }
+
+    case "payment_intent.payment_failed": {
+      const paymentIntent = event.data.object as any;
+      console.log("Payment failed for:", paymentIntent.metadata.bookingId);
+
+      await Payment.findOneAndUpdate(
+        { paymentIntentId: paymentIntent.id },
+        { status: "failed" }
+      );
+      break;
+    }
+
+    default:
+      console.log(`Unhandled event type ${event.type}`);
+  }
+
+  res.json({ received: true });
 };
