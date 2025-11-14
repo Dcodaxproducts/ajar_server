@@ -1,4 +1,6 @@
 import mongoose, { Schema, Document, model } from "mongoose";
+import { IMarketplaceListing } from "./marketplaceListings.model";
+import { IUser } from "./user.model";
 
 interface IPriceDetails {
   price: number;
@@ -23,10 +25,12 @@ interface IDamagesCharges {
 }
 
 export interface IBooking extends Document {
+
+    _id: mongoose.Types.ObjectId; 
   status: "pending" | "approved" | "rejected" | "completed" | "cancelled";
-  renter: mongoose.Types.ObjectId;
-  leaser?: mongoose.Types.ObjectId;
-  marketplaceListingId: mongoose.Types.ObjectId;
+  renter: mongoose.Types.ObjectId | IUser;
+  leaser?: mongoose.Types.ObjectId | IUser;
+  marketplaceListingId: mongoose.Types.ObjectId | IMarketplaceListing;
   dates: {
     checkIn: Date;
     checkOut: Date;

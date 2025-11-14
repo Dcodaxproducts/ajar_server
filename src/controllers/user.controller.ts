@@ -1267,15 +1267,14 @@ export const googleLogin = async (
 // Controller: Apple Login
 import jwksClient from "jwks-rsa";
 
-
 dotenv.config();
 
-// Apple JWKS client to get Apple public keys
+//Apple JWKS client to get Apple public keys
 const client = jwksClient({
   jwksUri: "https://appleid.apple.com/auth/keys",
 });
 
-// Helper: Get Apple public key for verifying token
+//Helper to get Apple public key by key ID
 const getApplePublicKey = (kid: string): Promise<string> => {
   return new Promise((resolve, reject) => {
     client.getSigningKey(kid, (err, key) => {
@@ -1287,13 +1286,20 @@ const getApplePublicKey = (kid: string): Promise<string> => {
   });
 };
 
-// Safely define allowed Apple client IDs (per platform)
+//Apple client IDs (audiences)
+// const ALLOWED_APPLE_AUDIENCES = new Set(
+//   [process.env.APPLE_CLIENT_ID].filter((id): id is string => Boolean(id))
+// );
+
 const ALLOWED_APPLE_AUDIENCES = new Set(
   [
-    process.env.IOS_CLIENT_ID
-  ].filter((id): id is string => Boolean(id))
+    process.env.APPLE_CLIENT_ID,   // e.g. com.dcodax.ajar.app
+    process.env.APPLE_WEB_ID,      // optional, if you add one later
+  ].filter(Boolean)
 );
 
+
+//Apple Login Controller
 export const appleLogin = async (
   req: Request,
   res: Response,
@@ -1302,24 +1308,23 @@ export const appleLogin = async (
   try {
     const { idToken, platform } = req.body;
 
-    //Validate input
     if (!idToken) {
       sendResponse(res, null, "Missing Apple ID token", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    //Decode header to get the 'kid'
+    // Decode JWT header to extract `kid`
     const decodedHeader = jwt.decode(idToken, { complete: true }) as {
       header: { kid: string; alg: string };
-    };
+    } | null;
+
     if (!decodedHeader?.header?.kid) {
       sendResponse(res, null, "Invalid Apple token header", STATUS_CODES.UNAUTHORIZED);
       return;
     }
 
-    //Fetch Apple public key and verify token
+    // Fetch Apple public key & verify token
     const publicKey = await getApplePublicKey(decodedHeader.header.kid);
-
     const applePayload = jwt.verify(idToken, publicKey, {
       algorithms: ["RS256"],
     }) as {
@@ -1330,7 +1335,7 @@ export const appleLogin = async (
       iss: string;
     };
 
-    //Validate issuer & audience
+    // Validate issuer & audience
     if (applePayload.iss !== "https://appleid.apple.com") {
       sendResponse(res, null, "Invalid issuer", STATUS_CODES.UNAUTHORIZED);
       return;
@@ -1341,13 +1346,12 @@ export const appleLogin = async (
       return;
     }
 
-    //Extract user data
     const email = applePayload.email;
     const name = "Apple User";
     const picture = "";
 
     if (!email) {
-      sendResponse(res, null, "Email not found in token", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, "Email not found in Apple token", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -1358,23 +1362,28 @@ export const appleLogin = async (
       const hashedPassword = await bcrypt.hash("apple-login", 10);
 
       user = new User({
+        name,
         email,
         password: hashedPassword,
-        name,
         role: "user",
         otp: { isVerified: true },
         profilePicture: picture,
       });
 
-      // Optional: Create Stripe customer
-      const stripeCustomer = await createCustomer(email, name);
+      // Optional: Stripe customer creation
+      const stripeCustomer = await createCustomer(email, name).catch(() => null);
       if (stripeCustomer?.id) {
-        user.stripe.customerId = stripeCustomer.id;
+        user.stripe = {
+          customerId: stripeCustomer.id,
+          subscriptionId: '',
+          connectedAccountId: '',
+          connectedAccountLink: ''
+        };
       }
 
       await user.save();
 
-      // Optional: Send welcome email
+      // Optional: Welcome email
       await sendEmail({
         to: email,
         name,
@@ -1383,18 +1392,19 @@ export const appleLogin = async (
       });
     }
 
-    //Generate JWT for app session
-    const token = jwt.sign(
-      { uid: user._id, email: user.email },
-      process.env.JWT_SECRET as string,
-      { expiresIn: "12h" }
-    );
+    // Generate token using the same utility as normal login
+    const accessToken = generateAccessToken({
+      id: user._id,
+      email: user.email,
+      role: user.role,
+    });
+
 
     //Success response
     sendResponse(
       res,
       {
-        token,
+        token:accessToken,
         user: {
           id: user._id,
           name: user.name,

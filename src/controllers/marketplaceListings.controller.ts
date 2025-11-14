@@ -15,6 +15,7 @@ import { UserForm } from "../models/userForm.model";
 import { validateDocuments } from "../middlewares/documentvalidationhelper.middleware";
 import { User } from "../models/user.model";
 import { Review } from "../models/review.model";
+import { sendNotification } from "../utils/notifications";
 
 // controllers/marketplaceListings.controller.ts]
 const toCamelCase = (str: string) =>
@@ -41,7 +42,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     }
     console.log("Normalized request body:", normalisedBody);
 
-    //Early validation for required fields
+    // Early validation for required fields
     const requiredFields = ["name", "subTitle", "price"];
     for (const field of requiredFields) {
       if (!normalisedBody[field]) {
@@ -53,7 +54,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       }
     }
 
-    //Load Form for zone + subCategory
+    // Load Form for zone + subCategory
     const form = await Form.findOne({
       zone: new mongoose.Types.ObjectId(zone),
       subCategory: new mongoose.Types.ObjectId(subCategory),
@@ -66,15 +67,15 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
         message: "Form not found for this Zone/SubCategory",
       });
     }
-    console.log("Form found:", form.name);
+    console.log("Form found:", (form as any).name);
 
-    //Handle uploaded files and separate them
+    // Handle uploaded files and separate them
     const uploadedFiles = (req.files as Express.Multer.File[]) || [];
     const generalImages: string[] = [];
     const rentalImages: string[] = [];
     const listingDocs: any[] = [];
 
-    const requiredDocs = form.leaserDocuments || [];
+    const requiredDocs = (form as any).leaserDocuments || [];
     const uploadedDocNames = uploadedFiles.map((file) => file.fieldname);
     console.log("Required documents from Form:", requiredDocs);
     console.log("Uploaded file field names:", uploadedDocNames);
@@ -92,10 +93,10 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       });
     }
 
-    //Check for missing required documents
+    // Check for missing required documents
     if (requiredDocs.length > 0) {
       const missingDocs = requiredDocs.filter(
-        (docName) => !uploadedDocNames.includes(docName)
+        (docName: string) => !uploadedDocNames.includes(docName)
       );
       if (missingDocs.length > 0) {
         console.log("Missing required documents:", missingDocs);
@@ -107,7 +108,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       }
     }
 
-    //Separate images and documents
+    // Separate images and documents
     uploadedFiles.forEach((file) => {
       const filePath = `/uploads/${file.filename}`;
       if (file.fieldname === "images") {
@@ -126,20 +127,18 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     console.log("Rental Images:", rentalImages);
     console.log("Listing Documents:", listingDocs);
 
-    //Validate dynamic fields from form
+    // Validate dynamic fields from form
     console.log("Starting validation of dynamic fields...");
-    const fields = form.fields as any[];
+    const fields = (form as any).fields as any[];
     const requestData: any = {};
 
     for (const field of fields) {
       const fieldName = toCamelCase(field.name);
       const value = normalisedBody[fieldName];
 
-      //CHANGE: Skip validation for document-type fields (handled via file uploads)
+      // Skip document-type fields (file uploads handled above)
       if (field.type === "document") {
-        console.log(
-          `Skipping validation for document-type field: ${fieldName}`
-        );
+        console.log(`Skipping validation for document-type field: ${fieldName}`);
         continue;
       }
 
@@ -156,7 +155,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
 
     console.log("Dynamic fields validated successfully.");
 
-    //Create Marketplace Listing with separated data
+    // Create Marketplace Listing with separated data
     console.log("Creating new Marketplace Listing...");
     const listing = new MarketplaceListing({
       leaser,
@@ -174,6 +173,23 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     await listing.save();
     console.log("Listing created successfully with ID:", listing._id);
 
+    // Notify all admins about new listing
+    const admins = await User.find({ role: "admin" }).lean();
+    for (const adminUser of admins) {
+      try {
+        await sendNotification(
+          adminUser._id.toString(),
+          "New Listing Created",
+          `Leaser ${req.user.name || req.user.email || "A user"} has created a new listing: ${listing.name}`,
+          // { listingId: listing._id.toString(), type: "listing" }
+          { listingId: (listing._id as mongoose.Types.ObjectId).toString(), type: "listing" }
+
+        );
+      } catch (err) {
+        console.error("Error notifying admin:", err);
+      }
+    }
+
     return res.status(201).json({
       success: true,
       message: "Listing created successfully",
@@ -187,6 +203,226 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     });
   }
 };
+// update listing status (admin only)
+export const updateListingStatus = async (req: AuthRequest, res: Response) => {
+  try {
+    const { listingId } = req.params;
+    const { status } = req.body;
+
+    // Only allow valid statuses
+    if (!["approved", "rejected"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status. Allowed values: approved, rejected",
+      });
+    }
+
+    // Find listing and update status
+    const listing = await MarketplaceListing.findById(listingId);
+    if (!listing) {
+      return res.status(404).json({
+        success: false,
+        message: "Listing not found",
+      });
+    }
+
+    listing.status = status;
+    await listing.save();
+
+    // Notify leaser about status update
+    try {
+      await sendNotification(
+        listing.leaser.toString(),
+        `Listing ${status}`,
+        `Your listing "${listing.name}" has been ${status}`,
+        // { listingId: listing._id.toString(), status, type: "listing" }
+         { listingId: (listing._id as mongoose.Types.ObjectId).toString(), status, type: "listing" }
+      );
+    } catch (err) {
+      console.error("Error notifying leaser about listing status:", err);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Listing ${status} successfully`,
+      data: listing,
+    });
+  } catch (error) {
+    console.error("Error updating listing status:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+
+
+
+
+// export const createMarketplaceListing = async (req: any, res: Response) => {
+//   console.log("Starting createMarketplaceListing process...");
+//   try {
+//     const { zone, subCategory } = req.body;
+//     const leaser = req.user.id;
+
+//     console.log(
+//       `Request received for Zone: ${zone}, SubCategory: ${subCategory}, Leaser ID: ${leaser}`
+//     );
+
+//     // Normalize body keys
+//     const normalisedBody: any = {};
+//     for (const key of Object.keys(req.body)) {
+//       normalisedBody[toCamelCase(key)] = req.body[key];
+//     }
+//     console.log("Normalized request body:", normalisedBody);
+
+//     //Early validation for required fields
+//     const requiredFields = ["name", "subTitle", "price"];
+//     for (const field of requiredFields) {
+//       if (!normalisedBody[field]) {
+//         console.log(`Missing required body field: ${field}`);
+//         return res.status(400).json({
+//           success: false,
+//           message: `${field} is required`,
+//         });
+//       }
+//     }
+
+//     //Load Form for zone + subCategory
+//     const form = await Form.findOne({
+//       zone: new mongoose.Types.ObjectId(zone),
+//       subCategory: new mongoose.Types.ObjectId(subCategory),
+//     }).populate("fields");
+
+//     if (!form) {
+//       console.log("Form not found for specified Zone/SubCategory.");
+//       return res.status(400).json({
+//         success: false,
+//         message: "Form not found for this Zone/SubCategory",
+//       });
+//     }
+//     console.log("Form found:", form.name);
+
+//     //Handle uploaded files and separate them
+//     const uploadedFiles = (req.files as Express.Multer.File[]) || [];
+//     const generalImages: string[] = [];
+//     const rentalImages: string[] = [];
+//     const listingDocs: any[] = [];
+
+//     const requiredDocs = form.leaserDocuments || [];
+//     const uploadedDocNames = uploadedFiles.map((file) => file.fieldname);
+//     console.log("Required documents from Form:", requiredDocs);
+//     console.log("Uploaded file field names:", uploadedDocNames);
+//     console.log("Incoming files:", req.files);
+
+//     // Check for required rentalImages
+//     const hasRentalImages = uploadedFiles.some(
+//       (file) => file.fieldname === "rentalImages"
+//     );
+//     if (!hasRentalImages) {
+//       console.log("Missing required file: rentalImages");
+//       return res.status(400).json({
+//         success: false,
+//         message: "rentalImages is required",
+//       });
+//     }
+
+//     //Check for missing required documents
+//     if (requiredDocs.length > 0) {
+//       const missingDocs = requiredDocs.filter(
+//         (docName) => !uploadedDocNames.includes(docName)
+//       );
+//       if (missingDocs.length > 0) {
+//         console.log("Missing required documents:", missingDocs);
+//         return res.status(400).json({
+//           success: false,
+//           message: `Missing required document(s): ${missingDocs.join(", ")}`,
+//           missingDocuments: missingDocs,
+//         });
+//       }
+//     }
+
+//     //Separate images and documents
+//     uploadedFiles.forEach((file) => {
+//       const filePath = `/uploads/${file.filename}`;
+//       if (file.fieldname === "images") {
+//         generalImages.push(filePath);
+//       } else if (file.fieldname === "rentalImages") {
+//         rentalImages.push(filePath);
+//       } else {
+//         listingDocs.push({
+//           name: file.fieldname,
+//           filesUrl: [filePath],
+//         });
+//       }
+//     });
+
+//     console.log("General Images:", generalImages);
+//     console.log("Rental Images:", rentalImages);
+//     console.log("Listing Documents:", listingDocs);
+
+//     //Validate dynamic fields from form
+//     console.log("Starting validation of dynamic fields...");
+//     const fields = form.fields as any[];
+//     const requestData: any = {};
+
+//     for (const field of fields) {
+//       const fieldName = toCamelCase(field.name);
+//       const value = normalisedBody[fieldName];
+
+//       //CHANGE: Skip validation for document-type fields (handled via file uploads)
+//       if (field.type === "document") {
+//         console.log(
+//           `Skipping validation for document-type field: ${fieldName}`
+//         );
+//         continue;
+//       }
+
+//       if (field.validation?.required && (value === undefined || value === "")) {
+//         console.log(`Missing required field: ${field.label}`);
+//         return res.status(400).json({
+//           success: false,
+//           message: `${field.label} is required`,
+//         });
+//       }
+
+//       if (value !== undefined) requestData[fieldName] = value;
+//     }
+
+//     console.log("Dynamic fields validated successfully.");
+
+//     //Create Marketplace Listing with separated data
+//     console.log("Creating new Marketplace Listing...");
+//     const listing = new MarketplaceListing({
+//       leaser,
+//       zone,
+//       subCategory,
+//       documents: listingDocs,
+//       images: generalImages,
+//       rentalImages: rentalImages,
+//       name: normalisedBody.name,
+//       subTitle: normalisedBody.subTitle,
+//       price: normalisedBody.price,
+//       ...requestData,
+//     });
+
+//     await listing.save();
+//     console.log("Listing created successfully with ID:", listing._id);
+
+//     return res.status(201).json({
+//       success: true,
+//       message: "Listing created successfully",
+//       data: listing,
+//     });
+//   } catch (error) {
+//     console.error("Server error during listing creation:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server error",
+//     });
+//   }
+// };
 
 // Get All Marketplace Listings with automatic cleanup
 export const getAllMarketplaceListingsforLeaser = async (
@@ -1094,45 +1330,45 @@ export const searchMarketplaceListings = async (
   }
 };
 
-// update listing status (admin only)
-export const updateListingStatus = async (req: AuthRequest, res: Response) => {
-  try {
-    const { listingId } = req.params;
-    const { status } = req.body;
+// // update listing status (admin only)
+// export const updateListingStatus = async (req: AuthRequest, res: Response) => {
+//   try {
+//     const { listingId } = req.params;
+//     const { status } = req.body;
 
-    //Only allow valid statuses
-    if (!["approved", "rejected"].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status. Allowed values: approved, rejected",
-      });
-    }
+//     //Only allow valid statuses
+//     if (!["approved", "rejected"].includes(status)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid status. Allowed values: approved, rejected",
+//       });
+//     }
 
-    //Find listing and update status
-    const listing = await MarketplaceListing.findById(listingId);
-    if (!listing) {
-      return res.status(404).json({
-        success: false,
-        message: "Listing not found",
-      });
-    }
+//     //Find listing and update status
+//     const listing = await MarketplaceListing.findById(listingId);
+//     if (!listing) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Listing not found",
+//       });
+//     }
 
-    listing.status = status;
-    await listing.save();
+//     listing.status = status;
+//     await listing.save();
 
-    return res.status(200).json({
-      success: true,
-      message: `Listing ${status} successfully`,
-      data: listing,
-    });
-  } catch (error) {
-    console.error("Error updating listing status:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
-  }
-};
+//     return res.status(200).json({
+//       success: true,
+//       message: `Listing ${status} successfully`,
+//       data: listing,
+//     });
+//   } catch (error) {
+//     console.error("Error updating listing status:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server error",
+//     });
+//   }
+// };
 
 export const getPopularMarketplaceListings = async (
   req: Request,
