@@ -25,6 +25,7 @@ import refundRequestsRoutes from "./refundRequests.routes";
 import dashboardRoutes from "./dashboard.routes";
 import userGoogleRoutes from "./usergoogle.routes";
 import paymentRoutes from "./payment.routes";
+import notificationRoutes from "./notification.routes"
 
 const router = express.Router();
 
@@ -54,5 +55,6 @@ router.use("/favourites", favouritesRoutes);
 router.use("/analytics", analyticsRoutes);
 router.use("/oauth", userGoogleRoutes); 
 router.use("/payments", paymentRoutes);
+router.use("/notifications", notificationRoutes)
 
 export default router;

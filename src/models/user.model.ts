@@ -31,6 +31,7 @@ export interface IUser extends Document {
   };
   status: "active" | "inactive" | "blocked" | "unblocked";
   documents: IUserDocument[];
+   fcmToken?: string; 
 }
 
 const UserDocumentSchema = new Schema<IUserDocument>({
@@ -78,6 +79,7 @@ const UserSchema: Schema<IUser> = new Schema(
       default: "active",
     },
     documents: [UserDocumentSchema], // embedded user verification docs
+    fcmToken: { type: String, default: "" },
   },
   { timestamps: true }
 );
