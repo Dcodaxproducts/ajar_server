@@ -63,8 +63,6 @@ console.log("Payment Intent created:", paymentIntent.id);
   }
 };
 
-
-
 export const stripeWebhook = async (req: Request, res: Response) => {
   const sig = req.headers["stripe-signature"]!;
   let event;

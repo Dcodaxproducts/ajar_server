@@ -1,8 +1,10 @@
 import express from "express";
 import {
   addForm,
+  addToWallet,
   appleLogin,
   createUser,
+  deductFromWallet,
   deleteUser,
   forgotPassword,
   getAllUsersWithStats,
@@ -10,11 +12,13 @@ import {
   getListingDocuments,
   getUserDetails,
   getUserDocuments,
+  getWallet,
   googleLogin,
   loginUser,
   refreshToken,
   resendOtp,
   resetPassword,
+  saveFcmToken,
   updateUserProfile,
   updateUserStatus,
   verifyOtp,
@@ -70,6 +74,11 @@ router.post(
 router.post("/login", validateRequest({ body: loginUserSchema }), loginUser);
 router.post("/refresh-token", refreshToken);
 
+
+// Endpoint to save FCM token
+router.post("/save-fcm-token", useAuth, asyncHandler(saveFcmToken));
+
+
 router.post(
   "/resend-otp",
   validateRequest({ body: resendOtpSchema }),
@@ -112,21 +121,6 @@ router.put(
 );
 
 
-// router.put(
-//   "/profile",
-//   authMiddleware,
-//   upload.fields([
-//     { name: "profilePicture", maxCount: 1 },
-//     { name: "cnic", maxCount: 1 },
-//     { name: "passport", maxCount: 1 },
-//     { name: "drivingLicense", maxCount: 1 },
-//   ]),
-//   validateRequest({ body: updateUserSchema }),
-//   updateUserProfile
-// );
-
-
-
 router.delete("/:userId", useAuth, asyncHandler(deleteUser));
 
 // documents routes
@@ -146,7 +140,17 @@ router.patch("/documents/review", useAuth, asyncHandler(reviewUserDocument));
 // Get all users
 router.get("/all", useAuth, asyncHandler(getAllUsers));
 
+// Get wallet balance
+router.get("/wallet", useAuth, asyncHandler(getWallet));
+
 // Get user by ID
 router.get("/:id", useAuth, asyncHandler(getUserById));
+
+
+// Add money to wallet
+router.post("/wallet/add", useAuth, asyncHandler(addToWallet));
+
+// Deduct money from wallet
+router.post("/wallet/deduct", useAuth, asyncHandler(deductFromWallet));
 
 export default router;

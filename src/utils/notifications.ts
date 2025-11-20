@@ -1,15 +1,8 @@
-// src/utils/notifications.ts
 import { Notification } from "../models/notification.model";
 import { User } from "../models/user.model";
 import { firebaseMessaging } from "../config/firebase";
 
-/**
- * Centralized sendNotification
- * - Saves notification document
- * - Sends FCM push if user.fcmToken exists
- *
- * payload.data will be stored and also sent as FCM data payload (string values).
- */
+
 export const sendNotification = async (
   userId: string,
   title: string,

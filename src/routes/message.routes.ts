@@ -2,7 +2,6 @@ import { Router } from "express";
 import {
   markMessageDelivered,
   markMessagesSeen,
-  sendMessage,
 } from "../controllers/message.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
@@ -15,8 +14,6 @@ function asyncHandler(fn: any) {
 }
 
 const useAuth = authMiddleware as any;
-
-router.post("/", useAuth, asyncHandler(sendMessage));
 
 router.patch(
   "/:messageId/delivered",
