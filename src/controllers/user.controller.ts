@@ -159,6 +159,44 @@ export const loginUser = async (
         role: user.role,
       });
 
+
+
+      if (user.twoFactor?.enabled) {
+  // 1) Generate short-lived temp token
+  const tempToken = generateAccessToken(
+    { id: user._id, role: user.role, twoFAStage: true },
+    "5m" // 5-minute token
+  );
+
+  // 2) Generate 6-digit OTP
+  const loginCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+  await User.findByIdAndUpdate(user._id, {
+    "twoFactor.loginCode": loginCode,
+    "twoFactor.loginExpiry": new Date(Date.now() + 5 * 60 * 1000),
+  });
+
+  // 3) Send OTP to email
+  await sendEmail({
+    to: user.email,
+    name: user.name,
+    subject: "Your 2FA Login Code",
+    content: `Your login 2FA code is: ${loginCode}. It expires in 5 minutes.`,
+  });
+
+   sendResponse(
+    res,
+    {
+      require2FA: true,
+      tempToken,
+      email: user.email,
+      message: "Enter the 6-digit 2FA code or backup code",
+    },
+    "2FA required",
+    206
+  ); return;
+}
+
       sendResponse(
         res,
         {
@@ -232,6 +270,62 @@ export const logout = async (
 
   sendResponse(res, null, "Logged out successfully", STATUS_CODES.OK);
 };
+
+/// // Save FCM token
+export const saveFcmToken = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { fcmToken } = req.body;
+    const userId = req.user?.id; // now TS knows id exists
+
+    if (!userId) {
+      return sendResponse(
+        res,
+        null,
+        "Unauthorized: User not logged in",
+        STATUS_CODES.UNAUTHORIZED
+      );
+    }
+
+    if (!fcmToken) {
+      return sendResponse(
+        res,
+        null,
+        "FCM token is required",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { fcmToken },
+      { new: true }
+    ).select("-password");
+
+    if (!user) {
+      return sendResponse(
+        res,
+        null,
+        "User not found",
+        STATUS_CODES.NOT_FOUND
+      );
+    }
+
+    sendResponse(
+      res,
+      { user },
+      "FCM token saved successfully",
+      STATUS_CODES.OK
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 
 interface AuthRequest extends Request {
   user?: {
@@ -1024,8 +1118,6 @@ export const getListingDocuments = async (
 
 
 //socail logins 
-// Controller: Google Login
-// import { OAuth2Client, LoginTicket  } from "google-auth-library";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import admin from "firebase-admin";
@@ -1136,136 +1228,9 @@ export const googleLogin = async (
 
 
 
-
-
-
-
-
-
-//this is for googleoauth login {
-
-// dotenv.config();
-
-// const googleClient = new OAuth2Client();
-
-
- //Google Login Controller
-
-// Safely define allowed Google OAuth client IDs
-// const ALLOWED_AUDIENCES = new Set(
-//   [
-
-//     process.env.GOOGLE_ANDROID_CLIENT_ID,
-//     process.env.GOOGLE_IOS_CLIENT_ID,
-//   ].filter((id): id is string => Boolean(id))
-// );
-
-// export const googleLogin = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction
-// ): Promise<void> => {
-//   try {
-//     const { idToken, platform } = req.body;
-
-//     //1. Validate request
-//     if (!idToken) {
-//       sendResponse(res, null, "Missing Google ID token", STATUS_CODES.BAD_REQUEST);
-//       return;
-//     }
-
-//     //2. Verify Google ID token
-//     const ticket: LoginTicket = await googleClient.verifyIdToken({
-//       idToken,
-//       audience: Array.from(ALLOWED_AUDIENCES),
-//     });
-//     console.log("Google login ticket:", ticket);
-
-//     const payload = ticket.getPayload();
-//     if (!payload) {
-//       sendResponse(res, null, "Invalid token", STATUS_CODES.UNAUTHORIZED);
-//       return;
-//     }
-//     console.log("Google login payload:", payload);
-
-//     //3. Check valid audience
-//     if (!ALLOWED_AUDIENCES.has(payload.aud)) {
-//       sendResponse(res, null, "Invalid audience", STATUS_CODES.UNAUTHORIZED);
-//       return;
-//     }
-
-//     //4. Extract user data from Google
-//     const { email, name = "Google User", picture } = payload;
-//     if (!email) {
-//       sendResponse(res, null, "Email not found in token", STATUS_CODES.BAD_REQUEST);
-//       return;
-//     }
-
-//     //5. Find existing user or create new
-//     let user = await User.findOne({ email });
-
-//     if (!user) {
-//       const hashedPassword = await bcrypt.hash("google-login", 10);
-
-//       user = new User({
-//         email,
-//         password: hashedPassword,
-//         name,
-//         role: "user",
-//         otp: { isVerified: true },
-//         profilePicture: picture || "",
-//       });
-
-//       // Optional: Create Stripe customer
-//       const stripeCustomer = await createCustomer(email, name);
-//       if (stripeCustomer?.id) {
-//         user.stripe.customerId = stripeCustomer.id;
-//       }
-
-//       await user.save();
-
-//       // Optional: Send welcome email
-//       await sendEmail({
-//         to: email,
-//         name,
-//         subject: "Welcome to our App",
-//         content: `Hi ${name}, your account has been created via Google login.`,
-//       });
-//     }
-
-//     //6. Generate JWT for app session
-//     const token = jwt.sign(
-//       { uid: user._id, email: user.email },
-//       process.env.JWT_SECRET as string,
-//       { expiresIn: "12h" }
-//     );
-
-//     //7. Success response
-//     sendResponse(
-//       res,
-//       {
-//         token,
-//         user: {
-//           id: user._id,
-//           name: user.name,
-//           email: user.email,
-//           avatar: user.profilePicture,
-//           provider: "google",
-//           platform: platform || "web",
-//         },
-//       },
-//       "Google login successful",
-//       STATUS_CODES.OK
-//     );
-//   } catch (error) {
-//     console.error("Google login error:", error);
-//     next(error);
-//   }
-// };
-// }
-
 // Controller: Apple Login
 import jwksClient from "jwks-rsa";
+import { WalletTransaction } from "../models/walletTransaction.model";
 
 dotenv.config();
 
@@ -1286,10 +1251,6 @@ const getApplePublicKey = (kid: string): Promise<string> => {
   });
 };
 
-//Apple client IDs (audiences)
-// const ALLOWED_APPLE_AUDIENCES = new Set(
-//   [process.env.APPLE_CLIENT_ID].filter((id): id is string => Boolean(id))
-// );
 
 const ALLOWED_APPLE_AUDIENCES = new Set(
   [
@@ -1422,3 +1383,106 @@ export const appleLogin = async (
     next(error);
   }
 };
+
+
+//wallet controller 
+
+// Get wallet balance & transactions
+export const getWallet = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+
+    const user = await User.findById(userId).select("wallet balance");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Fetch transactions from WalletTransaction collection
+    const transactions = await WalletTransaction.find({ userId }).sort({ createdAt: -1 });
+
+    res.status(200).json({
+      balance: user.wallet.balance,
+      transactions,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
+
+// Add money to wallet
+export const addToWallet = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { amount, description } = req.body;
+
+    if (!amount || amount <= 0) return res.status(400).json({ message: "Invalid amount" });
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Update balance
+    user.wallet.balance += amount;
+    await user.save();
+
+    // Create transaction in separate collection
+    const transaction = new WalletTransaction({
+      userId,
+      type: "credit",
+      amount,
+      source: "stripe",
+      description,
+      createdAt: new Date(),
+    });
+    await transaction.save();
+
+    res.status(200).json({
+      message: "Wallet credited",
+      balance: user.wallet.balance,
+      transaction,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
+
+// Deduct money from wallet
+export const deductFromWallet = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { amount, description } = req.body;
+
+    if (!amount || amount <= 0) return res.status(400).json({ message: "Invalid amount" });
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (user.wallet.balance < amount)
+      return res.status(400).json({ message: "Insufficient wallet balance" });
+
+    // Update balance
+    user.wallet.balance -= amount;
+    await user.save();
+
+    // Create transaction in separate collection
+    const transaction = new WalletTransaction({
+      userId,
+      type: "debit",
+      amount,
+      source: "booking",
+      description,
+      createdAt: new Date(),
+    });
+    await transaction.save();
+
+    res.status(200).json({
+      message: "Wallet debited",
+      balance: user.wallet.balance,
+      transaction,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
+
+

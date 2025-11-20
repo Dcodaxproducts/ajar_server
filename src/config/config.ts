@@ -10,3 +10,4 @@ export const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI!;
 
 export const JWT_SECRET = process.env.JWT_SECRET || "secret";
 export const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
+export const TWOFA_ENC_KEY = process.env.TWOFA_ENC_KEY || "";

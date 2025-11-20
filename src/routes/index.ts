@@ -25,10 +25,13 @@ import refundRequestsRoutes from "./refundRequests.routes";
 import dashboardRoutes from "./dashboard.routes";
 import userGoogleRoutes from "./usergoogle.routes";
 import paymentRoutes from "./payment.routes";
-import notificationRoutes from "./notification.routes"
+import notificationRoutes from "./notification.routes";
+import twofaRoutes from "./twofa.routes";
 
 const router = express.Router();
 
+router.use("/notifications", notificationRoutes)
+router.use("/2fa", twofaRoutes);
 router.use("/users", userRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/chats", conversationRoutes);
@@ -55,6 +58,6 @@ router.use("/favourites", favouritesRoutes);
 router.use("/analytics", analyticsRoutes);
 router.use("/oauth", userGoogleRoutes); 
 router.use("/payments", paymentRoutes);
-router.use("/notifications", notificationRoutes)
+
 
 export default router;

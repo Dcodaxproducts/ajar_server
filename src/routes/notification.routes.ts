@@ -1,4 +1,3 @@
-// src/routes/notification.routes.ts
 import { Router } from "express";
 import { getUserNotifications } from "../controllers/notification.controller";
 import {authMiddleware }  from "../middlewares/auth.middleware";
@@ -12,6 +11,6 @@ function asyncHandler(fn: any) {
   };
 }
 
-router.get("/kk", authMiddleware as any, asyncHandler(getUserNotifications));
+router.get("/", authMiddleware as any, asyncHandler(getUserNotifications));
 
 export default router;
