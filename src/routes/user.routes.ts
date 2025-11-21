@@ -1,24 +1,32 @@
 import express from "express";
 import {
+  addBankAccount,
   addForm,
   addToWallet,
   appleLogin,
   createUser,
   deductFromWallet,
+  deleteBankAccount,
   deleteUser,
   forgotPassword,
   getAllUsersWithStats,
+  getAllWithdrawals,
+  getBankAccounts,
   getDashboardStats,
   getListingDocuments,
   getUserDetails,
   getUserDocuments,
+  getUserWithdrawals,
   getWallet,
   googleLogin,
   loginUser,
+  processWithdrawal,
   refreshToken,
+  requestWithdrawal,
   resendOtp,
   resetPassword,
   saveFcmToken,
+  updateBankAccount,
   updateUserProfile,
   updateUserStatus,
   verifyOtp,
@@ -105,6 +113,7 @@ router.post(
 );
 
 router.get("/details", useAuth, asyncHandler(getUserDetails));
+router.get("/bank-account", useAuth, asyncHandler(getBankAccounts));
 
 router.get("/all", useAuth, asyncHandler(getAllUsersWithStats));
 router.patch("/:userId/status", useAuth, asyncHandler(updateUserStatus));
@@ -119,7 +128,6 @@ router.put(
   validateRequest({ body: updateUserSchema }),
   asyncHandler(updateUserProfile)
 );
-
 
 router.delete("/:userId", useAuth, asyncHandler(deleteUser));
 
@@ -143,6 +151,22 @@ router.get("/all", useAuth, asyncHandler(getAllUsers));
 // Get wallet balance
 router.get("/wallet", useAuth, asyncHandler(getWallet));
 
+
+router.get(
+  "/my-withdrawals",
+  useAuth,
+  asyncHandler(getUserWithdrawals)
+);
+
+// ADMIN ROUTES
+router.get(
+  "/withdrawals",
+  useAuth,
+  asyncHandler(getAllWithdrawals)
+);
+
+
+
 // Get user by ID
 router.get("/:id", useAuth, asyncHandler(getUserById));
 
@@ -152,5 +176,28 @@ router.post("/wallet/add", useAuth, asyncHandler(addToWallet));
 
 // Deduct money from wallet
 router.post("/wallet/deduct", useAuth, asyncHandler(deductFromWallet));
+
+// router.get("/bank-account", useAuth, asyncHandler(getBankAccounts));
+router.post("/bank-account", useAuth, asyncHandler(addBankAccount));
+
+router.put("/bank-account/:bankAccountId", useAuth, asyncHandler(updateBankAccount));
+router.delete("/bank-account/:bankAccountId", useAuth, asyncHandler(deleteBankAccount));
+
+
+// USER ROUTES
+router.post(
+  "/withdrawals-request",
+  useAuth,      
+  asyncHandler(requestWithdrawal)
+);
+
+
+
+router.put(
+  "/withdrawals/:requestId",
+  useAuth,
+  asyncHandler(processWithdrawal)
+);
+
 
 export default router;
