@@ -271,7 +271,7 @@ export const logout = async (
   sendResponse(res, null, "Logged out successfully", STATUS_CODES.OK);
 };
 
-/// // Save FCM token
+ // Save FCM token
 export const saveFcmToken = async (
   req: AuthRequest,
   res: Response,
@@ -324,8 +324,6 @@ export const saveFcmToken = async (
     next(error);
   }
 };
-
-
 
 interface AuthRequest extends Request {
   user?: {
@@ -670,7 +668,6 @@ export const getAllUsersWithStats = async (
     next(error);
   }
 };
-
 
 export const updateUserProfile = async (
   req: AuthRequest,
@@ -1226,11 +1223,10 @@ export const googleLogin = async (
   }
 };
 
-
-
 // Controller: Apple Login
 import jwksClient from "jwks-rsa";
 import { WalletTransaction } from "../models/walletTransaction.model";
+import { WithdrawRequest } from "../models/withdrawRequest.model";
 
 dotenv.config();
 
@@ -1258,7 +1254,6 @@ const ALLOWED_APPLE_AUDIENCES = new Set(
     process.env.APPLE_WEB_ID,      // optional, if you add one later
   ].filter(Boolean)
 );
-
 
 //Apple Login Controller
 export const appleLogin = async (
@@ -1384,9 +1379,7 @@ export const appleLogin = async (
   }
 };
 
-
 //wallet controller 
-
 // Get wallet balance & transactions
 export const getWallet = async (req: AuthRequest, res: Response) => {
   try {
@@ -1485,4 +1478,254 @@ export const deductFromWallet = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// Add bank account to user profile
+export const addBankAccount = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
 
+    if (!userId) {
+      return sendResponse(res, null, "Unauthorized user", 401);
+    }
+
+    const { bankName, accountName, accountNumber, ibanNumber } = req.body;
+
+    if (!bankName || !accountName || !accountNumber || !ibanNumber) {
+      return sendResponse(res, null, "All fields are required", 400);
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      {
+        $push: {
+          bankAccounts: {
+            bankName,
+            accountName,
+            accountNumber,
+            ibanNumber,
+          },
+        },
+      },
+      { new: true }
+    ).select("-password");
+
+    return sendResponse(
+      res,
+      { user: updatedUser },
+      "Bank account added successfully",
+      201
+    );
+  } catch (error) {
+    console.log(error);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};
+
+export const getBankAccounts = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+
+    const user = await User.findById(userId)
+      .select("name email phone bankAccounts")
+      .lean();
+
+    if (!user) {
+      return sendResponse(res, null, "User not found", 404);
+    }
+
+    return sendResponse(
+      res,
+     {
+        userDetails: {
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+        },
+        bankAccounts: user.bankAccounts || [],
+      },
+      "Bank accounts fetched successfully",
+      200
+    );
+  } catch (err) {
+    console.error(err);
+    sendResponse(res, null, "Server error", 500);
+  }
+};
+
+// Update a specific bank account
+export const updateBankAccount = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { bankAccountId } = req.params;
+    const { bankName, accountName, accountNumber, ibanNumber } = req.body;
+
+    if (!userId) {
+      return sendResponse(res, null, "Unauthorized user", STATUS_CODES.UNAUTHORIZED);
+    }
+
+    if (!bankName || !accountName || !accountNumber || !ibanNumber) {
+      return sendResponse(res, null, "All fields are required", STATUS_CODES.BAD_REQUEST);
+    }
+
+    // Update the specific bank account inside the array
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: userId, "bankAccounts._id": bankAccountId },
+      {
+        $set: {
+          "bankAccounts.$.bankName": bankName,
+          "bankAccounts.$.accountName": accountName,
+          "bankAccounts.$.accountNumber": accountNumber,
+          "bankAccounts.$.ibanNumber": ibanNumber,
+        },
+      },
+      { new: true }
+    ).select("-password");
+
+    if (!updatedUser) {
+      return sendResponse(res, null, "Bank account not found", STATUS_CODES.NOT_FOUND);
+    }
+
+    return sendResponse(res, { user: updatedUser }, "Bank account updated successfully", STATUS_CODES.OK);
+  } catch (error) {
+    console.error(error);
+    return sendResponse(res, null, "Server error", STATUS_CODES.INTERNAL_SERVER_ERROR);
+  }
+};
+
+// Delete a specific bank account
+export const deleteBankAccount = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { bankAccountId } = req.params;
+
+    if (!userId) {
+      return sendResponse(res, null, "Unauthorized user", STATUS_CODES.UNAUTHORIZED);
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $pull: { bankAccounts: { _id: bankAccountId } } },
+      { new: true }
+    ).select("-password");
+
+    if (!updatedUser) {
+      return sendResponse(res, null, "Bank account not found", STATUS_CODES.NOT_FOUND);
+    }
+
+    return sendResponse(res, { user: updatedUser }, "Bank account deleted successfully", STATUS_CODES.OK);
+  } catch (error) {
+    console.error(error);
+    return sendResponse(res, null, "Server error", STATUS_CODES.INTERNAL_SERVER_ERROR);
+  }
+};
+
+// Request withdrawal from wallet
+export const requestWithdrawal = async (req: any, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const { amount, bankAccountId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) return sendResponse(res, null, "User not found", 404);
+
+    if (!user.wallet.balance || user.wallet.balance < amount) {
+      return sendResponse(res, null, "Insufficient wallet balance", 400);
+    }
+
+    const withdrawRequest = new WithdrawRequest({
+      userId,
+      amount,
+      bankAccountId,
+    });
+
+    await withdrawRequest.save();
+
+    return sendResponse(res, { withdrawRequest }, "Withdrawal requested successfully", 201);
+  } catch (err) {
+    console.error(err);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};
+
+// Admin approves/rejects withdrawal
+export const processWithdrawal = async (req: any, res: Response) => {
+  try {
+    const { requestId } = req.params;
+    const { action, reason } = req.body; // action = 'approve' | 'reject'
+
+    const withdrawRequest = await WithdrawRequest.findById(requestId);
+    if (!withdrawRequest) return sendResponse(res, null, "Request not found", 404);
+    if (withdrawRequest.status !== "pending")
+      return sendResponse(res, null, "Request already processed", 400);
+
+    const user = await User.findById(withdrawRequest.userId);
+    if (!user) return sendResponse(res, null, "User not found", 404);
+
+    if (action === "approve") {
+      if (user.wallet.balance < withdrawRequest.amount) {
+        return sendResponse(res, null, "Insufficient wallet balance", 400);
+      }
+
+      // Deduct from wallet
+      user.wallet.balance -= withdrawRequest.amount;
+      await user.save();
+
+      //FIX ADDED: bankAccountId is now passed in transaction
+      const transaction = new WalletTransaction({
+        userId: user._id,
+        type: "debit",
+        amount: withdrawRequest.amount,
+        bankAccountId: withdrawRequest.bankAccountId, //REQUIRED FIELD ADDED
+        source: "withdraw",
+        description: `Withdrawal approved`,
+      });
+      await transaction.save();
+
+      withdrawRequest.status = "approved";
+      withdrawRequest.processedAt = new Date();
+      await withdrawRequest.save();
+
+      return sendResponse(
+        res,
+        { withdrawRequest, transaction },
+        "Withdrawal approved",
+        200
+      );
+
+    } else if (action === "reject") {
+      withdrawRequest.status = "rejected";
+      withdrawRequest.reason = reason || "Rejected by admin";
+      withdrawRequest.processedAt = new Date();
+      await withdrawRequest.save();
+
+      return sendResponse(res, { withdrawRequest }, "Withdrawal rejected", 200);
+    } else {
+      return sendResponse(res, null, "Invalid action", 400);
+    }
+  } catch (err) {
+    console.error(err);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};
+
+// Get all withdrawals (admin)
+export const getAllWithdrawals = async (req: any, res: Response) => {
+  try {
+    const withdrawals = await WithdrawRequest.find().populate("userId", "name email");
+    return sendResponse(res, { withdrawals }, "All withdrawal requests fetched", 200);
+  } catch (err) {
+    console.error(err);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};
+
+// Get user's withdrawals
+export const getUserWithdrawals = async (req: any, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const withdrawals = await WithdrawRequest.find({ userId });
+    return sendResponse(res, { withdrawals }, "Your withdrawal requests fetched", 200);
+  } catch (err) {
+    console.error(err);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};

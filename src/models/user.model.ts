@@ -1,13 +1,11 @@
 import mongoose, { Schema, Document } from "mongoose";
 
-
-
 export interface IUserDocument {
-  name: string;         // e.g. "cnic", "driving_license"
-  filesUrl: string[];   // uploaded file links (S3/Firebase)
-  expiryDate?: Date;    // optional
+  name: string;
+  filesUrl: string[];
+  expiryDate?: Date;
   status?: "pending" | "approved" | "rejected";
-  reason?: string;      // reason for rejection if any
+  reason?: string; 
 }
 
 export interface IUser extends Document {
@@ -56,6 +54,14 @@ export interface IUser extends Document {
   wallet: {
     balance: number;
   };
+    bankAccounts: [
+    {
+      bankName: string;
+      accountName: string;
+      accountNumber: string;
+      ibanNumber: string;
+    }
+  ];
 }
 
 const UserDocumentSchema = new Schema<IUserDocument>({
@@ -112,6 +118,21 @@ const UserSchema: Schema<IUser> = new Schema(
     },
 
 
+
+
+        bankAccounts: [
+      {
+        bankName: { type: String, required: true },
+        accountName: { type: String, required: true },
+        accountNumber: { type: String, required: true },
+        ibanNumber: { type: String, required: true },
+      }
+    ],
+
+
+
+
+
      twoFactor: {
       enabled: { type: Boolean, default: false },
       secret: { type: String, default: "" },
@@ -129,14 +150,11 @@ const UserSchema: Schema<IUser> = new Schema(
       ],
 
         // Login-specific 2FA fields
-  loginCode: { type: String, default: "" },
-  loginExpiry: { type: Date, default: null },
-    },
+      loginCode: { type: String, default: "" },
+      loginExpiry: { type: Date, default: null },
+      },
 
-
-    twoFactorVerified: { type: Boolean, default: false },
-  
-
+      twoFactorVerified: { type: Boolean, default: false },
 
   },
   { timestamps: true }

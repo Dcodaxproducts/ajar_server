@@ -1,9 +1,36 @@
-import { Response } from "express";
+import { Response,Request } from "express";
 import mongoose from "mongoose";
 import { Conversation } from "../models/conversation.model";
 import { Message } from "../models/message.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { getIO } from "../socket";
+
+
+interface MulterRequest extends Request {
+  files: Express.Multer.File[];
+}
+
+export const uploadChatFiles = async (req: MulterRequest, res: Response) => {
+  try {
+    const files = req.files;
+
+    const urls = files.map(f => `/public/chat/${f.filename}`);
+
+    return res.status(201).json({
+      success: true,
+      message: "Files uploaded successfully",
+      attachments: urls,
+    });
+  } catch (error) {
+    console.error("Upload error:", error);
+    res.status(500).json({ error: "File upload failed" });
+  }
+};
+
+
+
+
+
 
 // Send message
 export const sendMessage = async (req: AuthRequest, res: Response) => {
