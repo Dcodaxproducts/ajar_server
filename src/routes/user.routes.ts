@@ -18,11 +18,12 @@ import {
   getUserDocuments,
   getUserWithdrawals,
   getWallet,
+  getWithdrawalHistoryByRange,
   googleLogin,
+  instantWithdrawal,
   loginUser,
   processWithdrawal,
   refreshToken,
-  requestWithdrawal,
   resendOtp,
   resetPassword,
   saveFcmToken,
@@ -151,6 +152,10 @@ router.get("/all", useAuth, asyncHandler(getAllUsers));
 // Get wallet balance
 router.get("/wallet", useAuth, asyncHandler(getWallet));
 
+router.get("/my-withdrawals/range", useAuth, asyncHandler(getWithdrawalHistoryByRange));
+// router.get("/wallet/graph", useAuth, asyncHandler(getWalletGraph));
+
+
 
 router.get(
   "/my-withdrawals",
@@ -184,13 +189,7 @@ router.put("/bank-account/:bankAccountId", useAuth, asyncHandler(updateBankAccou
 router.delete("/bank-account/:bankAccountId", useAuth, asyncHandler(deleteBankAccount));
 
 
-// USER ROUTES
-router.post(
-  "/withdrawals-request",
-  useAuth,      
-  asyncHandler(requestWithdrawal)
-);
-
+router.post("/withdrawals-request", useAuth, asyncHandler(instantWithdrawal));
 
 
 router.put(

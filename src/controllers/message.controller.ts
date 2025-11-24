@@ -1,9 +1,11 @@
 import { Response,Request } from "express";
 import mongoose from "mongoose";
 import { Conversation } from "../models/conversation.model";
-import { Message } from "../models/message.model";
+import { IMessage, Message } from "../models/message.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { getIO } from "../socket";
+import { sendNotification } from "../utils/notifications";
+import { IUser, User } from "../models/user.model";
 
 
 interface MulterRequest extends Request {
@@ -14,7 +16,7 @@ export const uploadChatFiles = async (req: MulterRequest, res: Response) => {
   try {
     const files = req.files;
 
-    const urls = files.map(f => `/public/chat/${f.filename}`);
+    const urls = files.map(f => `/chat/${f.filename}`);
 
     return res.status(201).json({
       success: true,
@@ -29,7 +31,61 @@ export const uploadChatFiles = async (req: MulterRequest, res: Response) => {
 
 
 
+// // Send message
+// export const sendMessage = async (req: AuthRequest, res: Response) => {
+//   try {
+//     const { chatId, receiver, text, attachments } = req.body;
+//     const sender = new mongoose.Types.ObjectId(req.user!.id);
 
+//     // Ensure conversation exists
+//     const conversation = await Conversation.findById(chatId);
+//     if (!conversation) {
+//       return res.status(404).json({ error: "Conversation not found" });
+//     }
+
+//     // Ensure sender or receiver is participant
+//     if (
+//       !conversation.participants.some(
+//         (p) => p.equals(sender) || p.equals(receiver)
+//       )
+//     ) {
+//       return res
+//         .status(403)
+//         .json({ error: "You are not allowed in this chat" });
+//     }
+
+//     // Create message
+//     const newMessage = await Message.create({
+//       chatId: conversation._id,
+//       sender,
+//       receiver,
+//       text,
+//       attachments,
+//       seen: false,
+//     });
+
+//     // Update lastMessage
+//     conversation.lastMessage = newMessage._id as mongoose.Types.ObjectId;
+//     await conversation.save();
+
+//     // Populate sender and receiver before sending response
+//     const populatedMessage = await Message.findById(newMessage._id)
+//       .populate("sender", "name email profilePicture")
+//       .populate("receiver", "name email profilePicture");
+
+//     //Emit directly to receiver’s room
+//     getIO().to(`user:${receiver}`).emit("message:new", populatedMessage);
+
+//     res.status(201).json({
+//       success: true,
+//       message: "Message sent successfully",
+//       data: populatedMessage,
+//     });
+//   } catch (error) {
+//     console.error("Send message error:", error);
+//     res.status(500).json({ error: "Failed to send message" });
+//   }
+// };
 
 
 // Send message
@@ -44,7 +100,7 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: "Conversation not found" });
     }
 
-    // Ensure sender or receiver is participant
+    // Ensure user is participant
     if (
       !conversation.participants.some(
         (p) => p.equals(sender) || p.equals(receiver)
@@ -55,27 +111,71 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
         .json({ error: "You are not allowed in this chat" });
     }
 
-    // Create message
-    const newMessage = await Message.create({
+    // ---------------------------------------------------------
+    // FIXED: Typed message so _id is NOT unknown
+    // ---------------------------------------------------------
+    const newMessage = (await Message.create({
       chatId: conversation._id,
       sender,
       receiver,
       text,
       attachments,
       seen: false,
-    });
+    })) as IMessage & { _id: mongoose.Types.ObjectId };
+    // ---------------------------------------------------------
 
-    // Update lastMessage
-    conversation.lastMessage = newMessage._id as mongoose.Types.ObjectId;
+    // Update conversation last message
+    conversation.lastMessage = newMessage._id;
     await conversation.save();
 
-    // Populate sender and receiver before sending response
+    // Populate sender & receiver
     const populatedMessage = await Message.findById(newMessage._id)
       .populate("sender", "name email profilePicture")
       .populate("receiver", "name email profilePicture");
 
-    //Emit directly to receiver’s room
+    // Emit the new message to receiver
     getIO().to(`user:${receiver}`).emit("message:new", populatedMessage);
+
+    // Send internal + push notifications
+    try {
+
+      // ---------------------------------------------------------
+      // FIXED: Typed Users so _id is NOT unknown
+      // ---------------------------------------------------------
+      const receiverUser = await User.findById(receiver) as (IUser & {
+        _id: mongoose.Types.ObjectId;
+      }) | null;
+
+      const senderUser = await User.findById(sender) as (IUser & {
+        _id: mongoose.Types.ObjectId;
+      }) | null;
+      // ---------------------------------------------------------
+
+      if (receiverUser) {
+
+        // Save notification in DB + push if token exists
+        await sendNotification(
+          receiverUser._id.toString(),          
+          "New Message",
+          `${senderUser?.name || "Someone"} sent you a message`,
+          {
+            type: "system",
+            chatId: chatId.toString(),
+            messageId: newMessage._id.toString(),   
+          }
+        );
+
+        // Emit in-app notification
+        getIO().to(`user:${receiver}`).emit("notification:new", {
+          title: "New Message",
+          message: `${senderUser?.name || "Someone"} sent you a message`,
+          chatId,
+          messageId: newMessage._id.toString(),
+        });
+      }
+    } catch (err) {
+      console.error("Failed to send chat notification:", err);
+    }
 
     res.status(201).json({
       success: true,

@@ -84,6 +84,146 @@ export const createUser = async (
 //login
 const refreshTokens: Set<string> = new Set();
 
+// export const loginUser = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   const { email, password, role } = req.body;
+
+//   try {
+//     if (role === "staff") {
+//       const employee = await Employee.findOne({ email })
+//         .populate({
+//           path: "allowAccess",
+//           select: "-__v",
+//         })
+//         .select("-__v")
+//         .lean();
+
+//       if (!employee) {
+//         sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
+//         return;
+//       }
+
+//       if (employee.password !== password) {
+//         sendResponse(
+//           res,
+//           null,
+//           "Invalid email or password",
+//           STATUS_CODES.UNAUTHORIZED
+//         );
+//         return;
+//       }
+
+//       const accessToken = generateAccessToken({
+//         id: employee._id,
+//         role: "staff",
+//       });
+
+//       sendResponse(
+//         res,
+//         {
+//           token: accessToken,
+//           user: employee,
+//         },
+//         "Login successful (staff)",
+//         STATUS_CODES.OK
+//       );
+//     } else if (role === "user" || role === "admin") {
+//       const user = await User.findOne({ email, role })
+//         .select("-password")
+//         .lean();
+
+//       if (!user) {
+//         sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+//         return;
+//       }
+
+//       const isPasswordValid = await bcrypt.compare(
+//         password,
+//         (await User.findOne({ email, role }))?.password || ""
+//       );
+//       if (!isPasswordValid) {
+//         sendResponse(
+//           res,
+//           null,
+//           "Invalid email or password",
+//           STATUS_CODES.UNAUTHORIZED
+//         );
+//         return;
+//       }
+
+//       const accessToken = generateAccessToken({
+//         id: user._id,
+//         role: user.role,
+//       });
+
+
+
+//       if (user.twoFactor?.enabled) {
+//   // 1) Generate short-lived temp token
+//   const tempToken = generateAccessToken(
+//     { id: user._id, role: user.role, twoFAStage: true },
+//     "5m" // 5-minute token
+//   );
+
+//   // 2) Generate 6-digit OTP
+//   const loginCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+//   await User.findByIdAndUpdate(user._id, {
+//     "twoFactor.loginCode": loginCode,
+//     "twoFactor.loginExpiry": new Date(Date.now() + 5 * 60 * 1000),
+//   });
+
+//   // 3) Send OTP to email
+//   await sendEmail({
+//     to: user.email,
+//     name: user.name,
+//     subject: "Your 2FA Login Code",
+//     content: `Your login 2FA code is: ${loginCode}. It expires in 5 minutes.`,
+//   });
+
+//    sendResponse(
+//     res,
+//     {
+//       require2FA: true,
+//       tempToken,
+//       email: user.email,
+//       message: "Enter the 6-digit 2FA code or backup code",
+//     },
+//     "2FA required",
+//     206
+//   ); return;
+// }
+
+//       sendResponse(
+//         res,
+//         {
+//           token: accessToken,
+//           user: user,
+//         },
+//         "Login successful",
+//         STATUS_CODES.OK
+//       );
+//     } else {
+//       sendResponse(
+//         res,
+//         null,
+//         "Invalid role provided",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//     }
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+
+
+
+
+// ==================== LOGIN USER ====================
 export const loginUser = async (
   req: Request,
   res: Response,
@@ -93,11 +233,9 @@ export const loginUser = async (
 
   try {
     if (role === "staff") {
+      // STAFF login unchanged
       const employee = await Employee.findOne({ email })
-        .populate({
-          path: "allowAccess",
-          select: "-__v",
-        })
+        .populate({ path: "allowAccess", select: "-__v" })
         .select("-__v")
         .lean();
 
@@ -107,12 +245,7 @@ export const loginUser = async (
       }
 
       if (employee.password !== password) {
-        sendResponse(
-          res,
-          null,
-          "Invalid email or password",
-          STATUS_CODES.UNAUTHORIZED
-        );
+        sendResponse(res, null, "Invalid email or password", STATUS_CODES.UNAUTHORIZED);
         return;
       }
 
@@ -121,103 +254,82 @@ export const loginUser = async (
         role: "staff",
       });
 
-      sendResponse(
-        res,
-        {
-          token: accessToken,
-          user: employee,
-        },
-        "Login successful (staff)",
-        STATUS_CODES.OK
+      sendResponse(res, { token: accessToken, user: employee }, "Login successful (staff)", STATUS_CODES.OK);
+      return;
+    }
+
+    // USER / ADMIN login
+    const user = await User.findOne({ email, role });
+    if (!user) {
+      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      sendResponse(res, null, "Invalid email or password", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
+    // --- ONLY FOR USERS WITH 2FA ENABLED ---
+    if (user.twoFactor?.enabled) {
+      // 1) Generate short-lived temp token for 2FA stage
+      const tempToken = generateAccessToken(
+        { id: user._id, role: user.role, twoFAStage: true },
+        "5m" // 5-minute token
       );
-    } else if (role === "user" || role === "admin") {
-      const user = await User.findOne({ email, role })
-        .select("-password")
-        .lean();
 
-      if (!user) {
-        sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
-        return;
-      }
+      // 2) Generate 6-digit login OTP
+      const loginCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-      const isPasswordValid = await bcrypt.compare(
-        password,
-        (await User.findOne({ email, role }))?.password || ""
-      );
-      if (!isPasswordValid) {
-        sendResponse(
-          res,
-          null,
-          "Invalid email or password",
-          STATUS_CODES.UNAUTHORIZED
-        );
-        return;
-      }
-
-      const accessToken = generateAccessToken({
-        id: user._id,
-        role: user.role,
+      await User.findByIdAndUpdate(user._id, {
+        "twoFactor.loginCode": loginCode,
+        "twoFactor.loginExpiry": new Date(Date.now() + 5 * 60 * 1000),
       });
 
+      // 3) Send OTP to email
+      await sendEmail({
+        to: user.email,
+        name: user.name,
+        subject: "Your 2FA Login Code",
+        content: `Your login 2FA code is: ${loginCode}. It expires in 5 minutes.`,
+      });
 
-
-      if (user.twoFactor?.enabled) {
-  // 1) Generate short-lived temp token
-  const tempToken = generateAccessToken(
-    { id: user._id, role: user.role, twoFAStage: true },
-    "5m" // 5-minute token
-  );
-
-  // 2) Generate 6-digit OTP
-  const loginCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-  await User.findByIdAndUpdate(user._id, {
-    "twoFactor.loginCode": loginCode,
-    "twoFactor.loginExpiry": new Date(Date.now() + 5 * 60 * 1000),
-  });
-
-  // 3) Send OTP to email
-  await sendEmail({
-    to: user.email,
-    name: user.name,
-    subject: "Your 2FA Login Code",
-    content: `Your login 2FA code is: ${loginCode}. It expires in 5 minutes.`,
-  });
-
-   sendResponse(
-    res,
-    {
-      require2FA: true,
-      tempToken,
-      email: user.email,
-      message: "Enter the 6-digit 2FA code or backup code",
-    },
-    "2FA required",
-    206
-  ); return;
-}
-
+      // 4) Respond requiring 2FA
       sendResponse(
         res,
         {
-          token: accessToken,
-          user: user,
+          require2FA: true,
+          tempToken,
+          email: user.email,
+          message: "Enter the 6-digit 2FA code or backup code",
         },
-        "Login successful",
-        STATUS_CODES.OK
+        "2FA required",
+        206
       );
-    } else {
-      sendResponse(
-        res,
-        null,
-        "Invalid role provided",
-        STATUS_CODES.BAD_REQUEST
-      );
+      return;
     }
+
+    // --- NORMAL LOGIN FLOW (2FA not enabled) ---
+    const accessToken = generateAccessToken({
+      id: user._id,
+      role: user.role,
+      twoFactorVerified: true, // no 2FA required, so verified by default
+    });
+
+    sendResponse(res, { token: accessToken, user }, "Login successful", STATUS_CODES.OK);
+
   } catch (error) {
     next(error);
   }
 };
+
+
+
+
+
+
+
 
 export const refreshToken = async (
   req: Request,
@@ -1113,7 +1225,6 @@ export const getListingDocuments = async (
   }
 };
 
-
 //socail logins 
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
@@ -1227,6 +1338,7 @@ export const googleLogin = async (
 import jwksClient from "jwks-rsa";
 import { WalletTransaction } from "../models/walletTransaction.model";
 import { WithdrawRequest } from "../models/withdrawRequest.model";
+import mongoose from "mongoose";
 
 dotenv.config();
 
@@ -1246,7 +1358,6 @@ const getApplePublicKey = (kid: string): Promise<string> => {
     });
   });
 };
-
 
 const ALLOWED_APPLE_AUDIENCES = new Set(
   [
@@ -1385,7 +1496,8 @@ export const getWallet = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.id;
 
-    const user = await User.findById(userId).select("wallet balance");
+    // const user = await User.findById(userId).select("wallet balance");
+    const user = await User.findById(userId).select("wallet");
     if (!user) return res.status(404).json({ message: "User not found" });
 
     // Fetch transactions from WalletTransaction collection
@@ -1618,28 +1730,283 @@ export const deleteBankAccount = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// Request withdrawal from wallet
-export const requestWithdrawal = async (req: any, res: Response) => {
+export const instantWithdrawal = async (req: any, res: Response) => {
   try {
     const userId = req.user.id;
     const { amount, bankAccountId } = req.body;
 
+    // Validation
+    if (!amount || amount <= 0) {
+      return sendResponse(res, null, "Invalid withdrawal amount", 400);
+    }
+
+    if (!bankAccountId) {
+      return sendResponse(res, null, "Bank account is required", 400);
+    }
+
+    // Get user
     const user = await User.findById(userId);
     if (!user) return sendResponse(res, null, "User not found", 404);
 
-    if (!user.wallet.balance || user.wallet.balance < amount) {
+    // Check wallet balance
+    if (user.wallet.balance < amount) {
       return sendResponse(res, null, "Insufficient wallet balance", 400);
     }
 
-    const withdrawRequest = new WithdrawRequest({
+    // Deduct from wallet
+    user.wallet.balance -= amount;
+    await user.save();
+
+    // Create wallet transaction
+    const transaction = new WalletTransaction({
       userId,
+      type: "debit",
       amount,
+      source: "withdraw",
       bankAccountId,
+      description: "Withdrawal processed instantly",
+      createdAt: new Date(),
     });
 
-    await withdrawRequest.save();
+    await transaction.save();
 
-    return sendResponse(res, { withdrawRequest }, "Withdrawal requested successfully", 201);
+    // Response
+    return sendResponse(
+      res,
+      {
+        message: "Withdrawal successful",
+        balance: user.wallet.balance,
+        transaction,
+      },
+      "Withdrawal processed",
+      200
+    );
+  } catch (err) {
+    console.error(err);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};
+
+// Get user's withdrawals
+export const getUserWithdrawals = async (req: any, res: Response) => {
+  try {
+    const userId = req.user.id;
+
+    // Fetch only withdrawal transactions
+    const withdrawals = await WalletTransaction.find({
+      userId,
+      type: "debit",
+      source: "withdraw"
+    }).sort({ createdAt: -1 }); // latest first
+
+    return sendResponse(
+      res,
+      { withdrawals },
+      "Your withdrawal history fetched",
+      200
+    );
+  } catch (err) {
+    console.error(err);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};
+
+// Get withdrawal history by range or custom date
+// export const getWithdrawalHistoryByRange = async (req: any, res: Response) => {
+//   try {
+//     const userId = req.user.id;
+//     const { range, days, startDate: startStr, endDate: endStr } = req.query;
+
+//     const now = new Date();
+//     let startDate: Date | undefined;
+//     let endDate: Date | undefined = now;
+
+//     // Custom startDate / endDate if provided
+//     if (startStr) startDate = new Date(startStr);
+//     if (endStr) endDate = new Date(endStr);
+
+//     if (!startDate) {
+//       switch (range) {
+//         case "weekly":
+//           startDate = new Date(now);
+//           startDate.setDate(now.getDate() - now.getDay()); // Start of week (Sunday)
+//           startDate.setHours(0, 0, 0, 0);
+//           break;
+//         case "monthly":
+//           startDate = new Date(now.getFullYear(), now.getMonth(), 1); // Start of month
+//           break;
+//         default:
+//           if (days) {
+//             const dayCount = parseInt(days as string, 10);
+//             if (isNaN(dayCount) || dayCount <= 0) {
+//               return sendResponse(res, null, "Invalid 'days' query", 400);
+//             }
+//             startDate = new Date(now);
+//             startDate.setDate(now.getDate() - dayCount);
+//           } else {
+//             return sendResponse(
+//               res,
+//               null,
+//               "Invalid range. Use 'weekly', 'monthly', or provide 'days'",
+//               400
+//             );
+//           }
+//       }
+//     }
+
+//     const withdrawals = await WalletTransaction.find({
+//       userId,
+//       type: "debit",
+//       source: "withdraw",
+//       createdAt: { $gte: startDate, $lte: endDate },
+//     }).sort({ createdAt: -1 });
+
+//     return sendResponse(
+//       res,
+//       { withdrawals },
+//       `Withdrawal history from ${startDate.toDateString()} to ${endDate.toDateString()}`,
+//       200
+//     );
+//   } catch (err) {
+//     console.error(err);
+//     return sendResponse(res, null, "Server error", 500);
+//   }
+// };
+
+
+
+// NEW: Monthly wallet graph (withdrawals + topups)
+export const getWithdrawalHistoryByRange = async (req: any, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const { range, days, startDate: startStr, endDate: endStr } = req.query;
+
+    const now = new Date();
+    let startDate: Date | undefined;
+    let endDate: Date | undefined = now;
+
+    // 1️⃣ Custom startDate / endDate
+    if (startStr) startDate = new Date(startStr);
+    if (endStr) endDate = new Date(endStr);
+
+    // 2️⃣ Weekly, monthly, or last N days
+    if (!startDate) {
+      switch (range) {
+        case "weekly":
+          startDate = new Date(now);
+          startDate.setDate(now.getDate() - now.getDay()); // Sunday
+          startDate.setHours(0, 0, 0, 0);
+          break;
+        case "monthly":
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        default:
+          if (days) {
+            const dayCount = parseInt(days as string, 10);
+            if (isNaN(dayCount) || dayCount <= 0)
+              return sendResponse(res, null, "Invalid 'days' query", 400);
+            startDate = new Date(now);
+            startDate.setDate(now.getDate() - dayCount);
+          } else {
+            // Default last 6 months
+            startDate = new Date();
+            startDate.setMonth(startDate.getMonth() - 6);
+          }
+      }
+    }
+
+    // 3️⃣ Fetch raw withdrawal transactions
+    const withdrawals = await WalletTransaction.find({
+      userId,
+      type: "debit",
+      source: "withdraw",
+      createdAt: { $gte: startDate, $lte: endDate },
+    }).sort({ createdAt: -1 });
+
+    // 4️⃣ Aggregate graph data (withdrawals + top-ups)
+    const graphData = await WalletTransaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          createdAt: { $gte: startDate, $lte: endDate },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$createdAt" },
+            month: { $month: "$createdAt" },
+            week: { $week: "$createdAt" },
+            day: { $dayOfMonth: "$createdAt" },
+          },
+          totalWithdraw: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ["$type", "debit"] }, { $eq: ["$source", "withdraw"] }] },
+                "$amount",
+                0,
+              ],
+            },
+          },
+          totalTopup: {
+            $sum: {
+              $cond: [{ $eq: ["$type", "credit"] }, "$amount", 0],
+            },
+          },
+        },
+      },
+      { $sort: { "_id.year": 1, "_id.month": 1, "_id.week": 1, "_id.day": 1 } },
+    ]);
+
+    // 5️⃣ Format graph for frontend
+    const finalGraph = graphData.map((item: any) => {
+      let label = "";
+
+      if (range === "weekly") {
+        label = `Week ${item._id.week}, ${item._id.year}`;
+      } else if (range === "monthly") {
+        label = new Date(item._id.year, item._id.month - 1).toLocaleString("en-US", {
+          month: "long",
+        });
+      } else if (days || startStr || endStr) {
+        label = `${item._id.day}-${item._id.month}-${item._id.year}`;
+      } else {
+        label = new Date(item._id.year, item._id.month - 1).toLocaleString("en-US", {
+          month: "long",
+        });
+      }
+
+      return {
+        label,
+        withdraw: item.totalWithdraw,
+        topup: item.totalTopup,
+      };
+    });
+
+    // 6️⃣ Return raw withdrawals + graph
+    return sendResponse(
+      res,
+      { withdrawals, graph: finalGraph },
+      `Withdrawal history from ${startDate.toDateString()} to ${endDate.toDateString()}`,
+      200
+    );
+  } catch (err) {
+    console.error(err);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};
+
+
+
+
+
+
+
+// Get all withdrawals (admin)
+export const getAllWithdrawals = async (req: any, res: Response) => {
+  try {
+    const withdrawals = await WithdrawRequest.find().populate("userId", "name email");
+    return sendResponse(res, { withdrawals }, "All withdrawal requests fetched", 200);
   } catch (err) {
     console.error(err);
     return sendResponse(res, null, "Server error", 500);
@@ -1701,29 +2068,6 @@ export const processWithdrawal = async (req: any, res: Response) => {
     } else {
       return sendResponse(res, null, "Invalid action", 400);
     }
-  } catch (err) {
-    console.error(err);
-    return sendResponse(res, null, "Server error", 500);
-  }
-};
-
-// Get all withdrawals (admin)
-export const getAllWithdrawals = async (req: any, res: Response) => {
-  try {
-    const withdrawals = await WithdrawRequest.find().populate("userId", "name email");
-    return sendResponse(res, { withdrawals }, "All withdrawal requests fetched", 200);
-  } catch (err) {
-    console.error(err);
-    return sendResponse(res, null, "Server error", 500);
-  }
-};
-
-// Get user's withdrawals
-export const getUserWithdrawals = async (req: any, res: Response) => {
-  try {
-    const userId = req.user.id;
-    const withdrawals = await WithdrawRequest.find({ userId });
-    return sendResponse(res, { withdrawals }, "Your withdrawal requests fetched", 200);
   } catch (err) {
     console.error(err);
     return sendResponse(res, null, "Server error", 500);
