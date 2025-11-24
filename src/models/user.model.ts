@@ -28,8 +28,6 @@ export interface IUser extends Document {
     code: string;
     expiry: Date;
   };
-
-
    twoFactor: {
     enabled: boolean;
     secret?: string;
@@ -42,14 +40,10 @@ export interface IUser extends Document {
       loginCode?: string | null;
   loginExpiry?: Date | null;
   };
-
   twoFactorVerified: boolean;
-
-
   status: "active" | "inactive" | "blocked" | "unblocked";
   documents: IUserDocument[];
   fcmToken?: string;
-
   // Wallet (added)
   wallet: {
     balance: number;
@@ -87,7 +81,6 @@ const UserSchema: Schema<IUser> = new Schema(
       code: { type: String, default: "" },
       expiry: { type: Date, default: null },
     },
-
     stripe: {
       customerId: { type: String },
       subscriptionId: { type: String },
@@ -111,51 +104,38 @@ const UserSchema: Schema<IUser> = new Schema(
     },
     documents: [UserDocumentSchema],
     fcmToken: { type: String, default: "" },
-
     // ADD WALLET (Only balance — NO transactions inside)
     wallet: {
       balance: { type: Number, default: 0 },
     },
 
-
-
-
         bankAccounts: [
       {
-        bankName: { type: String, required: true },
-        accountName: { type: String, required: true },
-        accountNumber: { type: String, required: true },
-        ibanNumber: { type: String, required: true },
+        bankName: { type: String },
+        accountName: { type: String },
+        accountNumber: { type: String},
+        ibanNumber: { type: String },
       }
     ],
-
-
-
-
-
      twoFactor: {
       enabled: { type: Boolean, default: false },
       secret: { type: String, default: "" },
       tempSecret: { type: String, default: "" },
-
       tempOTP: {
         code: { type: String, default: "" },
         expiresAt: { type: Date, default: null },
       },
-
       backupCodes: [
         {
           codeHash: { type: String },
         },
       ],
-
-        // Login-specific 2FA fields
+      // Login-specific 2FA fields
       loginCode: { type: String, default: "" },
       loginExpiry: { type: Date, default: null },
       },
 
       twoFactorVerified: { type: Boolean, default: false },
-
   },
   { timestamps: true }
 );

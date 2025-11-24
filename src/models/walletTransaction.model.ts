@@ -17,7 +17,7 @@ const WalletTransactionSchema = new Schema<IWalletTransaction>({
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
   type: { type: String, enum: ["credit", "debit", "withdraw"], required: true },
   amount: { type: Number, required: true },
-  bankAccountId: { type: Schema.Types.ObjectId, required: true },
+  bankAccountId: { type: Schema.Types.ObjectId, required: false },
   status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
   source: { type: String, required: true },
   description: { type: String },
