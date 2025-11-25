@@ -111,9 +111,6 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
         .json({ error: "You are not allowed in this chat" });
     }
 
-    // ---------------------------------------------------------
-    // FIXED: Typed message so _id is NOT unknown
-    // ---------------------------------------------------------
     const newMessage = (await Message.create({
       chatId: conversation._id,
       sender,
@@ -122,7 +119,6 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
       attachments,
       seen: false,
     })) as IMessage & { _id: mongoose.Types.ObjectId };
-    // ---------------------------------------------------------
 
     // Update conversation last message
     conversation.lastMessage = newMessage._id;
@@ -139,9 +135,6 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
     // Send internal + push notifications
     try {
 
-      // ---------------------------------------------------------
-      // FIXED: Typed Users so _id is NOT unknown
-      // ---------------------------------------------------------
       const receiverUser = await User.findById(receiver) as (IUser & {
         _id: mongoose.Types.ObjectId;
       }) | null;
@@ -149,7 +142,6 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
       const senderUser = await User.findById(sender) as (IUser & {
         _id: mongoose.Types.ObjectId;
       }) | null;
-      // ---------------------------------------------------------
 
       if (receiverUser) {
 
