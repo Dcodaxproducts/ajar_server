@@ -22,7 +22,7 @@ const useAuth = authMiddleware as any;
 router.use(useAuth);
 
 
-// Very simple attachment upload route
+//attachment upload route
 router.post(
   "/upload-attachment",
   chatUpload,       
