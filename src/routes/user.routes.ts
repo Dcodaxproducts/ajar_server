@@ -50,7 +50,7 @@ import {
   verifyOtpSchema,
 } from "../schemas/user.schema";
 
-import upload, { uploadAny } from "../utils/multer";
+import upload, { uploadAny, uploadFiles } from "../utils/multer";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { validateDocuments } from "../middlewares/validateDocuments.middleware";
 import expressAsyncHandler from "express-async-handler";

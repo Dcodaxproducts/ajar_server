@@ -84,146 +84,6 @@ export const createUser = async (
 //login
 const refreshTokens: Set<string> = new Set();
 
-// export const loginUser = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction
-// ): Promise<void> => {
-//   const { email, password, role } = req.body;
-
-//   try {
-//     if (role === "staff") {
-//       const employee = await Employee.findOne({ email })
-//         .populate({
-//           path: "allowAccess",
-//           select: "-__v",
-//         })
-//         .select("-__v")
-//         .lean();
-
-//       if (!employee) {
-//         sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
-//         return;
-//       }
-
-//       if (employee.password !== password) {
-//         sendResponse(
-//           res,
-//           null,
-//           "Invalid email or password",
-//           STATUS_CODES.UNAUTHORIZED
-//         );
-//         return;
-//       }
-
-//       const accessToken = generateAccessToken({
-//         id: employee._id,
-//         role: "staff",
-//       });
-
-//       sendResponse(
-//         res,
-//         {
-//           token: accessToken,
-//           user: employee,
-//         },
-//         "Login successful (staff)",
-//         STATUS_CODES.OK
-//       );
-//     } else if (role === "user" || role === "admin") {
-//       const user = await User.findOne({ email, role })
-//         .select("-password")
-//         .lean();
-
-//       if (!user) {
-//         sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
-//         return;
-//       }
-
-//       const isPasswordValid = await bcrypt.compare(
-//         password,
-//         (await User.findOne({ email, role }))?.password || ""
-//       );
-//       if (!isPasswordValid) {
-//         sendResponse(
-//           res,
-//           null,
-//           "Invalid email or password",
-//           STATUS_CODES.UNAUTHORIZED
-//         );
-//         return;
-//       }
-
-//       const accessToken = generateAccessToken({
-//         id: user._id,
-//         role: user.role,
-//       });
-
-
-
-//       if (user.twoFactor?.enabled) {
-//   // 1) Generate short-lived temp token
-//   const tempToken = generateAccessToken(
-//     { id: user._id, role: user.role, twoFAStage: true },
-//     "5m" // 5-minute token
-//   );
-
-//   // 2) Generate 6-digit OTP
-//   const loginCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-//   await User.findByIdAndUpdate(user._id, {
-//     "twoFactor.loginCode": loginCode,
-//     "twoFactor.loginExpiry": new Date(Date.now() + 5 * 60 * 1000),
-//   });
-
-//   // 3) Send OTP to email
-//   await sendEmail({
-//     to: user.email,
-//     name: user.name,
-//     subject: "Your 2FA Login Code",
-//     content: `Your login 2FA code is: ${loginCode}. It expires in 5 minutes.`,
-//   });
-
-//    sendResponse(
-//     res,
-//     {
-//       require2FA: true,
-//       tempToken,
-//       email: user.email,
-//       message: "Enter the 6-digit 2FA code or backup code",
-//     },
-//     "2FA required",
-//     206
-//   ); return;
-// }
-
-//       sendResponse(
-//         res,
-//         {
-//           token: accessToken,
-//           user: user,
-//         },
-//         "Login successful",
-//         STATUS_CODES.OK
-//       );
-//     } else {
-//       sendResponse(
-//         res,
-//         null,
-//         "Invalid role provided",
-//         STATUS_CODES.BAD_REQUEST
-//       );
-//     }
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
-
-
-
-
-// ==================== LOGIN USER ====================
 export const loginUser = async (
   req: Request,
   res: Response,
@@ -323,13 +183,6 @@ export const loginUser = async (
     next(error);
   }
 };
-
-
-
-
-
-
-
 
 export const refreshToken = async (
   req: Request,
@@ -781,6 +634,7 @@ export const getAllUsersWithStats = async (
   }
 };
 
+//updateUserProfile
 export const updateUserProfile = async (
   req: AuthRequest,
   res: Response,
@@ -795,36 +649,42 @@ export const updateUserProfile = async (
 
     const updates: any = { ...req.body };
     const user = await User.findById(userId);
+
     if (!user) {
       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    // Handle uploaded files (any field name)
     if (req.files && Array.isArray(req.files)) {
       for (const file of req.files as Express.Multer.File[]) {
-        const fieldId = file.fieldname; // the admin-defined field name
-        const uploadedFile = {
-          url: `/uploads/${file.filename}`, // adapt if using S3/Firebase
-          side: "single",
-          status: "pending",
-        };
+        const fieldName = file.fieldname;
+        const fileUrl = `/uploads/${file.filename}`;
 
-        // Check if document with same field exists
-        const existingDocIndex = user.documents.findIndex(d => d.name === fieldId);
+        if (fieldName === "profilePicture") {
+          user.profilePicture = fileUrl;
+          continue; 
+        }
+
+        const existingDocIndex = user.documents.findIndex(
+          (d) => d.name === fieldName
+        );
+
         if (existingDocIndex >= 0) {
-          user.documents[existingDocIndex].filesUrl.push(uploadedFile.url);
+          user.documents[existingDocIndex].filesUrl.push(fileUrl);
         } else {
           user.documents.push({
-            name: fieldId,
-            filesUrl: [uploadedFile.url],
+            name: fieldName,
+            filesUrl: [fileUrl],
             status: "pending",
           });
         }
       }
     }
+    if (updates.profilePicture) {
+      user.profilePicture = updates.profilePicture;
+      delete updates.profilePicture; 
+    }
 
-    // Update other profile fields
     Object.assign(user, updates);
 
     const updatedUser = await user.save();
@@ -1811,70 +1671,6 @@ export const getUserWithdrawals = async (req: any, res: Response) => {
   }
 };
 
-// Get withdrawal history by range or custom date
-// export const getWithdrawalHistoryByRange = async (req: any, res: Response) => {
-//   try {
-//     const userId = req.user.id;
-//     const { range, days, startDate: startStr, endDate: endStr } = req.query;
-
-//     const now = new Date();
-//     let startDate: Date | undefined;
-//     let endDate: Date | undefined = now;
-
-//     // Custom startDate / endDate if provided
-//     if (startStr) startDate = new Date(startStr);
-//     if (endStr) endDate = new Date(endStr);
-
-//     if (!startDate) {
-//       switch (range) {
-//         case "weekly":
-//           startDate = new Date(now);
-//           startDate.setDate(now.getDate() - now.getDay()); // Start of week (Sunday)
-//           startDate.setHours(0, 0, 0, 0);
-//           break;
-//         case "monthly":
-//           startDate = new Date(now.getFullYear(), now.getMonth(), 1); // Start of month
-//           break;
-//         default:
-//           if (days) {
-//             const dayCount = parseInt(days as string, 10);
-//             if (isNaN(dayCount) || dayCount <= 0) {
-//               return sendResponse(res, null, "Invalid 'days' query", 400);
-//             }
-//             startDate = new Date(now);
-//             startDate.setDate(now.getDate() - dayCount);
-//           } else {
-//             return sendResponse(
-//               res,
-//               null,
-//               "Invalid range. Use 'weekly', 'monthly', or provide 'days'",
-//               400
-//             );
-//           }
-//       }
-//     }
-
-//     const withdrawals = await WalletTransaction.find({
-//       userId,
-//       type: "debit",
-//       source: "withdraw",
-//       createdAt: { $gte: startDate, $lte: endDate },
-//     }).sort({ createdAt: -1 });
-
-//     return sendResponse(
-//       res,
-//       { withdrawals },
-//       `Withdrawal history from ${startDate.toDateString()} to ${endDate.toDateString()}`,
-//       200
-//     );
-//   } catch (err) {
-//     console.error(err);
-//     return sendResponse(res, null, "Server error", 500);
-//   }
-// };
-
-
-
 // NEW: Monthly wallet graph (withdrawals + topups)
 export const getWithdrawalHistoryByRange = async (req: any, res: Response) => {
   try {
@@ -1995,12 +1791,6 @@ export const getWithdrawalHistoryByRange = async (req: any, res: Response) => {
     return sendResponse(res, null, "Server error", 500);
   }
 };
-
-
-
-
-
-
 
 // Get all withdrawals (admin)
 export const getAllWithdrawals = async (req: any, res: Response) => {
