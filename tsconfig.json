@@ -10,7 +10,9 @@
     "typeRoots": [
       "./node_modules/@types",
       "./src/types"
-    ]
+    ],
+
+    "types": ["node"]
   },
 
   "include": ["src/**/*.ts", "src/**/*.json"],
