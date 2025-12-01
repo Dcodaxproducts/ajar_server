@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 import { STATUS_CODES } from "../config/constants";
 import { paginateQuery } from "../utils/paginate";
 import { sendEmail } from "../helpers/node-mailer";
-import { User } from "../models/user.model";
+import { IUser, User } from "../models/user.model";
 import { IMarketplaceListing, MarketplaceListing } from "../models/marketplaceListings.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { Types } from "mongoose";
@@ -1022,7 +1022,209 @@ export const deleteBooking = async (
   }
 };
 
+
+
 // submitBookingPin
+export const submitBookingPin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const { otp } = req.body;
+
+    // --------------------- Validate input ---------------------
+    if (!otp)
+      return sendResponse(res, null, "PIN is required", STATUS_CODES.BAD_REQUEST);
+
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+
+    // --------------------- Fetch booking ---------------------
+    const booking = await Booking.findById(id)
+      .populate("renter", "email name fcmToken")
+      .populate("leaser", "email name fcmToken");
+
+    if (!booking)
+      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+
+    // --------------------- Check OTP ---------------------
+    if (booking.otp !== otp)
+      return sendResponse(res, null, "Invalid or expired PIN", STATUS_CODES.UNAUTHORIZED);
+
+    const now = new Date();
+    const checkIn = new Date(booking.dates.checkIn);
+    const checkOut = new Date(booking.dates.checkOut);
+
+    if (now < checkIn)
+      return sendResponse(res, null, "PIN submission not allowed before check-in time.", STATUS_CODES.BAD_REQUEST);
+
+    if (now > checkOut)
+      return sendResponse(res, null, "PIN has expired after checkout date.", STATUS_CODES.BAD_REQUEST);
+
+    const isRunning = now >= checkIn && now <= checkOut;
+
+    // --------------------- CASE A: Active booking ---------------------
+    if (booking.status === "approved" && isRunning) {
+      if (!booking.bookingDates) booking.bookingDates = {};
+      if (!booking.bookingDates.handover) booking.bookingDates.handover = now;
+
+      booking.otp = "";
+      booking.isVerified = true;
+      await booking.save();
+
+      // -------------------- Notify leaser about booking start --------------------
+      try {
+        const listing = await MarketplaceListing.findById(
+          booking.marketplaceListingId
+        ) as IMarketplaceListing | null; // cast fixes type errors
+
+        if (listing) {
+          const renter = booking.renter as IUser | null;
+          const leaser = booking.leaser as IUser | null;
+
+          if (renter?._id) {
+            await sendNotification(
+              renter._id.toString(),
+              "Booking Started",
+              `Your booking for "${listing.name}" has officially started.`,
+              {
+                bookingId: booking._id.toString(),
+                listingId: listing._id.toString(),
+                type: "booking_started",
+              }
+            );
+          }
+
+          if (leaser?._id) {
+            await sendNotification(
+              leaser._id.toString(),
+              "Booking Started",
+              `${renter?.name} has entered the PIN and the booking has begun for "${listing.name}".`,
+              {
+                bookingId: booking._id.toString(),
+                listingId: listing._id.toString(),
+                type: "booking_started",
+              }
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Failed to notify leaser on booking start:", err);
+      }
+      // -------------------------------------------------------------------------
+
+      return sendResponse(
+        res,
+        booking,
+        "PIN verified successfully and handover recorded",
+        STATUS_CODES.OK
+      );
+    }
+
+    // --------------------- CASE B: Create new booking (handover) ---------------------
+    const newBookingData: any = {
+      status: "approved",
+      renter: booking.renter,
+      leaser: booking.leaser,
+      marketplaceListingId: booking.marketplaceListingId,
+      dates: booking.dates,
+      language: booking.language,
+      otp: "",
+      isVerified: true,
+      priceDetails: booking.priceDetails,
+      extraRequestCharges: booking.extraRequestCharges,
+      specialRequest: booking.specialRequest,
+      isExtend: false,
+      extensionRequestedDate: undefined,
+      bookingDates: { handover: now, returnDate: null },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const existingActive = await Booking.findOne({
+      renter: booking.renter,
+      marketplaceListingId: booking.marketplaceListingId,
+      "bookingDates.returnDate": { $in: [null, undefined] },
+      _id: { $ne: booking._id },
+      status: "approved",
+    });
+
+    if (existingActive) {
+      newBookingData.previousBookingId = existingActive._id;
+      existingActive.isExtend = true;
+
+      const prevTotal = existingActive.priceDetails?.totalPrice || 0;
+      const prevExtendTotal = existingActive.extendCharges?.totalPrice || 0;
+      existingActive.extendCharges = {
+        extendCharges: prevTotal,
+        totalPrice: prevTotal + prevExtendTotal,
+      };
+      await existingActive.save();
+    }
+
+    const createdNewBooking = await Booking.create(newBookingData);
+    booking.otp = "";
+    booking.isVerified = true;
+    await booking.save();
+
+    // -------------------- Notify leaser for new booking handover --------------------
+    try {
+      const listing = await MarketplaceListing.findById(
+        createdNewBooking.marketplaceListingId
+      ) as IMarketplaceListing | null;
+
+      if (listing) {
+        const renter = createdNewBooking.renter as IUser | null;
+        const leaser = createdNewBooking.leaser as IUser | null;
+
+        if (renter?._id) {
+          await sendNotification(
+            renter._id.toString(),
+            "Booking Started",
+            `Your booking for "${listing.name}" has officially started.`,
+            {
+              bookingId: createdNewBooking._id.toString(),
+              listingId: listing._id.toString(),
+              type: "booking_started",
+            }
+          );
+        }
+
+        if (leaser?._id) {
+          await sendNotification(
+            leaser._id.toString(),
+            "Booking Started",
+            `${renter?.name} has entered the PIN and the new booking has begun for "${listing.name}".`,
+            {
+              bookingId: createdNewBooking._id.toString(),
+              listingId: listing._id.toString(),
+              type: "booking_started",
+            }
+          );
+        }
+      }
+    } catch (err) {
+      console.error("Failed to notify leaser on new booking start:", err);
+    }
+
+    return sendResponse(
+      res,
+      createdNewBooking,
+      "New running booking created and handover recorded",
+      STATUS_CODES.OK
+    );
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+
+
+// // submitBookingPin
 // export const submitBookingPin = async (
 //   req: Request,
 //   res: Response,
@@ -1170,174 +1372,3 @@ export const deleteBooking = async (
 //     next(err);
 //   }
 // };
-
-
-// submitBookingPin
-export const submitBookingPin = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const { id } = req.params;
-    const { otp } = req.body;
-
-    // --------------------- Validate input ---------------------
-    if (!otp)
-      return sendResponse(res, null, "PIN is required", STATUS_CODES.BAD_REQUEST);
-
-    if (!mongoose.Types.ObjectId.isValid(id))
-      return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
-
-    // --------------------- Fetch booking ---------------------
-    const booking = await Booking.findById(id)
-      .populate("renter", "email name fcmToken")
-      .populate("leaser", "email name fcmToken"); // Populate leaser to notify
-
-    if (!booking)
-      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
-
-    // --------------------- Check OTP ---------------------
-    if (booking.otp !== otp)
-      return sendResponse(res, null, "Invalid or expired PIN", STATUS_CODES.UNAUTHORIZED);
-
-    const now = new Date();
-    const checkIn = new Date(booking.dates.checkIn);
-    const checkOut = new Date(booking.dates.checkOut);
-
-    // OTP only allowed within check-in/check-out window
-    if (now < checkIn)
-      return sendResponse(res, null, "PIN submission not allowed before check-in time.", STATUS_CODES.BAD_REQUEST);
-
-    if (now > checkOut)
-      return sendResponse(res, null, "PIN has expired after checkout date.", STATUS_CODES.BAD_REQUEST);
-
-    const isRunning = now >= checkIn && now <= checkOut;
-
-    // --------------------- CASE A: Active booking ---------------------
-    if (booking.status === "approved" && isRunning) {
-      if (!booking.bookingDates) booking.bookingDates = {};
-      if (!booking.bookingDates.handover) booking.bookingDates.handover = now;
-
-      booking.otp = "";
-      booking.isVerified = true; // MARK OTP AS VERIFIED
-      await booking.save();
-
-      // -------------------- Notify leaser about booking start --------------------
-      try {
-        // Fetch listing and cast type
-        const listing = await MarketplaceListing.findById(
-          booking.marketplaceListingId
-        );
-
-        // Check listing exists before using _id or name
-        if (booking.leaser && listing) {
-          await sendNotification(
-            booking.leaser.toString(),
-            "Booking Started",
-            `Your booking for "${listing.name}" has started. Renter has entered the PIN.`,
-            {
-              bookingId: booking._id.toString(),
-              listingId: (listing._id as Types.ObjectId).toString(),
-              type: "booking",
-              status: "started",
-            }
-          );
-        }
-      } catch (err) {
-        console.error("Failed to notify leaser on booking start:", err);
-      }
-      // -------------------------------------------------------------------------
-
-      return sendResponse(
-        res,
-        booking,
-        "PIN verified successfully and handover recorded",
-        STATUS_CODES.OK
-      );
-    }
-
-    // --------------------- CASE B: Create new booking (handover) ---------------------
-    const newBookingData: any = {
-      status: "approved",
-      renter: booking.renter,
-      leaser: booking.leaser,
-      marketplaceListingId: booking.marketplaceListingId,
-      dates: booking.dates,
-      language: booking.language,
-      otp: "",
-      isVerified: true,
-      priceDetails: booking.priceDetails,
-      extraRequestCharges: booking.extraRequestCharges,
-      specialRequest: booking.specialRequest,
-      isExtend: false,
-      extensionRequestedDate: undefined,
-      bookingDates: { handover: now, returnDate: null },
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    // Find any active booking for same renter+listing
-    const existingActive = await Booking.findOne({
-      renter: booking.renter,
-      marketplaceListingId: booking.marketplaceListingId,
-      "bookingDates.returnDate": { $in: [null, undefined] },
-      _id: { $ne: booking._id },
-      status: "approved",
-    });
-
-    if (existingActive) {
-      newBookingData.previousBookingId = existingActive._id;
-      existingActive.isExtend = true;
-
-      const prevTotal = existingActive.priceDetails?.totalPrice || 0;
-      const prevExtendTotal = existingActive.extendCharges?.totalPrice || 0;
-      existingActive.extendCharges = {
-        extendCharges: prevTotal,
-        totalPrice: prevTotal + prevExtendTotal,
-      };
-      await existingActive.save();
-    }
-
-    const createdNewBooking = await Booking.create(newBookingData);
-    booking.otp = "";
-    booking.isVerified = true; // Mark parent booking verified too
-    await booking.save();
-
-    // -------------------- Notify leaser for new booking handover --------------------
-    try {
-      const listing = await MarketplaceListing.findById(
-        createdNewBooking.marketplaceListingId
-      );
-
-      if (createdNewBooking.leaser && listing) {
-        await sendNotification(
-          createdNewBooking.leaser.toString(),
-          "Booking Started",
-          `Your booking for "${listing.name}" has started. Renter has entered the PIN.`,
-          {
-            bookingId: createdNewBooking._id.toString(),
-            listingId: (listing._id as Types.ObjectId).toString(),
-            type: "booking",
-            status: "started",
-          }
-        );
-      }
-    } catch (err) {
-      console.error("Failed to notify leaser on new booking start:", err);
-    }
-    // -------------------------------------------------------------------------
-
-    return sendResponse(
-      res,
-      createdNewBooking,
-      "New running booking created and handover recorded",
-      STATUS_CODES.OK
-    );
-
-  } catch (err) {
-    next(err);
-  }
-};
-
-

@@ -58,6 +58,7 @@ router.use("/favourites", favouritesRoutes);
 router.use("/analytics", analyticsRoutes);
 router.use("/oauth", userGoogleRoutes); 
 router.use("/payments", paymentRoutes);
+router.use("/messages", messageRoutes);
 
 
 export default router;
