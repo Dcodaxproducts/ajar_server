@@ -29,65 +29,6 @@ export const uploadChatFiles = async (req: MulterRequest, res: Response) => {
   }
 };
 
-
-
-// // Send message
-// export const sendMessage = async (req: AuthRequest, res: Response) => {
-//   try {
-//     const { chatId, receiver, text, attachments } = req.body;
-//     const sender = new mongoose.Types.ObjectId(req.user!.id);
-
-//     // Ensure conversation exists
-//     const conversation = await Conversation.findById(chatId);
-//     if (!conversation) {
-//       return res.status(404).json({ error: "Conversation not found" });
-//     }
-
-//     // Ensure sender or receiver is participant
-//     if (
-//       !conversation.participants.some(
-//         (p) => p.equals(sender) || p.equals(receiver)
-//       )
-//     ) {
-//       return res
-//         .status(403)
-//         .json({ error: "You are not allowed in this chat" });
-//     }
-
-//     // Create message
-//     const newMessage = await Message.create({
-//       chatId: conversation._id,
-//       sender,
-//       receiver,
-//       text,
-//       attachments,
-//       seen: false,
-//     });
-
-//     // Update lastMessage
-//     conversation.lastMessage = newMessage._id as mongoose.Types.ObjectId;
-//     await conversation.save();
-
-//     // Populate sender and receiver before sending response
-//     const populatedMessage = await Message.findById(newMessage._id)
-//       .populate("sender", "name email profilePicture")
-//       .populate("receiver", "name email profilePicture");
-
-//     //Emit directly to receiver’s room
-//     getIO().to(`user:${receiver}`).emit("message:new", populatedMessage);
-
-//     res.status(201).json({
-//       success: true,
-//       message: "Message sent successfully",
-//       data: populatedMessage,
-//     });
-//   } catch (error) {
-//     console.error("Send message error:", error);
-//     res.status(500).json({ error: "Failed to send message" });
-//   }
-// };
-
-
 // Send message
 export const sendMessage = async (req: AuthRequest, res: Response) => {
   try {
@@ -243,6 +184,11 @@ export const markMessagesSeen = async (req: AuthRequest, res: Response) => {
       { _id: { $in: unseenMessages.map((m) => m._id) } },
       { $set: { seen: true, readAt: now } }
     );
+
+    //FIX: update conversation timestamp
+    await Conversation.findByIdAndUpdate(chatId, {
+      updatedAt: new Date(),
+    });
 
     //Notify each sender (looping is fine here, but could be batched later)
     unseenMessages.forEach((msg) => {

@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document, model } from "mongoose";
+import mongoose, { Schema, Document, model, Types } from "mongoose";
 
 export interface IListingDocument {
   name: string; // e.g. "property_paper"
@@ -13,6 +13,7 @@ interface ILanguageTranslation {
 }
 
 export interface IMarketplaceListing extends Document {
+  _id: Types.ObjectId;  // <-- Add this line
   leaser: mongoose.Types.ObjectId;
   subCategory: mongoose.Types.ObjectId;
   zone: mongoose.Types.ObjectId;
