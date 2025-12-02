@@ -23,9 +23,6 @@ router.patch("/admin/:id", useAuth, updateRefundSettings);
 router.delete("/admin/:id", useAuth, deleteRefundSettings);
 router.patch("/admin/:id/status", useAuth, updateRefundStatus);
 router.patch("/admin/:id/status", useAuth, updateRefundStatus);
-// /zone/subcategory
-
-
 
 // for user
 router.post("/user", useAuth, createRefundRequest);

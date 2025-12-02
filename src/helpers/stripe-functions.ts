@@ -6,7 +6,6 @@ dotenv.config();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
 // CREATE CUSTOMER
-
 export const createCustomer = async (
   email: string,
   name: string

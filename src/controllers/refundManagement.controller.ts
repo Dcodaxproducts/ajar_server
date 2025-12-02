@@ -6,8 +6,6 @@ import mongoose from "mongoose";
 import asyncHandler from "express-async-handler";
 import { Booking } from "../models/booking.model";
 import { paginateQuery } from "../utils/paginate";
-// import { AuthRequest } from "../middlewares/auth.middleware";
-
 
 interface AuthRequest extends Request {
   user?: {
@@ -255,9 +253,6 @@ export const createRefundRequest = asyncHandler(
   }
 );
 
-
-//Update Refund Request (User)
-
 // Update Refund Request (User)
 export const updateRefundRequest = asyncHandler(
   async (req: Request & { user?: any }, res: Response) => {
@@ -346,8 +341,6 @@ export const getRefundRequestById = asyncHandler(
 );
 
 // Get All Refund Requests (User Only)
-
-// Get All Refund Requests (User Only)
 export const getMyRefundRequests = asyncHandler(
   async (req: Request & { user?: any }, res: Response) => {
     // ✅ FIX: Cast req to AuthRequest
@@ -385,7 +378,6 @@ export const getMyRefundRequests = asyncHandler(
     });
   }
 );
-
 
 // Update Refund Request Status (Admin Only)
 export const updateRefundStatus = asyncHandler(

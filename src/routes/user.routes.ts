@@ -155,8 +155,6 @@ router.get("/wallet", useAuth, asyncHandler(getWallet));
 router.get("/my-withdrawals/range", useAuth, asyncHandler(getWithdrawalHistoryByRange));
 // router.get("/wallet/graph", useAuth, asyncHandler(getWalletGraph));
 
-
-
 router.get(
   "/my-withdrawals",
   useAuth,
