@@ -23,15 +23,12 @@ const useAuth = authMiddleware as any;
 router.post("/", useAuth, createFAQ);
 router.get("/", getAllFAQs);
 router.get("/:id", getFAQById);
-
-
 router.patch(
   "/:id",
   useAuth,
   asyncHandler(languageTranslationMiddleware(FAQ)),
   updateFAQ
 );
-
 router.delete("/:id", useAuth, deleteFAQ);
 
 export default router;

@@ -1183,46 +1183,6 @@ export const searchMarketplaceListings = async (
   }
 };
 
-// // update listing status (admin only)
-// export const updateListingStatus = async (req: AuthRequest, res: Response) => {
-//   try {
-//     const { listingId } = req.params;
-//     const { status } = req.body;
-
-//     //Only allow valid statuses
-//     if (!["approved", "rejected"].includes(status)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Invalid status. Allowed values: approved, rejected",
-//       });
-//     }
-
-//     //Find listing and update status
-//     const listing = await MarketplaceListing.findById(listingId);
-//     if (!listing) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Listing not found",
-//       });
-//     }
-
-//     listing.status = status;
-//     await listing.save();
-
-//     return res.status(200).json({
-//       success: true,
-//       message: `Listing ${status} successfully`,
-//       data: listing,
-//     });
-//   } catch (error) {
-//     console.error("Error updating listing status:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Server error",
-//     });
-//   }
-// };
-
 export const getPopularMarketplaceListings = async (
   req: Request,
   res: Response,

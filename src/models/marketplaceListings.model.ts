@@ -13,7 +13,7 @@ interface ILanguageTranslation {
 }
 
 export interface IMarketplaceListing extends Document {
-  _id: Types.ObjectId;  // <-- Add this line
+  _id: Types.ObjectId;  
   leaser: mongoose.Types.ObjectId;
   subCategory: mongoose.Types.ObjectId;
   zone: mongoose.Types.ObjectId;

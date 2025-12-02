@@ -1,4 +1,3 @@
-// middlewares/documentvalidationhelper.middleware.ts
 interface DocumentCheckResult {
   valid: boolean;
   message: string;
