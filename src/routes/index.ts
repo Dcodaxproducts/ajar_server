@@ -27,6 +27,7 @@ import userGoogleRoutes from "./usergoogle.routes";
 import paymentRoutes from "./payment.routes";
 import notificationRoutes from "./notification.routes";
 import twofaRoutes from "./twofa.routes";
+import articlesRoutes from "./article.routes";
 
 const router = express.Router();
 
@@ -59,6 +60,7 @@ router.use("/analytics", analyticsRoutes);
 router.use("/oauth", userGoogleRoutes); 
 router.use("/payments", paymentRoutes);
 router.use("/messages", messageRoutes);
+router.use("/articles", articlesRoutes);
 
 
 export default router;
