@@ -7,14 +7,12 @@ import { allowedOrigins } from "./config/corsOrigins";
 import { errorHandler } from "./middlewares/errorHandler";
 import routes from "./routes";
 import "./config/passport";
+import compression from "compression";
+import passport from "passport";
 
-// export const app: Application = express();
-// export const server: HTTPServer = http.createServer(app);
 export const app = express();
 export const server = http.createServer(app);
 
-import compression from "compression";
-import passport from "passport";
 
 app.use(compression());
 

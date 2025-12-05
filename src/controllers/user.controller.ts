@@ -554,6 +554,66 @@ export const resetPassword = async (
   }
 };
 
+export const changePassword = async (
+  req: any,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user?.id; // coming from auth middleware
+    const { oldPassword, newPassword } = req.body;
+
+    if (!userId) {
+      sendResponse(res, null, "User not authenticated", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    // Check old password
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) {
+      sendResponse(res, null, "Old password is incorrect", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    // Check if new password is same as old
+    if (oldPassword === newPassword) {
+      sendResponse(
+        res,
+        null,
+        "New password must be different from old password",
+        STATUS_CODES.BAD_REQUEST
+      );
+      return;
+    }
+
+    // Hash & update password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+
+    // remove OTP stored for reset (if any)
+    user.otp = {
+      code: "",
+      expiry: new Date(0),
+      isVerified: false,
+    };
+
+    await user.save();
+
+    sendResponse(res, null, "Password updated successfully", STATUS_CODES.OK);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
 // Embedded pagination logic directly inside the controller
 const paginateQuery = async <T>(
   query: import("mongoose").Query<T[], any>,
