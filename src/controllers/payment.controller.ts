@@ -6,23 +6,27 @@ import mongoose from "mongoose";
 import { Request, Response } from "express";
 import { sendNotification } from "../utils/notifications";
 
+// CREATE PAYMENT INTENT
 export const createBookingPayment = async (req: Request, res: Response) => {
   try {
     const { bookingId } = req.body;
     console.log("Creating payment for booking ID:", bookingId);
+
     if (!mongoose.Types.ObjectId.isValid(bookingId))
       return res.status(400).json({ message: "Invalid booking ID" });
 
     const booking = await Booking.findById(bookingId).populate("renter");
     if (!booking) return res.status(404).json({ message: "Booking not found" });
+
     console.log("Booking found:", booking);
+
     const user = booking.renter as any;
     if (!user.stripe?.customerId)
       return res.status(400).json({ message: "Stripe customer not found for user" });
 
     console.log("User Stripe Customer ID:", user.stripe.customerId);
 
-    // Calculate total amount
+    // Calculate correct amount
     let amount = booking.priceDetails.totalPrice;
 
     if (booking.isExtend && booking.extendCharges?.extendCharges) {
@@ -31,61 +35,71 @@ export const createBookingPayment = async (req: Request, res: Response) => {
       amount = booking.extraRequestCharges.additionalCharges;
     }
 
+    // ADDED: LOG BEFORE PAYMENT INTENT
+    console.log("Creating Stripe PaymentIntent for amount:", amount);
+
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100), // cents
+      amount: Math.round(amount * 100), // Convert to cents
       currency: "usd",
-      // customer: user.stripe.customerId,
       metadata: {
-        bookingId: (booking._id as mongoose.Types.ObjectId).toString(),
+        bookingId: booking._id.toString(),
         userId: user._id.toString(),
       },
     });
-    console.log("stripe", stripe);
+
+    // ADDED: LOG AFTER PAYMENT INTENT
     console.log("Payment Intent created:", paymentIntent.id);
 
-    // Save payment record
+    // Save Payment record
     await Payment.create({
       bookingId: booking._id,
       userId: user._id,
       amount,
       currency: "usd",
-      status: "pending",
+      status: "pending", // default, webhook will update it
       paymentIntentId: paymentIntent.id,
       method: "stripe",
     });
 
-     // ------------------ NEW: Notify leaser BEFORE payment ------------------
+    // Notify Leaser (Before payment)
     try {
       const leaser = booking.leaser as any;
       if (leaser) {
         const renterName = user.name || user.email || "A user";
         await sendNotification(
-          leaser._id?.toString(),
+          leaser._id.toString(),
           "Payment Pending",
-          `${renterName} has initiated booking for "${booking.marketplaceListingId}" and payment is pending.`,
+          `${renterName} has initiated booking "${booking.marketplaceListingId}" and payment is pending.`,
           { bookingId: booking._id.toString(), type: "payment_pending" }
         );
       }
     } catch (err) {
       console.error("Failed to notify leaser before payment:", err);
     }
-    // ---------------------------------------------------------------------
+
     res.status(200).json({
       clientSecret: paymentIntent.client_secret,
       message: "Payment initiated",
     });
   } catch (error) {
-    console.error(error);
+    console.error("Payment Intent Error:", error);
     res.status(500).json({ message: "Server error", error });
   }
 };
 
+// STRIPE WEBHOOK
 export const stripeWebhook = async (req: Request, res: Response) => {
+  // ADDED: RAW WEBHOOK LOGS
+  console.log("------ STRIPE WEBHOOK RECEIVED ------");
+  console.log("Headers:", req.headers);
+  console.log("Raw Body Length:", req.body?.length);
+
   const sig = req.headers["stripe-signature"];
   if (!sig) return res.status(400).send("Missing Stripe signature");
 
   let event;
   try {
+    // Verify Stripe signature
     event = stripe.webhooks.constructEvent(
       req.body,
       sig,
@@ -96,13 +110,16 @@ export const stripeWebhook = async (req: Request, res: Response) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  // ADDED: FULL EVENT LOGGING
+  console.log("Webhook event type:", event.type);
+  console.log("Event Data:", event.data.object);
+
   try {
     const paymentIntent = event.data.object as any;
     const bookingId: string = paymentIntent.metadata?.bookingId;
-    const userId: string = paymentIntent.metadata?.userId;
 
     if (!bookingId) {
-      console.error("Booking ID missing in payment intent metadata");
+      console.error("Booking ID missing in PaymentIntent metadata");
       return res.status(400).send("Missing booking ID");
     }
 
@@ -118,106 +135,107 @@ export const stripeWebhook = async (req: Request, res: Response) => {
     const renter = booking.renter as IUser | null;
     const leaser = booking.leaser as IUser | null;
 
-    switch (event.type) {
-      case "payment_intent.succeeded": {
-        // Update booking status
-        booking.status = "approved";
+    // PAYMENT SUCCEEDED
+    if (event.type === "payment_intent.succeeded") {
+      console.log("✔ Webhook: Payment Succeeded for:", paymentIntent.id);
 
-        // Deduct logic
-        if (booking.isExtend && booking.extendCharges) {
-          booking.extendCharges.extendCharges += 150;
-          booking.extendCharges.totalPrice += 150;
-        } else if (booking.extraRequestCharges) {
-          booking.extraRequestCharges.additionalCharges += 150;
-          booking.extraRequestCharges.totalPrice += 150;
-        } else {
-          booking.priceDetails.totalPrice += 150;
-        }
+      booking.status = "approved";
 
-        await booking.save();
-
-        // Update payment record
-        await Payment.findOneAndUpdate(
-          { paymentIntentId: paymentIntent.id },
-          { status: "succeeded" }
-        );
-
-        // Notify renter
-        if (renter?._id) {
-          try {
-            await sendNotification(
-              renter._id.toString(),
-              "Payment Successful",
-              `Your payment for booking "${booking._id}" was successful.`,
-              { bookingId: booking._id.toString(), type: "payment_succeeded" }
-            );
-          } catch (err) {
-            console.error("Failed to notify renter on payment success:", err);
-          }
-        }
-
-        // Notify leaser
-        if (leaser?._id) {
-          try {
-            const renterName = renter?.name || "A user";
-            await sendNotification(
-              leaser._id.toString(),
-              "Payment Succeeded",
-              `${renterName} has successfully completed payment for booking "${booking._id}".`,
-              { bookingId: booking._id.toString(), type: "payment_succeeded" }
-            );
-          } catch (err) {
-            console.error("Failed to notify leaser on payment success:", err);
-          }
-        }
-        break;
+      // Add extra 150 charges as per your rules
+      if (booking.isExtend && booking.extendCharges) {
+        booking.extendCharges.extendCharges += 150;
+        booking.extendCharges.totalPrice += 150;
+      } else if (booking.extraRequestCharges) {
+        booking.extraRequestCharges.additionalCharges += 150;
+        booking.extraRequestCharges.totalPrice += 150;
+      } else {
+        booking.priceDetails.totalPrice += 150;
       }
 
-      case "payment_intent.payment_failed": {
-        // Update payment record
-        await Payment.findOneAndUpdate(
-          { paymentIntentId: paymentIntent.id },
-          { status: "failed" }
-        );
+      await booking.save();
 
-        // Notify renter
-        if (renter?._id) {
-          try {
-            await sendNotification(
-              renter._id.toString(),
-              "Payment Failed",
-              `Your payment for booking "${booking._id}" has failed. Please try again.`,
-              { bookingId: booking._id.toString(), type: "payment_failed" }
-            );
-          } catch (err) {
-            console.error("Failed to notify renter on payment failure:", err);
-          }
-        }
+      // Update Payment Success
+      await Payment.findOneAndUpdate(
+        { paymentIntentId: paymentIntent.id },
+        { status: "succeeded" },
+        { new: true }
+      );
 
-        // Notify leaser
-        if (leaser?._id) {
-          try {
-            const renterName = renter?.name || "A user";
-            await sendNotification(
-              leaser._id.toString(),
-              "Payment Failed",
-              `${renterName} failed to complete payment for booking "${booking._id}".`,
-              { bookingId: booking._id.toString(), type: "payment_failed" }
-            );
-          } catch (err) {
-            console.error("Failed to notify leaser on payment failure:", err);
-          }
+      console.log("✔ Payment marked as succeeded in DB");
+
+      // Notifications
+      if (renter?._id) {
+        try {
+          await sendNotification(
+            renter._id.toString(),
+            "Payment Successful",
+            `Your payment for booking "${booking._id}" was successful.`,
+            { bookingId: booking._id.toString(), type: "payment_succeeded" }
+          );
+        } catch (err) {
+          console.error("Notify renter failed:", err);
         }
-        break;
       }
 
-      default:
-        console.log(`Unhandled event type ${event.type}`);
+      if (leaser?._id) {
+        try {
+          const renterName = renter?.name || "A user";
+          await sendNotification(
+            leaser._id.toString(),
+            "Payment Succeeded",
+            `${renterName} completed payment for booking "${booking._id}".`,
+            { bookingId: booking._id.toString(), type: "payment_succeeded" }
+          );
+        } catch (err) {
+          console.error("Notify leaser failed:", err);
+        }
+      }
+    }
+
+    // PAYMENT FAILED
+    else if (event.type === "payment_intent.payment_failed") {
+      console.log("✖ Webhook: Payment FAILED for:", paymentIntent.id);
+
+      await Payment.findOneAndUpdate(
+        { paymentIntentId: paymentIntent.id },
+        { status: "failed" },
+        { new: true }
+      );
+
+      console.log("✖ Payment marked as FAILED in DB");
+
+      // Notifications
+      if (renter?._id) {
+        try {
+          await sendNotification(
+            renter._id.toString(),
+            "Payment Failed",
+            `Your payment for booking "${booking._id}" failed.`,
+            { bookingId: booking._id.toString(), type: "payment_failed" }
+          );
+        } catch (err) {
+          console.error("Notify renter failed:", err);
+        }
+      }
+
+      if (leaser?._id) {
+        try {
+          const renterName = renter?.name || "A user";
+          await sendNotification(
+            leaser._id.toString(),
+            "Payment Failed",
+            `${renterName} failed to complete payment for booking "${booking._id}".`,
+            { bookingId: booking._id.toString(), type: "payment_failed" }
+          );
+        } catch (err) {
+          console.error("Notify leaser failed:", err);
+        }
+      }
     }
 
     res.json({ received: true });
   } catch (err) {
-    console.error("Stripe webhook processing error:", err);
+    console.error("Webhook Processing Error:", err);
     res.status(500).send("Webhook processing error");
   }
 };

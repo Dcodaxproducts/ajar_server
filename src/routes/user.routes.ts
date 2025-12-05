@@ -4,6 +4,7 @@ import {
   addForm,
   addToWallet,
   appleLogin,
+  changePassword,
   createUser,
   deductFromWallet,
   deleteBankAccount,
@@ -56,6 +57,7 @@ import { validateDocuments } from "../middlewares/validateDocuments.middleware";
 import expressAsyncHandler from "express-async-handler";
 import passport from "passport";
 import jwt from "jsonwebtoken";
+import { changePasswordSchema } from "../schemas/changePassword.schema";
 
 const router = express.Router();
 
@@ -67,12 +69,10 @@ function asyncHandler(fn: any) {
 
 const useAuth = authMiddleware as any;
 
-
 //social logins 
 // POST /api/auth/google
 router.post("/google", googleLogin);
 router.post("/apple", appleLogin);
-
 
 router.post(
   "/signup",
@@ -83,10 +83,8 @@ router.post(
 router.post("/login", validateRequest({ body: loginUserSchema }), loginUser);
 router.post("/refresh-token", refreshToken);
 
-
 // Endpoint to save FCM token
 router.post("/save-fcm-token", useAuth, asyncHandler(saveFcmToken));
-
 
 router.post(
   "/resend-otp",
@@ -111,6 +109,13 @@ router.post(
   // useAuth,
   validateRequest({ body: resetPasswordSchema }),
   resetPassword
+);
+
+router.post(
+  "/change-password",
+  useAuth,
+  validateRequest({ body: changePasswordSchema }),
+  changePassword
 );
 
 router.get("/details", useAuth, asyncHandler(getUserDetails));
@@ -143,6 +148,7 @@ router.post(
   upload.array("filesUrl", 10),
   asyncHandler(uploadUserDocuments)
 );
+
 // Admin approves/rejects
 router.patch("/documents/review", useAuth, asyncHandler(reviewUserDocument));
 
@@ -168,11 +174,8 @@ router.get(
   asyncHandler(getAllWithdrawals)
 );
 
-
-
 // Get user by ID
 router.get("/:id", useAuth, asyncHandler(getUserById));
-
 
 // Add money to wallet
 router.post("/wallet/add", useAuth, asyncHandler(addToWallet));
@@ -186,15 +189,12 @@ router.post("/bank-account", useAuth, asyncHandler(addBankAccount));
 router.put("/bank-account/:bankAccountId", useAuth, asyncHandler(updateBankAccount));
 router.delete("/bank-account/:bankAccountId", useAuth, asyncHandler(deleteBankAccount));
 
-
 router.post("/withdrawals-request", useAuth, asyncHandler(instantWithdrawal));
-
 
 router.put(
   "/withdrawals/:requestId",
   useAuth,
   asyncHandler(processWithdrawal)
 );
-
 
 export default router;
