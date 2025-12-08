@@ -8,7 +8,7 @@
     "live": "pm2 start src/server.ts --watch --ignore-watch='public/uploads' --name my-app --interpreter ts-node",
     "build": "tsc",
     "start": "node dist/server.js",
-    "postbuild": "xcopy src\\config\\*.json dist\\config\\ /Y /I"
+    "postbuild": "mkdir -p dist/config && cp src/config/*.json dist/config/"
   },
   "keywords": [],
   "author": "",

@@ -74,8 +74,20 @@ export const getAllArticles = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+    const search = req.query.search?.toString().trim();
 
-    const query = Article.find().sort({ createdAt: -1 });
+    //Base filter
+    const filter: any = {};
+
+    //Apply search if provided
+    if (search) {
+      filter.title = {
+        $regex: `^${search}`, 
+        $options: "i",        
+      };
+    }
+
+    const query = Article.find(filter).sort({ createdAt: -1 });
     const paginated = await paginateQuery(query, { page, limit });
 
     sendResponse(
@@ -90,9 +102,15 @@ export const getAllArticles = async (req: Request, res: Response) => {
     );
   } catch (error) {
     console.error(error);
-    sendResponse(res, null, "Error retrieving articles", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    sendResponse(
+      res,
+      null,
+      "Error retrieving articles",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
+
 
 // Get Article By ID
 export const getArticleById = async (req: Request, res: Response) => {
@@ -137,3 +155,52 @@ export const deleteArticle = async (req: Request, res: Response) => {
     sendResponse(res, null, "Error deleting article", STATUS_CODES.INTERNAL_SERVER_ERROR);
   }
 };
+
+// Search Articles by Title
+export const searchArticles = async (req: Request, res: Response) => {
+  try {
+    const search = req.query.search?.toString().trim();
+
+    if (!search) {
+      return sendResponse(
+        res,
+        null,
+        "Search keyword is required",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
+
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+
+
+    const query = Article.find({
+      title: {
+        $regex: `^${search}`,
+        $options: "i",
+      },
+    }).sort({ createdAt: -1 });
+
+    const paginated = await paginateQuery(query, { page, limit });
+
+    sendResponse(
+      res,
+      {
+        articles: paginated.data,
+        total: paginated.total,
+        page: paginated.page,
+        limit: paginated.limit,
+      },
+      "Search results retrieved successfully"
+    );
+  } catch (error) {
+    console.error(error);
+    sendResponse(
+      res,
+      null,
+      "Error searching articles",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
+  }
+};
+
