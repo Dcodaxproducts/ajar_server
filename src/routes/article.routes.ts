@@ -6,6 +6,7 @@ import {
   getAllArticles,
   getArticleById,
   deleteArticle,
+  searchArticles,
 } from "../controllers/article.controller";
 
 import { authMiddleware } from "../middlewares/auth.middleware";
@@ -37,6 +38,8 @@ router.patch(
 
 // Get all
 router.get("/", asyncHandler(getAllArticles));
+
+router.get("/search", asyncHandler(searchArticles));
 
 // Get by ID
 router.get("/:id", asyncHandler(getArticleById));

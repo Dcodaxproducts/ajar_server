@@ -473,6 +473,235 @@ export const getAllMarketplaceListingsforLeaser = async (
 };
 
 //UPDATED getAllMarketplaceListings — added reviews & average rating
+// export const getAllMarketplaceListings = async (
+//   req: AuthRequest,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+
+//   try {
+//     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
+//     const {
+//       page = 1,
+//       limit = 10,
+//       zone,
+//       subCategory,
+//       category,
+//       all,
+//       recent,
+//       minPrice,
+//       maxPrice,
+//     } = req.query;
+
+//     const filter: any = {};
+
+//     //ROLE-BASED FILTERS
+//     if (req.user) {
+//       if (req.user.role === "admin") {
+//         if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//           filter.zone = new mongoose.Types.ObjectId(String(zone));
+//         }
+//       } else {
+//         if (all === "true") {
+//           if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//             filter.zone = new mongoose.Types.ObjectId(String(zone));
+//           }
+//         } else {
+//           filter.leaser = new mongoose.Types.ObjectId(String(req.user.id));
+//           if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//             filter.zone = new mongoose.Types.ObjectId(String(zone));
+//           }
+//         }
+//       }
+//     } else {
+//       if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
+//         filter.zone = new mongoose.Types.ObjectId(String(zone));
+//       }
+//     }
+
+//     //CATEGORY & SUBCATEGORY FILTERS
+//     if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
+//       filter.subCategory = new mongoose.Types.ObjectId(String(subCategory));
+//     }
+
+//     if (category && mongoose.Types.ObjectId.isValid(String(category))) {
+//       const subCategoryIds = await SubCategory.find({
+//         category: category,
+//       }).distinct("_id");
+//       filter.subCategory = { $in: subCategoryIds };
+//     }
+
+
+//     // add price filter 
+//     if (minPrice || maxPrice) {
+//       filter.price = {}; 
+
+//       if (minPrice) {
+//         filter.price.$gte = Number(minPrice);
+//       }
+
+//       if (maxPrice) {
+//         filter.price.$lte = Number(maxPrice); 
+//       }
+//     }
+
+//     //AGGREGATION PIPELINE
+//     const pipeline: any[] = [
+//       { $match: filter },
+//       {
+//         $lookup: {
+//           from: "categories",
+//           localField: "subCategory",
+//           foreignField: "_id",
+//           as: "subCategory",
+//         },
+//       },
+//       { $unwind: "$subCategory" },
+//       {
+//         $lookup: {
+//           from: "users",
+//           localField: "leaser",
+//           foreignField: "_id",
+//           as: "leaser",
+//         },
+//       },
+//       { $unwind: "$leaser" },
+//       {
+//         $lookup: {
+//           from: "zones",
+//           localField: "zone",
+//           foreignField: "_id",
+//           as: "zone",
+//         },
+//       },
+//       { $unwind: "$zone" },
+
+//       // Lookup all bookings for each listing
+//       {
+//         $lookup: {
+//           from: "bookings",
+//           localField: "_id",
+//           foreignField: "marketplaceListingId",
+//           as: "bookings",
+//         },
+//       },
+
+//       //Lookup reviews for those bookings
+//       {
+//         $lookup: {
+//           from: "reviews",
+//           localField: "bookings._id",
+//           foreignField: "bookingId",
+//           as: "reviews",
+//         },
+//       },
+
+//       //Calculate average rating
+//       {
+//         $addFields: {
+//           averageRating: { $avg: "$reviews.stars" },
+//           totalReviews: { $size: "$reviews" },
+//         },
+//       },
+
+//       // Lookup Form based on subCategory + zone
+//       {
+//         $lookup: {
+//           from: "forms",
+//           let: { subCatId: "$subCategory._id", zoneId: "$zone._id" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $and: [
+//                     { $eq: ["$subCategory", "$$subCatId"] },
+//                     { $eq: ["$zone", "$$zoneId"] },
+//                   ],
+//                 },
+//               },
+//             },
+//             {
+//               $project: {
+//                 userDocuments: 1,
+//                 leaserDocuments: 1,
+//               },
+//             },
+//           ],
+//           as: "form",
+//         },
+//       },
+//       {
+//         $addFields: {
+//           userDocuments: {
+//             $ifNull: [{ $arrayElemAt: ["$form.userDocuments", 0] }, []],
+//           },
+//           leaserDocuments: {
+//             $ifNull: [{ $arrayElemAt: ["$form.leaserDocuments", 0] }, []],
+//           },
+//         },
+//       },
+//       { $project: { form: 0 } },
+//       { $skip: (Number(page) - 1) * Number(limit) },
+//       { $limit: Number(limit) },
+//     ];
+
+//     //Sort by recently posted date (createdAt)
+//     if (recent === "true") {
+//       pipeline.push({ $sort: { createdAt: -1 } });
+//     }
+
+//     const listings = await MarketplaceListing.aggregate(pipeline).session(
+//       session
+//     );
+//     const total = await MarketplaceListing.countDocuments(filter).session(
+//       session
+//     );
+
+//     //LANGUAGE HANDLING
+//     const final = listings.map((obj: any) => {
+//       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
+//       if (listingLang?.translations) {
+//         obj.description =
+//           listingLang.translations.description || obj.description;
+//       }
+//       delete obj.languages;
+//       return obj;
+//     });
+
+//     //STATS
+//     const uniqueUserIds = await MarketplaceListing.distinct(
+//       "leaser",
+//       filter
+//     ).session(session);
+//     const totalUsersWithListings = uniqueUserIds.length;
+
+//     await session.commitTransaction();
+//     session.endSession();
+
+//     sendResponse(
+//       res,
+//       {
+//         listings: final,
+//         total,
+//         page: +page,
+//         limit: +limit,
+//         totalUsersWithListings,
+//         totalMarketplaceListings: total,
+//       },
+//       `Fetched listings${locale !== "en" ? ` (locale: ${locale})` : ""}`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (err) {
+//     await session.abortTransaction();
+//     session.endSession();
+//     next(err);
+//   }
+// };
+
+
+// UPDATED getAllMarketplaceListings — added reviews, average rating, adminFee & tax
 export const getAllMarketplaceListings = async (
   req: AuthRequest,
   res: Response,
@@ -497,7 +726,7 @@ export const getAllMarketplaceListings = async (
 
     const filter: any = {};
 
-    //ROLE-BASED FILTERS
+    /* ---------------- ROLE BASED FILTERS ---------------- */
     if (req.user) {
       if (req.user.role === "admin") {
         if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
@@ -521,69 +750,39 @@ export const getAllMarketplaceListings = async (
       }
     }
 
-    //CATEGORY & SUBCATEGORY FILTERS
+    /* ---------------- CATEGORY FILTERS ---------------- */
     if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
       filter.subCategory = new mongoose.Types.ObjectId(String(subCategory));
     }
 
     if (category && mongoose.Types.ObjectId.isValid(String(category))) {
       const subCategoryIds = await SubCategory.find({
-        category: category,
+        category,
       }).distinct("_id");
       filter.subCategory = { $in: subCategoryIds };
     }
 
-
-    // add price filter 
+    /* ---------------- PRICE FILTER ---------------- */
     if (minPrice || maxPrice) {
-      filter.price = {}; 
-
-      if (minPrice) {
-        filter.price.$gte = Number(minPrice); // price >= minPrice
-      }
-
-      if (maxPrice) {
-        filter.price.$lte = Number(maxPrice); // price <= maxPrice
-      }
+      filter.price = {};
+      if (minPrice) filter.price.$gte = Number(minPrice);
+      if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
 
-
-
-
-
-
-    //AGGREGATION PIPELINE
+    /* ---------------- AGGREGATION ---------------- */
     const pipeline: any[] = [
       { $match: filter },
-      {
-        $lookup: {
-          from: "categories",
-          localField: "subCategory",
-          foreignField: "_id",
-          as: "subCategory",
-        },
-      },
+
+      { $lookup: { from: "categories", localField: "subCategory", foreignField: "_id", as: "subCategory" } },
       { $unwind: "$subCategory" },
-      {
-        $lookup: {
-          from: "users",
-          localField: "leaser",
-          foreignField: "_id",
-          as: "leaser",
-        },
-      },
+
+      { $lookup: { from: "users", localField: "leaser", foreignField: "_id", as: "leaser" } },
       { $unwind: "$leaser" },
-      {
-        $lookup: {
-          from: "zones",
-          localField: "zone",
-          foreignField: "_id",
-          as: "zone",
-        },
-      },
+
+      { $lookup: { from: "zones", localField: "zone", foreignField: "_id", as: "zone" } },
       { $unwind: "$zone" },
 
-      // Lookup all bookings for each listing
+      /* ---------------- BOOKINGS & REVIEWS ---------------- */
       {
         $lookup: {
           from: "bookings",
@@ -592,8 +791,6 @@ export const getAllMarketplaceListings = async (
           as: "bookings",
         },
       },
-
-      //Lookup reviews for those bookings
       {
         $lookup: {
           from: "reviews",
@@ -602,8 +799,6 @@ export const getAllMarketplaceListings = async (
           as: "reviews",
         },
       },
-
-      //Calculate average rating
       {
         $addFields: {
           averageRating: { $avg: "$reviews.stars" },
@@ -611,7 +806,7 @@ export const getAllMarketplaceListings = async (
         },
       },
 
-      // Lookup Form based on subCategory + zone
+      /* ---------------- FORM LOOKUP ---------------- */
       {
         $lookup: {
           from: "forms",
@@ -629,6 +824,7 @@ export const getAllMarketplaceListings = async (
             },
             {
               $project: {
+                setting: 1,
                 userDocuments: 1,
                 leaserDocuments: 1,
               },
@@ -637,6 +833,8 @@ export const getAllMarketplaceListings = async (
           as: "form",
         },
       },
+
+      /* ---------------- ADMIN FEE & TAX (SAME AS BOOKING) ---------------- */
       {
         $addFields: {
           userDocuments: {
@@ -645,42 +843,64 @@ export const getAllMarketplaceListings = async (
           leaserDocuments: {
             $ifNull: [{ $arrayElemAt: ["$form.leaserDocuments", 0] }, []],
           },
+
+          // Extract setting once
+          _setting: { $arrayElemAt: ["$form.setting", 0] },
         },
       },
-      { $project: { form: 0 } },
+      {
+        $addFields: {
+          adminFee: {
+            $multiply: [
+              "$price",
+              {
+                $divide: [
+                  {
+                    $add: [
+                      "$_setting.renterCommission.value",
+                      "$_setting.leaserCommission.value",
+                    ],
+                  },
+                  100,
+                ],
+              },
+            ],
+          },
+        },
+      },
+      {
+        $addFields: {
+          tax: {
+            $multiply: [
+              { $add: ["$price", "$adminFee"] },
+              { $divide: ["$_setting.tax", 100] },
+            ],
+          },
+        },
+      },
+
+      /* ---------------- CLEANUP ---------------- */
+      { $project: { form: 0, _setting: 0 } },
       { $skip: (Number(page) - 1) * Number(limit) },
       { $limit: Number(limit) },
     ];
 
-    //Sort by recently posted date (createdAt)
-    if (recent === "true") {
-      pipeline.push({ $sort: { createdAt: -1 } });
-    }
+    if (recent === "true") pipeline.push({ $sort: { createdAt: -1 } });
 
-    const listings = await MarketplaceListing.aggregate(pipeline).session(
-      session
-    );
-    const total = await MarketplaceListing.countDocuments(filter).session(
-      session
-    );
+    const listings = await MarketplaceListing.aggregate(pipeline).session(session);
+    const total = await MarketplaceListing.countDocuments(filter).session(session);
 
-    //LANGUAGE HANDLING
+    /* ---------------- LANGUAGE HANDLING ---------------- */
     const final = listings.map((obj: any) => {
       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
       if (listingLang?.translations) {
-        obj.description =
-          listingLang.translations.description || obj.description;
+        obj.description = listingLang.translations.description || obj.description;
       }
       delete obj.languages;
       return obj;
     });
 
-    //STATS
-    const uniqueUserIds = await MarketplaceListing.distinct(
-      "leaser",
-      filter
-    ).session(session);
-    const totalUsersWithListings = uniqueUserIds.length;
+    const uniqueUserIds = await MarketplaceListing.distinct("leaser", filter).session(session);
 
     await session.commitTransaction();
     session.endSession();
@@ -692,10 +912,10 @@ export const getAllMarketplaceListings = async (
         total,
         page: +page,
         limit: +limit,
-        totalUsersWithListings,
+        totalUsersWithListings: uniqueUserIds.length,
         totalMarketplaceListings: total,
       },
-      `Fetched listings${locale !== "en" ? ` (locale: ${locale})` : ""}`,
+      "Marketplace listings fetched successfully",
       STATUS_CODES.OK
     );
   } catch (err) {
@@ -704,6 +924,7 @@ export const getAllMarketplaceListings = async (
     next(err);
   }
 };
+
 
 // UPDATED getMarketplaceListingByIdforLeaser — include all reviews & average rating
 export const getMarketplaceListingByIdforLeaser = async (
