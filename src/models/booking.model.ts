@@ -9,6 +9,12 @@ interface IPriceDetails {
   totalPrice: number;
 }
 
+interface IPricingMeta {
+  priceFromListing: number;
+  unit: "hour" | "day" | "month" | "year";
+  duration: number;
+}
+
 interface IExtraRequestCharges {
   additionalCharges: number;
   totalPrice: number;
@@ -27,7 +33,7 @@ interface IDamagesCharges {
 export interface IBooking extends Document {
 
     _id: mongoose.Types.ObjectId; 
-  status: "pending" | "approved" | "rejected" | "completed" | "cancelled";
+  status: "pending" | "approved" | "in_progress" | "rejected" | "completed" | "cancelled";
   renter: mongoose.Types.ObjectId | IUser;
   leaser?: mongoose.Types.ObjectId | IUser;
   marketplaceListingId: mongoose.Types.ObjectId | IMarketplaceListing;
@@ -39,6 +45,7 @@ export interface IBooking extends Document {
   otp?: string;
   isVerified?: boolean;
   priceDetails: IPriceDetails;
+  pricingMeta: IPricingMeta;
   extraRequestCharges?: IExtraRequestCharges;
   specialRequest?: string;
   extendCharges?: IExtendCharges;
@@ -57,7 +64,7 @@ const BookingSchema = new Schema<IBooking>(
   {
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected", "completed", "cancelled"],
+      enum: ["pending", "approved", "in_progress", "rejected", "completed", "cancelled"],
       default: "pending",
     },
     renter: {
@@ -87,6 +94,16 @@ const BookingSchema = new Schema<IBooking>(
       adminFee: { type: Number, required: true },
       tax: { type: Number, required: true },
       totalPrice: { type: Number, required: true },
+    },
+
+    pricingMeta: {
+      priceFromListing: { type: Number, required: true },
+      unit: {
+        type: String,
+        enum: ["hour", "day", "month", "year"],
+        required: true,
+      },
+      duration: { type: Number, required: true },
     },
 
     extraRequestCharges: {

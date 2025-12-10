@@ -202,7 +202,7 @@ export const stripeWebhook = async (req: Request, res: Response) => {
         { new: true }
       );
 
-      console.log("✖ Payment marked as FAILED in DB");
+      console.log("Payment marked as FAILED in DB");
 
       // Notifications
       if (renter?._id) {

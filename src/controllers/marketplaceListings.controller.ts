@@ -43,7 +43,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     console.log("Normalized request body:", normalisedBody);
 
     // Early validation for required fields
-    const requiredFields = ["name", "subTitle", "price"];
+    const requiredFields = ["name", "subTitle", "price", "priceUnit"];
     for (const field of requiredFields) {
       if (!normalisedBody[field]) {
         console.log(`Missing required body field: ${field}`);
@@ -52,6 +52,15 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
           message: `${field} is required`,
         });
       }
+    }
+
+    //ADDED: validate allowed price units
+    const validUnits = ["hour", "day", "month", "year"];
+    if (!validUnits.includes(normalisedBody.priceUnit)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid priceUnit. Allowed: hour, day, month, year",
+      });
     }
 
     // Load Form for zone + subCategory
@@ -167,6 +176,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       name: normalisedBody.name,
       subTitle: normalisedBody.subTitle,
       price: normalisedBody.price,
+      priceUnit: normalisedBody.priceUnit,
       ...requestData,
     });
 
@@ -203,6 +213,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     });
   }
 };
+
 // update listing status (admin only)
 export const updateListingStatus = async (req: AuthRequest, res: Response) => {
   try {

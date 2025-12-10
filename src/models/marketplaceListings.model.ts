@@ -1,8 +1,10 @@
 import mongoose, { Schema, Document, model, Types } from "mongoose";
 
+export type PriceUnit = "hour" | "day" | "month" | "year";
+
 export interface IListingDocument {
-  name: string; // e.g. "property_paper"
-  filesUrl: string[]; // uploaded file link
+  name: string;
+  filesUrl: string[];
   expiryDate?: Date;
   verified?: boolean;
 }
@@ -26,6 +28,7 @@ export interface IMarketplaceListing extends Document {
   address: string;
   currency?: string;
   price: number;
+  priceUnit: PriceUnit; 
   isActive?: boolean;
   language?: string;
   languages?: ILanguageTranslation[];

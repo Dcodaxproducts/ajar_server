@@ -77,6 +77,7 @@ export const createNewForm = async (
       "subTitle",
       "description",
       "price",
+      "priceUnit",
       "rentalImages",
     ];
     const fieldNames = validFields.map((f) => f.name);
