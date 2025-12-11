@@ -15,6 +15,7 @@ import { Review } from "../models/review.model";
 import { isBookingDateAvailable } from "../utils/dateValidator";
 import { sendNotification } from "../utils/notifications";
 import { calculateBookingPrice } from "../utils/calculateBookingPrice";
+import { Payment } from "../models/payment.model";
 
 // createBooking
 export const createBooking = async (req: AuthRequest, res: Response) => {
@@ -48,7 +49,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       if (!extensionDate) {
         return res.status(400).json({ message: "Extension date is required" });
       }
-
 
       const extensionStartDate = new Date(existingActiveBooking.dates.checkOut);
       const extensionEndDate = new Date(extensionDate);
@@ -102,7 +102,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
           break;
       }
 
-
       const basePrice = duration * listing.price;
 
       const priceDetails = {
@@ -114,30 +113,40 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
       const extendedBooking = await Booking.create({
         ...bookingData,
-
-
         dates: {
           checkIn: existingActiveBooking.dates.checkIn,
           checkOut: extensionEndDate,
         },
-
         renter: user.id,
         leaser: leaserId,
         marketplaceListingId: listingId,
         status: "pending",
-
         priceDetails,
-
         pricingMeta: {
           priceFromListing: listing.price,
           unit: priceUnit,
           duration,
         },
-
         isExtend: false,
         previousBookingId: existingActiveBooking._id,
         extensionRequestedDate: extensionEndDate,
       });
+
+      try {
+        await sendNotification(
+          leaserId.toString(),
+          "New Extension Request",
+          `Renter requested an extension for listing "${listing.name}".`,
+          {
+            bookingId: extendedBooking._id.toString(),
+            listingId: listing._id.toString(),
+            type: "extension",
+            status: "pending",
+          }
+        );
+      } catch (err) {
+        console.error("Failed to notify leaser about extension request:", err);
+      }
 
       return res.status(201).json({
         message: "Extension request created successfully",
@@ -177,17 +186,61 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     });
     if (!form) return res.status(400).json({ message: "Form not found" });
 
-    const priceBreakdown = calculateBookingPrice({
-      basePrice: listing.price,
-      unit: listing.priceUnit,
-      checkIn: checkInDate,
-      checkOut: checkOutDate,
-      adminCommissionRate:
-        (form.setting.renterCommission.value +
+    const checkInDay = checkInDate.toISOString().split("T")[0];
+    const checkOutDay = checkOutDate.toISOString().split("T")[0];
+
+    let priceBreakdown;
+
+    if (checkInDay === checkOutDay) {
+
+      const hours = Math.ceil(
+        (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60)
+      );
+
+      let hourlyRate = 0;
+
+      if (listing.priceUnit === "hour") {
+        hourlyRate = listing.price;
+      } else if (listing.priceUnit === "day") {
+        hourlyRate = listing.price / 24;
+      } else if (listing.priceUnit === "month") {
+        hourlyRate = listing.price / (30 * 24);
+      } else if (listing.priceUnit === "year") {
+        hourlyRate = listing.price / (365 * 24);
+      }
+
+      const basePrice = hourlyRate * hours;
+
+      const adminFee =
+        basePrice *
+        ((form.setting.renterCommission.value +
           form.setting.leaserCommission.value) /
-        100,
-      taxRate: form.setting.tax / 100,
-    });
+          100);
+
+      const tax = basePrice * (form.setting.tax / 100);
+
+      const totalPrice = basePrice + adminFee + tax;
+
+      priceBreakdown = {
+        basePrice,
+        adminFee,
+        tax,
+        totalPrice,
+        duration: hours, 
+      };
+    } else {
+      priceBreakdown = calculateBookingPrice({
+        basePrice: listing.price,
+        unit: listing.priceUnit,
+        checkIn: checkInDate,
+        checkOut: checkOutDate,
+        adminCommissionRate:
+          (form.setting.renterCommission.value +
+            form.setting.leaserCommission.value) /
+          100,
+        taxRate: form.setting.tax / 100,
+      });
+    }
 
     const priceDetails = {
       price: priceBreakdown.basePrice,
@@ -210,6 +263,22 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         duration: priceBreakdown.duration,
       },
     });
+
+    try {
+      await sendNotification(
+        leaserId.toString(),
+        "New Booking Request",
+        `Renter booked your listing "${listing.name}".`,
+        {
+          bookingId: newBooking._id.toString(),
+          listingId: listing._id.toString(),
+          type: "booking",
+          status: "pending",
+        }
+      );
+    } catch (err) {
+      console.error("Failed to notify leaser about new booking:", err);
+    }
 
     return res.status(201).json({
       message: "Booking created successfully",
@@ -296,100 +365,26 @@ export const updateBookingStatus = async (
         );
       }
 
+      finalStatus = "approved";
       const extendChargeAmount = Number(additionalCharges) || 0;
 
-      finalStatus = "approved";
-
-      const {
-        price,
-        adminFee,
-        tax,
-        totalPrice: baseTotal,
-      } = parentBooking.priceDetails || {};
-      const previousExtra =
-        parentBooking.extraRequestCharges?.additionalCharges || 0;
-
-      const afterExtra = baseTotal + previousExtra;
-      const newTotalPrice = afterExtra + extendChargeAmount;
+      const childBasePrice = childBooking.priceDetails.totalPrice;
 
       childBooking.isExtend = true;
       childBooking.status = "approved";
+
       childBooking.extendCharges = {
         extendCharges: extendChargeAmount,
-        totalPrice: newTotalPrice,
+        totalPrice: childBasePrice + extendChargeAmount,
       };
-      childBooking.priceDetails = {
-        price,
-        adminFee,
-        tax,
-        totalPrice: baseTotal,
-      };
-      childBooking.extraRequestCharges = {
-        additionalCharges: previousExtra,
-        totalPrice: afterExtra,
-      };
+
       (childBooking as any).extensionRequestedDate = undefined;
 
       await childBooking.save({ session });
 
-      const parentId = childBooking.previousBookingId;
-      if (parentId) {
-        const previousBooking = await Booking.findById(parentId).session(
-          session
-        );
-
-        if (previousBooking) {
-          const originalReturnDate =
-            previousBooking.bookingDates?.returnDate || new Date();
-          const handoverDate =
-            originalReturnDate > new Date()
-              ? originalReturnDate
-              : new Date();
-
-          childBooking.bookingDates = {
-            ...childBooking.bookingDates,
-            handover: handoverDate,
-            returnDate: undefined,
-          };
-
-          previousBooking.bookingDates = {
-            ...previousBooking.bookingDates,
-            returnDate: originalReturnDate,
-          };
-
-          previousBooking.isExtend = true;
-          await previousBooking.save({ session });
-
-          let topParent = previousBooking;
-          while (topParent.previousBookingId) {
-            const grandParent = await Booking.findById(
-              topParent.previousBookingId
-            ).session(session);
-            if (!grandParent) break;
-            topParent = grandParent;
-          }
-
-          if (topParent) {
-            topParent.isExtend = true;
-            await topParent.save({ session });
-          }
-
-          await childBooking.save({ session });
-        }
-      }
-
       parentBooking.isExtend = true;
-      parentBooking.extendCharges = {
-        extendCharges: extendChargeAmount,
-        totalPrice: newTotalPrice,
-      };
-      parentBooking.priceDetails.totalPrice = baseTotal;
-      parentBooking.extraRequestCharges = {
-        additionalCharges: previousExtra,
-        totalPrice: afterExtra,
-      };
-
       await parentBooking.save({ session });
+
       await session.commitTransaction();
       session.endSession();
 
@@ -416,6 +411,10 @@ export const updateBookingStatus = async (
         STATUS_CODES.OK
       );
     }
+
+    /* ---------------------------------------------------
+        🔥 NORMAL BOOKING STATUS UPDATE LOGIC
+    --------------------------------------------------- */
 
     const allowedStatuses = ["approved", "rejected", "completed", "cancelled"];
     if (!allowedStatuses.includes(finalStatus)) {
@@ -684,6 +683,16 @@ export const getBookingsByUserIdForAdmin = async (
   }
 };
 
+
+//helper function to fetch payment status by bookingId
+const attachPaymentStatus = async (booking: any) => {
+  const payment = await Payment.findOne({ bookingId: booking._id }).lean();
+  return {
+    ...booking,
+    paymentStatus: payment?.status ?? null,
+  };
+};
+
 // GET ONE
 export const getBookingById = async (
   req: Request,
@@ -705,8 +714,7 @@ export const getBookingById = async (
       return;
     }
 
-
-    const booking = await Booking.findById(id)
+    let booking = await Booking.findById(id)
       .populate("marketplaceListingId")
       .populate("renter")
       .lean();
@@ -716,6 +724,31 @@ export const getBookingById = async (
       return;
     }
 
+    booking = await attachPaymentStatus(booking);
+
+    const childBookings = await Booking.find({ previousBookingId: id }).lean();
+
+    const extensions = await Promise.all(
+      childBookings.map(async (child: any, idx: number) => {
+        const childWithPayment = await attachPaymentStatus(child);
+        return {
+          _id: childWithPayment._id?.toString?.() ?? childWithPayment._id,
+          name: `Extension ${idx + 1}`,
+          extensionDate: childWithPayment.dates?.checkOut ?? null,
+          handover: childWithPayment.bookingDates?.handover ?? null,
+          returnDate: childWithPayment.bookingDates?.returnDate ?? null,
+          priceDetails: childWithPayment.priceDetails ?? null,
+          pricingMeta: childWithPayment.pricingMeta ?? null,
+          extraRequestCharges: childWithPayment.extraRequestCharges ?? null,
+          paymentStatus: childWithPayment.paymentStatus ?? null,
+        };
+      })
+    );
+
+    const result = {
+      ...booking,
+      extensions,
+    };
     const reviews = await Review.find({ bookingId: id })
       .populate("userId", "name email")
       .lean();
@@ -729,14 +762,14 @@ export const getBookingById = async (
       },
     }));
 
-    const result = {
-      ...booking,
+    const finalResult = {
+      ...result,
       reviews: formattedReviews,
     };
 
     sendResponse(
       res,
-      result,
+      finalResult,
       `Booking found (locale: ${locale})`,
       STATUS_CODES.OK
     );
@@ -744,6 +777,7 @@ export const getBookingById = async (
     next(err);
   }
 };
+
 
 // Get bookings by user (renter, leaser, or both) with optional zone + status filters
 export const getBookingsByUser = async (
@@ -798,23 +832,39 @@ export const getBookingsByUser = async (
       bookingsMap[booking._id.toString()] = { ...booking, extensions: [] };
     });
 
-    filteredBookings.forEach((booking) => {
-      if (booking.previousBookingId) {
-        const parent = bookingsMap[booking.previousBookingId.toString()];
-        if (parent) {
-          const extensionCount = parent.extensions.length + 1;
+    await Promise.all(
+      Object.values(bookingsMap).map(async (parent: any) => {
+        const parentWithPayment = await attachPaymentStatus(parent);
+        Object.assign(parent, parentWithPayment);
+      })
+    );
 
-          parent.extensions.push({
-            name: `Extension ${extensionCount}`,
-            handover: booking.bookingDates?.handover || null,
-            returnDate: booking.bookingDates?.returnDate || null,
-            extensionDate: booking.extensionRequestedDate || null,
-          });
+    await Promise.all(
+      filteredBookings.map(async (booking) => {
+        if (booking.previousBookingId) {
+          const parentIdStr = booking.previousBookingId.toString();
+          const parent = bookingsMap[parentIdStr];
+          if (parent) {
+            const extensionCount = parent.extensions.length + 1;
+            const childWithPayment = await attachPaymentStatus(booking);
 
-          delete bookingsMap[booking._id.toString()]; 
+            parent.extensions.push({
+              _id: childWithPayment._id?.toString?.() ?? childWithPayment._id,
+              name: `Extension ${extensionCount}`,
+              extensionDate: childWithPayment.dates?.checkOut ?? null,
+              handover: childWithPayment.bookingDates?.handover ?? null,
+              returnDate: childWithPayment.bookingDates?.returnDate ?? null,
+              priceDetails: childWithPayment.priceDetails ?? null,
+              pricingMeta: childWithPayment.pricingMeta ?? null,
+              extraRequestCharges: childWithPayment.extraRequestCharges ?? null,
+              paymentStatus: childWithPayment.paymentStatus ?? null, 
+            });
+
+            delete bookingsMap[booking._id.toString()];
+          }
         }
-      }
-    });
+      })
+    );
 
     const mergedBookings = Object.values(bookingsMap);
 
@@ -839,6 +889,7 @@ export const getBookingsByUser = async (
     next(error);
   }
 };
+
 
 // UPDATE
 export const updateBooking = async (
