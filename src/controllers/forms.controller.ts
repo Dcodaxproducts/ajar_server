@@ -9,8 +9,6 @@ import { paginateQuery } from "../utils/paginate";
 import slugify from "slugify";
 import { Dropdown } from "../models/dropdown.model";
 
-
-
 // CREATE NEW FORM
 export const createNewForm = async (
   req: Request,
@@ -23,14 +21,14 @@ export const createNewForm = async (
       description,
       subCategory,
       zone,
-      fields,
+      fields = [],
       language,
       setting,
       userDocuments,
       leaserDocuments,
     } = req.body;
 
-    // ✅ Validate required name and description
+
     if (!name || !description) {
       sendResponse(
         res,
@@ -41,7 +39,6 @@ export const createNewForm = async (
       return;
     }
 
-    // ✅ Validate ObjectIds and fields array
     if (
       !mongoose.Types.ObjectId.isValid(subCategory) ||
       !mongoose.Types.ObjectId.isValid(zone) ||
@@ -57,21 +54,19 @@ export const createNewForm = async (
       return;
     }
 
-    // ✅ Check SubCategory existence
     const subCategoryExists = await SubCategory.findById(subCategory);
     if (!subCategoryExists) {
       sendResponse(res, null, "SubCategory not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    // ✅ Check that all fields exist
-    const validFields = await Field.find({ _id: { $in: fields } });
-    if (validFields.length !== fields.length) {
+    const validUserFields = await Field.find({ _id: { $in: fields } });
+
+    if (validUserFields.length !== fields.length) {
       sendResponse(res, null, "Some fields are invalid", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    // ✅ Ensure mandatory field names exist in Field documents
     const requiredFieldNames = [
       "name",
       "subTitle",
@@ -80,28 +75,42 @@ export const createNewForm = async (
       "priceUnit",
       "rentalImages",
     ];
-    const fieldNames = validFields.map((f) => f.name);
-    const missingRequired = requiredFieldNames.filter(
-      (reqField) => !fieldNames.includes(reqField)
-    );
 
-    if (missingRequired.length > 0) {
+    const requiredFields = await Field.find({
+      name: { $in: requiredFieldNames },
+    });
+
+    if (requiredFields.length !== requiredFieldNames.length) {
+      const requiredFoundNames = requiredFields.map((f) => f.name);
+      const missing = requiredFieldNames.filter(
+        (n) => !requiredFoundNames.includes(n)
+      );
+
       sendResponse(
         res,
         null,
-        `Missing required fields in field collection: ${missingRequired.join(", ")}`,
+        `Required fields missing in database: ${missing.join(", ")}`,
         STATUS_CODES.BAD_REQUEST
       );
       return;
     }
 
-    // ✅ Create new form
+   const requiredFieldIds = requiredFields.map((f) =>
+  (f._id as mongoose.Types.ObjectId).toString()
+);
+
+const userFieldIds = validUserFields.map((f) =>
+  (f._id as mongoose.Types.ObjectId).toString()
+);
+
+    const finalFields = Array.from(new Set([...requiredFieldIds, ...userFieldIds]));
+
     const form = new Form({
       name,
       description,
       subCategory,
       zone,
-      fields,
+      fields: finalFields, 
       language,
       setting,
       userDocuments,
@@ -115,7 +124,6 @@ export const createNewForm = async (
     next(error);
   }
 };
-
 
 export const getAllForms = async (
   req: Request,
