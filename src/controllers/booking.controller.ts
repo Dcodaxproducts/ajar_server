@@ -6,7 +6,10 @@ import { STATUS_CODES } from "../config/constants";
 import { paginateQuery } from "../utils/paginate";
 import { sendEmail } from "../helpers/node-mailer";
 import { IUser, User } from "../models/user.model";
-import { IMarketplaceListing, MarketplaceListing } from "../models/marketplaceListings.model";
+import {
+  IMarketplaceListing,
+  MarketplaceListing,
+} from "../models/marketplaceListings.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { Types } from "mongoose";
 import { Form } from "../models/form.model";
@@ -23,10 +26,13 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     const user = req.user as { id: string; role: string };
     if (!user) return res.status(401).json({ message: "Unauthorised" });
 
-    const { marketplaceListingId, dates, extensionDate, ...bookingData } = req.body;
+    const { marketplaceListingId, dates, extensionDate, ...bookingData } =
+      req.body;
 
     if (!mongoose.Types.ObjectId.isValid(marketplaceListingId)) {
-      return res.status(400).json({ message: "Invalid Marketplace Listing ID" });
+      return res
+        .status(400)
+        .json({ message: "Invalid Marketplace Listing ID" });
     }
 
     const listing = await MarketplaceListing.findById(marketplaceListingId);
@@ -92,7 +98,9 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
         case "month":
           duration =
-            (extensionEndDate.getFullYear() - extensionStartDate.getFullYear()) * 12 +
+            (extensionEndDate.getFullYear() -
+              extensionStartDate.getFullYear()) *
+              12 +
             (extensionEndDate.getMonth() - extensionStartDate.getMonth());
           break;
 
@@ -192,7 +200,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     let priceBreakdown;
 
     if (checkInDay === checkOutDay) {
-
       const hours = Math.ceil(
         (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60)
       );
@@ -226,7 +233,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         adminFee,
         tax,
         totalPrice,
-        duration: hours, 
+        duration: hours,
       };
     } else {
       priceBreakdown = calculateBookingPrice({
@@ -296,6 +303,259 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 };
 
 // updateBookingStatus
+// export const updateBookingStatus = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+
+//   try {
+//     const { id } = req.params;
+//     const { status, additionalCharges, isExtendApproval } = req.body;
+//     const user = (req as any).user;
+//     const userId = user.id || user._id;
+
+//     let parentBooking = await Booking.findById(id)
+//       .populate("renter", "email name fcmToken")
+//       .populate("leaser", "email name fcmToken")
+//       .populate("marketplaceListingId");
+
+//     if (!parentBooking) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(
+//         res,
+//         null,
+//         "Booking not found",
+//         STATUS_CODES.NOT_FOUND
+//       );
+//     }
+
+//     const renterId =
+//       typeof parentBooking.renter === "object"
+//         ? (parentBooking.renter as any)?._id?.toString()
+//         : (parentBooking.renter as any)?.toString();
+
+//     const leaserId =
+//       typeof parentBooking.leaser === "object"
+//         ? (parentBooking.leaser as any)?._id?.toString()
+//         : (parentBooking.leaser as any)?.toString();
+
+//     const isRenter = userId?.toString() === renterId;
+//     const isLeaser = userId?.toString() === leaserId;
+
+//     const bookingIdString = parentBooking._id?.toString() as string;
+//     let finalStatus = status;
+
+//     const listingName =
+//       typeof parentBooking.marketplaceListingId === "object" &&
+//       "name" in parentBooking.marketplaceListingId
+//         ? (parentBooking.marketplaceListingId as any).name
+//         : "";
+
+//     if (isExtendApproval) {
+//       const childBooking = await Booking.findOne({
+//         previousBookingId: id,
+//         status: "pending",
+//       });
+
+//       if (!childBooking) {
+//         await session.abortTransaction();
+//         session.endSession();
+//         return sendResponse(
+//           res,
+//           null,
+//           "No pending extension request found for this booking",
+//           STATUS_CODES.BAD_REQUEST
+//         );
+//       }
+
+//       finalStatus = "approved";
+//       const extendChargeAmount = Number(additionalCharges) || 0;
+
+//       const childBasePrice = childBooking.priceDetails.totalPrice;
+
+//       childBooking.isExtend = true;
+//       childBooking.status = "approved";
+
+//       childBooking.extendCharges = {
+//         extendCharges: extendChargeAmount,
+//         totalPrice: childBasePrice + extendChargeAmount,
+//       };
+
+//       (childBooking as any).extensionRequestedDate = undefined;
+
+//       await childBooking.save({ session });
+
+//       parentBooking.isExtend = true;
+//       await parentBooking.save({ session });
+
+//       await session.commitTransaction();
+//       session.endSession();
+
+//       try {
+//         const childRenterId =
+//           typeof childBooking.renter === "object"
+//             ? (childBooking.renter as any)?._id?.toString()
+//             : (childBooking.renter as any)?.toString();
+
+//         await sendNotification(
+//           childRenterId,
+//           "Extension Approved",
+//           `Your extension request for listing "${listingName}" has been approved.`,
+//           { bookingId: childBooking._id?.toString(), type: "extension", status: "approved" }
+//         );
+//       } catch (err) {
+//         console.error("Failed to notify renter about extension approval:", err);
+//       }
+
+//       return sendResponse(
+//         res,
+//         childBooking,
+//         "Extension approved successfully",
+//         STATUS_CODES.OK
+//       );
+//     }
+
+//     const allowedStatuses = ["approved", "rejected", "completed", "cancelled"];
+//     if (!allowedStatuses.includes(finalStatus)) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(
+//         res,
+//         null,
+//         "Invalid status",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//     }
+
+//     if (finalStatus === "cancelled" && !isRenter) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(
+//         res,
+//         null,
+//         "Only renter can cancel the booking",
+//         STATUS_CODES.FORBIDDEN
+//       );
+//     }
+
+//     if (
+//       ["approved", "rejected", "completed"].includes(finalStatus) &&
+//       !isLeaser
+//     ) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(
+//         res,
+//         null,
+//         "Only leaser can change the booking status",
+//         STATUS_CODES.FORBIDDEN
+//       );
+//     }
+
+//     let updateFields: any = { status: finalStatus };
+//     let finalBooking: IBooking | null = null;
+//     let pin: string | undefined;
+
+//     if (finalStatus === "approved") {
+//       pin = generatePIN(4);
+//       updateFields.otp = pin;
+//     }
+
+//     if (finalStatus === "completed") {
+//       updateFields["bookingDates.returnDate"] = new Date();
+//     }
+
+//     finalBooking = await Booking.findByIdAndUpdate(
+//       id,
+//       { $set: updateFields },
+//       { new: true }
+//     ).populate("renter", "email name fcmToken").populate("leaser", "email name fcmToken");
+
+//     if (!finalBooking) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(
+//         res,
+//         null,
+//         "Booking update failed",
+//         STATUS_CODES.INTERNAL_SERVER_ERROR
+//       );
+//     }
+
+//     const listing = await MarketplaceListing.findById(
+//       finalBooking.marketplaceListingId
+//     );
+
+//     if (listing) {
+//       if (finalStatus === "approved") {
+//         listing.isAvailable = false;
+//         listing.currentBookingId = [
+//           ...(listing.currentBookingId || []).filter(
+//             (item) => item.toString() !== bookingIdString
+//           ),
+//           finalBooking._id as mongoose.Types.ObjectId,
+//         ];
+//       } else {
+//         listing.isAvailable = true;
+//         listing.currentBookingId = (listing.currentBookingId || []).filter(
+//           (item) => item.toString() !== bookingIdString
+//         );
+//       }
+
+//       await listing.save();
+//     }
+
+//     await session.commitTransaction();
+//     session.endSession();
+
+//     try {
+//       const renter = finalBooking.renter as any;
+//       const renterId =
+//         typeof renter === "object" ? renter._id?.toString() : renter?.toString();
+
+//       let message = `Your booking ${finalBooking._id?.toString()} status changed to ${finalStatus}.`;
+//       if (finalStatus === "approved") {
+//         message = `Your booking for "${listingName}" has been approved. OTP: ${pin || ""}`;
+//       } else if (finalStatus === "rejected") {
+//         message = `Your booking for "${listingName}" has been rejected.`;
+//       } else if (finalStatus === "completed") {
+//         message = `The booking for "${listingName}" has been marked as completed.`;
+//       } else if (finalStatus === "cancelled") {
+//         message = `Your booking for "${listingName}" has been cancelled.`;
+//       }
+
+//       await sendNotification(
+//         renterId,
+//         `Booking ${finalStatus}`,
+//         message,
+//         {
+//           bookingId: finalBooking._id?.toString(),
+//           listingId: listing?._id?.toString() || "",
+//           type: "booking",
+//           status: finalStatus,
+//         }
+//       );
+//     } catch (err) {
+//       console.error("Failed to notify renter about booking status change:", err);
+//     }
+
+//     return sendResponse(
+//       res,
+//       finalBooking,
+//       `Booking status updated to ${finalStatus}`,
+//       STATUS_CODES.OK
+//     );
+//   } catch (err) {
+//     await session.abortTransaction();
+//     session.endSession();
+//     next(err);
+//   }
+// };
+
 export const updateBookingStatus = async (
   req: Request,
   res: Response,
@@ -398,7 +658,11 @@ export const updateBookingStatus = async (
           childRenterId,
           "Extension Approved",
           `Your extension request for listing "${listingName}" has been approved.`,
-          { bookingId: childBooking._id?.toString(), type: "extension", status: "approved" }
+          {
+            bookingId: childBooking._id?.toString(),
+            type: "extension",
+            status: "approved",
+          }
         );
       } catch (err) {
         console.error("Failed to notify renter about extension approval:", err);
@@ -411,11 +675,6 @@ export const updateBookingStatus = async (
         STATUS_CODES.OK
       );
     }
-
-    /* ---------------------------------------------------
-        🔥 NORMAL BOOKING STATUS UPDATE LOGIC
-    --------------------------------------------------- */
-
     const allowedStatuses = ["approved", "rejected", "completed", "cancelled"];
     if (!allowedStatuses.includes(finalStatus)) {
       await session.abortTransaction();
@@ -470,7 +729,9 @@ export const updateBookingStatus = async (
       id,
       { $set: updateFields },
       { new: true }
-    ).populate("renter", "email name fcmToken");
+    )
+      .populate("renter", "email name fcmToken")
+      .populate("leaser", "email name fcmToken");
 
     if (!finalBooking) {
       await session.abortTransaction();
@@ -511,33 +772,67 @@ export const updateBookingStatus = async (
 
     try {
       const renter = finalBooking.renter as any;
-      const renterId =
-        typeof renter === "object" ? renter._id?.toString() : renter?.toString();
+      const leaser = finalBooking.leaser as any;
 
-      let message = `Your booking ${finalBooking._id?.toString()} status changed to ${finalStatus}.`;
+      const renterId =
+        typeof renter === "object"
+          ? renter._id?.toString()
+          : renter?.toString();
+
+      const leaserId =
+        typeof leaser === "object"
+          ? leaser._id?.toString()
+          : leaser?.toString();
+
+      const listingId = listing?._id?.toString() || "";
+
       if (finalStatus === "approved") {
-        message = `Your booking for "${listingName}" has been approved. OTP: ${pin || ""}`;
-      } else if (finalStatus === "rejected") {
-        message = `Your booking for "${listingName}" has been rejected.`;
-      } else if (finalStatus === "completed") {
-        message = `The booking for "${listingName}" has been marked as completed.`;
-      } else if (finalStatus === "cancelled") {
-        message = `Your booking for "${listingName}" has been cancelled.`;
+        await sendEmail({
+          to: leaser.email,
+          name: leaser.name,
+          subject: "Booking Approved - PIN Code",
+          content: `
+      <h2>Booking Approved</h2>
+      <p>Your listing "<strong>${listingName}</strong>" has been booked and approved.</p>
+      <p><strong>PIN Code:</strong> ${pin}</p>
+      <p>Please keep this PIN safe.  
+      The renter will provide this PIN at the check-in date/time for verification.</p>
+    `,
+        });
+
+        await sendNotification(
+          leaserId,
+          "Booking Approved - PIN Code",
+          `The booking for "${listingName}" is approved. PIN Code: ${pin}`,
+          {
+            bookingId: finalBooking._id?.toString(),
+            listingId,
+            type: "booking",
+            status: finalStatus,
+          }
+        );
       }
 
-      await sendNotification(
-        renterId,
-        `Booking ${finalStatus}`,
-        message,
-        {
-          bookingId: finalBooking._id?.toString(),
-          listingId: listing?._id?.toString() || "",
-          type: "booking",
-          status: finalStatus,
-        }
-      );
+      let renterMsg = `Your booking ${finalBooking._id?.toString()} status changed to ${finalStatus}.`;
+
+      if (finalStatus === "approved") {
+        renterMsg = `Your booking for "${listingName}" has been approved. PIN has been sent to the leaser. You will enter the PIN at check-in.`;
+      } else if (finalStatus === "rejected") {
+        renterMsg = `Your booking for "${listingName}" has been rejected.`;
+      } else if (finalStatus === "completed") {
+        renterMsg = `The booking for "${listingName}" has been completed.`;
+      } else if (finalStatus === "cancelled") {
+        renterMsg = `Your booking for "${listingName}" has been cancelled.`;
+      }
+
+      await sendNotification(renterId, `Booking ${finalStatus}`, renterMsg, {
+        bookingId: finalBooking._id?.toString(),
+        listingId,
+        type: "booking",
+        status: finalStatus,
+      });
     } catch (err) {
-      console.error("Failed to notify renter about booking status change:", err);
+      console.error("Failed to notify users about booking status change:", err);
     }
 
     return sendResponse(
@@ -581,11 +876,11 @@ export const getAllBookings = async (
       filter.status = status;
     }
 
-   const baseQuery = Booking.find(filter)
+    const baseQuery = Booking.find(filter)
       .populate({
         path: "marketplaceListingId",
         populate: {
-          path: "leaser",       
+          path: "leaser",
           select: "name",
         },
       })
@@ -611,10 +906,12 @@ export const getAllBookings = async (
       createdAt: { $gte: oneYearAgo, $lte: now },
     });
 
-    const allBookings = await Booking.find(filter).populate({
+    const allBookings = await Booking.find(filter)
+      .populate({
         path: "leaser",
         select: "name",
-      }).lean();
+      })
+      .lean();
 
     const totalEarning = allBookings.reduce((acc, booking) => {
       const price = booking.priceDetails?.totalPrice || 0;
@@ -682,7 +979,6 @@ export const getBookingsByUserIdForAdmin = async (
     next(error);
   }
 };
-
 
 //helper function to fetch payment status by bookingId
 const attachPaymentStatus = async (booking: any) => {
@@ -778,7 +1074,6 @@ export const getBookingById = async (
   }
 };
 
-
 // Get bookings by user (renter, leaser, or both) with optional zone + status filters
 export const getBookingsByUser = async (
   req: Request,
@@ -857,7 +1152,7 @@ export const getBookingsByUser = async (
               priceDetails: childWithPayment.priceDetails ?? null,
               pricingMeta: childWithPayment.pricingMeta ?? null,
               extraRequestCharges: childWithPayment.extraRequestCharges ?? null,
-              paymentStatus: childWithPayment.paymentStatus ?? null, 
+              paymentStatus: childWithPayment.paymentStatus ?? null,
             });
 
             delete bookingsMap[booking._id.toString()];
@@ -890,7 +1185,6 @@ export const getBookingsByUser = async (
   }
 };
 
-
 // UPDATE
 export const updateBooking = async (
   req: Request,
@@ -899,7 +1193,7 @@ export const updateBooking = async (
 ) => {
   try {
     const { id } = req.params;
-    const user = (req as any).user; 
+    const user = (req as any).user;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
@@ -964,6 +1258,198 @@ export const deleteBooking = async (
 };
 
 // SUBMIT BOOKING PIN
+// export const submitBookingPin = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     const { id } = req.params;
+//     const { otp } = req.body;
+
+//     if (!otp)
+//       return sendResponse(res, null, "PIN is required", STATUS_CODES.BAD_REQUEST);
+
+//     if (!mongoose.Types.ObjectId.isValid(id))
+//       return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+
+//     const booking = await Booking.findById(id)
+//       .populate("renter", "email name fcmToken")
+//       .populate("leaser", "email name fcmToken");
+
+//     if (!booking)
+//       return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+
+//     if (booking.otp !== otp)
+//       return sendResponse(res, null, "Invalid or expired PIN", STATUS_CODES.UNAUTHORIZED);
+
+//     const now = new Date();
+//     const checkIn = new Date(booking.dates.checkIn);
+//     const checkOut = new Date(booking.dates.checkOut);
+
+//     if (now < checkIn)
+//       return sendResponse(res, null, "PIN submission not allowed before check-in time.", STATUS_CODES.BAD_REQUEST);
+
+//     if (now > checkOut)
+//       return sendResponse(res, null, "PIN has expired after checkout date.", STATUS_CODES.BAD_REQUEST);
+
+//     const isRunning = now >= checkIn && now <= checkOut;
+
+//     if (booking.status === "approved" && isRunning) {
+//       if (!booking.bookingDates) booking.bookingDates = {};
+//       if (!booking.bookingDates.handover) booking.bookingDates.handover = now;
+
+//       booking.otp = "";
+//       booking.isVerified = true;
+
+//       booking.status = "in_progress";
+
+//       await booking.save();
+
+//       try {
+//         const listing = await MarketplaceListing.findById(
+//           booking.marketplaceListingId
+//         ) as IMarketplaceListing | null;
+
+//         if (listing) {
+//           const renter = booking.renter as IUser | null;
+//           const leaser = booking.leaser as IUser | null;
+
+//           if (renter?._id) {
+//             await sendNotification(
+//               renter._id.toString(),
+//               "Booking Started",
+//               `Your booking for "${listing.name}" has officially started.`,
+//               {
+//                 bookingId: booking._id.toString(),
+//                 listingId: listing._id.toString(),
+//                 type: "booking_started",
+//               }
+//             );
+//           }
+
+//           if (leaser?._id) {
+//             await sendNotification(
+//               leaser._id.toString(),
+//               "Booking Started",
+//               `${renter?.name} has entered the PIN and the booking has begun for "${listing.name}".`,
+//               {
+//                 bookingId: booking._id.toString(),
+//                 listingId: listing._id.toString(),
+//                 type: "booking_started",
+//               }
+//             );
+//           }
+//         }
+//       } catch (err) {
+//         console.error("Failed to notify leaser on booking start:", err);
+//       }
+
+//       return sendResponse(
+//         res,
+//         booking,
+//         "PIN verified successfully and handover recorded",
+//         STATUS_CODES.OK
+//       );
+//     }
+
+//     const newBookingData: any = {
+//       status: "in_progress",
+//       renter: booking.renter,
+//       leaser: booking.leaser,
+//       marketplaceListingId: booking.marketplaceListingId,
+//       dates: booking.dates,
+//       language: booking.language,
+//       otp: "",
+//       isVerified: true,
+//       priceDetails: booking.priceDetails,
+//       extraRequestCharges: booking.extraRequestCharges,
+//       specialRequest: booking.specialRequest,
+//       isExtend: false,
+//       extensionRequestedDate: undefined,
+//       bookingDates: { handover: now, returnDate: null },
+//       createdAt: new Date(),
+//       updatedAt: new Date(),
+//     };
+
+//     const existingActive = await Booking.findOne({
+//       renter: booking.renter,
+//       marketplaceListingId: booking.marketplaceListingId,
+//       "bookingDates.returnDate": { $in: [null, undefined] },
+//       _id: { $ne: booking._id },
+//       status: "in_progress",
+//     });
+
+//     if (existingActive) {
+//       newBookingData.previousBookingId = existingActive._id;
+//       existingActive.isExtend = true;
+
+//       const prevTotal = existingActive.priceDetails?.totalPrice || 0;
+//       const prevExtendTotal = existingActive.extendCharges?.totalPrice || 0;
+//       existingActive.extendCharges = {
+//         extendCharges: prevTotal,
+//         totalPrice: prevTotal + prevExtendTotal,
+//       };
+//       await existingActive.save();
+//     }
+
+//     const createdNewBooking = await Booking.create(newBookingData);
+//     booking.otp = "";
+//     booking.isVerified = true;
+//     await booking.save();
+
+//     try {
+//       const listing = await MarketplaceListing.findById(
+//         createdNewBooking.marketplaceListingId
+//       ) as IMarketplaceListing | null;
+
+//       if (listing) {
+//         const renter = createdNewBooking.renter as IUser | null;
+//         const leaser = createdNewBooking.leaser as IUser | null;
+
+//         if (renter?._id) {
+//           await sendNotification(
+//             renter._id.toString(),
+//             "Booking Started",
+//             `Your booking for "${listing.name}" has officially started.`,
+//             {
+//               bookingId: createdNewBooking._id.toString(),
+//               listingId: listing._id.toString(),
+//               type: "booking_started",
+//             }
+//           );
+//         }
+
+//         if (leaser?._id) {
+//           await sendNotification(
+//             leaser._id.toString(),
+//             "Booking Started",
+//             `${renter?.name} has entered the PIN and the new booking has begun for "${listing.name}".`,
+//             {
+//               bookingId: createdNewBooking._id.toString(),
+//               listingId: listing._id.toString(),
+//               type: "booking_started",
+//             }
+//           );
+//         }
+//       }
+//     } catch (err) {
+//       console.error("Failed to notify leaser on new booking start:", err);
+//     }
+
+//     return sendResponse(
+//       res,
+//       createdNewBooking,
+//       "New running booking created and handover recorded",
+//       STATUS_CODES.OK
+//     );
+
+//   } catch (err) {
+//     next(err);
+//   }
+// };
+
+// SUBMIT BOOKING PIN
 export const submitBookingPin = async (
   req: Request,
   res: Response,
@@ -974,30 +1460,84 @@ export const submitBookingPin = async (
     const { otp } = req.body;
 
     if (!otp)
-      return sendResponse(res, null, "PIN is required", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "PIN is required",
+        STATUS_CODES.BAD_REQUEST
+      );
 
     if (!mongoose.Types.ObjectId.isValid(id))
-      return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "Invalid booking ID",
+        STATUS_CODES.BAD_REQUEST
+      );
 
     const booking = await Booking.findById(id)
       .populate("renter", "email name fcmToken")
       .populate("leaser", "email name fcmToken");
 
     if (!booking)
-      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(
+        res,
+        null,
+        "Booking not found",
+        STATUS_CODES.NOT_FOUND
+      );
 
     if (booking.otp !== otp)
-      return sendResponse(res, null, "Invalid or expired PIN", STATUS_CODES.UNAUTHORIZED);
+      return sendResponse(
+        res,
+        null,
+        "Invalid or expired PIN",
+        STATUS_CODES.UNAUTHORIZED
+      );
 
     const now = new Date();
     const checkIn = new Date(booking.dates.checkIn);
     const checkOut = new Date(booking.dates.checkOut);
 
-    if (now < checkIn)
-      return sendResponse(res, null, "PIN submission not allowed before check-in time.", STATUS_CODES.BAD_REQUEST);
+    const isSameDay =
+      checkIn.toISOString().split("T")[0] ===
+      checkOut.toISOString().split("T")[0];
 
-    if (now > checkOut)
-      return sendResponse(res, null, "PIN has expired after checkout date.", STATUS_CODES.BAD_REQUEST);
+    if (isSameDay) {
+      if (now < checkIn) {
+        return sendResponse(
+          res,
+          null,
+          "PIN submission not allowed before the check-in time.",
+          STATUS_CODES.BAD_REQUEST
+        );
+      }
+
+      if (now > checkOut) {
+        return sendResponse(
+          res,
+          null,
+          "PIN has expired because check-out time has passed.",
+          STATUS_CODES.BAD_REQUEST
+        );
+      }
+    } else {
+      if (now < checkIn)
+        return sendResponse(
+          res,
+          null,
+          "PIN submission not allowed before check-in date.",
+          STATUS_CODES.BAD_REQUEST
+        );
+
+      if (now > checkOut)
+        return sendResponse(
+          res,
+          null,
+          "PIN has expired after checkout date.",
+          STATUS_CODES.BAD_REQUEST
+        );
+    }
 
     const isRunning = now >= checkIn && now <= checkOut;
 
@@ -1007,15 +1547,14 @@ export const submitBookingPin = async (
 
       booking.otp = "";
       booking.isVerified = true;
-
       booking.status = "in_progress";
 
       await booking.save();
 
       try {
-        const listing = await MarketplaceListing.findById(
+        const listing = (await MarketplaceListing.findById(
           booking.marketplaceListingId
-        ) as IMarketplaceListing | null; 
+        )) as IMarketplaceListing | null;
 
         if (listing) {
           const renter = booking.renter as IUser | null;
@@ -1092,6 +1631,7 @@ export const submitBookingPin = async (
 
       const prevTotal = existingActive.priceDetails?.totalPrice || 0;
       const prevExtendTotal = existingActive.extendCharges?.totalPrice || 0;
+
       existingActive.extendCharges = {
         extendCharges: prevTotal,
         totalPrice: prevTotal + prevExtendTotal,
@@ -1105,9 +1645,9 @@ export const submitBookingPin = async (
     await booking.save();
 
     try {
-      const listing = await MarketplaceListing.findById(
+      const listing = (await MarketplaceListing.findById(
         createdNewBooking.marketplaceListingId
-      ) as IMarketplaceListing | null;
+      )) as IMarketplaceListing | null;
 
       if (listing) {
         const renter = createdNewBooking.renter as IUser | null;
@@ -1149,7 +1689,6 @@ export const submitBookingPin = async (
       "New running booking created and handover recorded",
       STATUS_CODES.OK
     );
-
   } catch (err) {
     next(err);
   }
