@@ -58,7 +58,7 @@ router.use("/contact-us", contactUsRoutes);
 router.use("/favourites", favouritesRoutes);
 router.use("/analytics", analyticsRoutes);
 router.use("/oauth", userGoogleRoutes); 
-router.use("/payments", paymentRoutes);
+// router.use("/payments", paymentRoutes);
 router.use("/messages", messageRoutes);
 router.use("/articles", articlesRoutes);
 

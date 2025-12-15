@@ -9,10 +9,10 @@ import routes from "./routes";
 import "./config/passport";
 import compression from "compression";
 import passport from "passport";
+import { stripeWebhook } from "./controllers/payment.controller";
 
 export const app = express();
 export const server = http.createServer(app);
-
 
 app.use(compression());
 
@@ -21,6 +21,13 @@ app.use(
     origin: allowedOrigins,
     credentials: true,
   })
+);
+
+// Add BEFORE app.use(express.json(...))
+app.post(
+  "/api/payments/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhook as express.RequestHandler
 );
 
 app.use(express.json({ limit: "50mb" }));
@@ -49,13 +56,11 @@ app.use(passport.initialize());
 // API routes
 app.use("/api", routes);
 
-
 // Root
 app.get("/", (req: Request, res: Response) => {
   console.log(`HTTP Version: ${req.httpVersion}`);
   res.send("Server with Google OAuth + MongoDB + JWT is running...");
 });
-
 
 // Root
 app.get("/", (req: Request, res: Response) => {
