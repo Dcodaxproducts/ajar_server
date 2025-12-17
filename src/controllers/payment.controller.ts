@@ -69,6 +69,9 @@ export const createBookingPayment = async (req: Request, res: Response) => {
 
 // STRIPE WEBHOOK
 export const stripeWebhook = async (req: Request, res: Response) => {
+  console.log("WEBHOOK HIT");
+  console.log("Headers:", req.headers);
+  console.log("Body type:", typeof req.body);
   console.log("STRIPE WEBHOOK RECEIVED");
 
   const sig = req.headers["stripe-signature"];
@@ -109,7 +112,8 @@ console.log("Webhook Signature:", sig);
 
       await Payment.findOneAndUpdate(
         { paymentIntentId: paymentIntent.id },
-        { status: "succeeded" }
+        { status: "succeeded" },
+        { new: true }
       );
 
       console.log("updated")
