@@ -14,6 +14,14 @@ import { stripeWebhook } from "./controllers/payment.controller";
 export const app = express();
 export const server = http.createServer(app);
 
+// Add BEFORE app.use(express.json(...))
+app.post(
+  "/api/payments/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhook as express.RequestHandler
+);
+
+
 app.use(compression());
 
 app.use(
@@ -21,13 +29,6 @@ app.use(
     origin: allowedOrigins,
     credentials: true,
   })
-);
-
-// Add BEFORE app.use(express.json(...))
-app.post(
-  "/api/payments/stripe/webhook",
-  express.raw({ type: "application/json" }),
-  stripeWebhook as express.RequestHandler
 );
 
 app.use(express.json({ limit: "50mb" }));
