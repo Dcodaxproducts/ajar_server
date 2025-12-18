@@ -27,6 +27,7 @@ export interface IField extends Document {
   visible?: boolean;
   defaultValue?: string | number | boolean;
   readonly?: boolean;
+  isFixed?: boolean;
   validation?: {
     required: boolean;
     pattern?: string;
@@ -54,6 +55,7 @@ const FieldSchema = new Schema<IField>(
     visible: { type: Boolean, default: true },
     defaultValue: { type: Schema.Types.Mixed },
     readonly: { type: Boolean, default: false },
+    isFixed: { type: Boolean, default: false },
     validation: {
       required: { type: Boolean, default: false },
       pattern: { type: String },

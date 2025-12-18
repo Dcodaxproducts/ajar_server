@@ -28,7 +28,6 @@ export const createNewForm = async (
       leaserDocuments,
     } = req.body;
 
-
     if (!name || !description) {
       sendResponse(
         res,
@@ -43,7 +42,7 @@ export const createNewForm = async (
       !mongoose.Types.ObjectId.isValid(subCategory) ||
       !mongoose.Types.ObjectId.isValid(zone) ||
       !Array.isArray(fields) ||
-      !fields.every((id) => mongoose.Types.ObjectId.isValid(id))
+      !fields.every((id: string) => mongoose.Types.ObjectId.isValid(id))
     ) {
       sendResponse(
         res,
@@ -81,10 +80,8 @@ export const createNewForm = async (
     });
 
     if (requiredFields.length !== requiredFieldNames.length) {
-      const requiredFoundNames = requiredFields.map((f) => f.name);
-      const missing = requiredFieldNames.filter(
-        (n) => !requiredFoundNames.includes(n)
-      );
+      const found = requiredFields.map((f) => f.name);
+      const missing = requiredFieldNames.filter((n) => !found.includes(n));
 
       sendResponse(
         res,
@@ -95,22 +92,24 @@ export const createNewForm = async (
       return;
     }
 
-   const requiredFieldIds = requiredFields.map((f) =>
-  (f._id as mongoose.Types.ObjectId).toString()
-);
+    const fixedFields = await Field.find({ isFixed: true });
 
-const userFieldIds = validUserFields.map((f) =>
-  (f._id as mongoose.Types.ObjectId).toString()
-);
+    const allFieldIds: mongoose.Types.ObjectId[] = [
+      ...requiredFields.map((f) => f._id as mongoose.Types.ObjectId),
+      ...fixedFields.map((f) => f._id as mongoose.Types.ObjectId),
+      ...validUserFields.map((f) => f._id as mongoose.Types.ObjectId),
+    ];
 
-    const finalFields = Array.from(new Set([...requiredFieldIds, ...userFieldIds]));
+    const uniqueFieldIds = Array.from(
+      new Map(allFieldIds.map((id) => [id.toString(), id])).values()
+    );
 
     const form = new Form({
       name,
       description,
       subCategory,
       zone,
-      fields: finalFields, 
+      fields: uniqueFieldIds,
       language,
       setting,
       userDocuments,
@@ -200,7 +199,6 @@ export const getAllForms = async (
       };
     });
 
-    //Send paginated result
     sendResponse(
       res,
       {
@@ -401,19 +399,136 @@ export const getFormByZoneAndSubCategory = async (
   }
 };
 
-export const updateForm = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const updateData = req.body;
+// UPDATE FORM
+export const updateForm = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const id = req.params.id as string;
 
-  const updatedForm = await Form.findByIdAndUpdate(id, updateData, {
-    new: true,
-  });
+    const {
+      name,
+      description,
+      subCategory,
+      zone,
+      fields = [],
+      language,
+      setting,
+      userDocuments,
+      leaserDocuments,
+    } = req.body;
 
-  if (!updatedForm) {
-    return res.status(404).json({ message: "Form not found" });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      sendResponse(res, null, "Invalid form ID", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    const form = await Form.findById(id);
+    if (!form) {
+      sendResponse(res, null, "Form not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    if (subCategory && !mongoose.Types.ObjectId.isValid(subCategory)) {
+      sendResponse(res, null, "Invalid subCategory ID", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    if (zone && !mongoose.Types.ObjectId.isValid(zone)) {
+      sendResponse(res, null, "Invalid zone ID", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    const requiredFieldNames = [
+      "name",
+      "subTitle",
+      "description",
+      "price",
+      "priceUnit",
+      "rentalImages",
+    ];
+
+    const requiredFields = await Field.find({
+      name: { $in: requiredFieldNames },
+    });
+
+    if (requiredFields.length !== requiredFieldNames.length) {
+      const found = requiredFields.map((f) => f.name);
+      const missing = requiredFieldNames.filter((n) => !found.includes(n));
+
+      sendResponse(
+        res,
+        null,
+        `Required fields missing in database: ${missing.join(", ")}`,
+        STATUS_CODES.BAD_REQUEST
+      );
+      return;
+    }
+
+    const fixedFields = await Field.find({ isFixed: true });
+
+    let userFieldIds: mongoose.Types.ObjectId[] = [];
+
+    if (Array.isArray(fields) && fields.length > 0) {
+      const invalidField = fields.some(
+        (fid: string) => !mongoose.Types.ObjectId.isValid(fid)
+      );
+
+      if (invalidField) {
+        sendResponse(
+          res,
+          null,
+          "Invalid field ID in fields array",
+          STATUS_CODES.BAD_REQUEST
+        );
+        return;
+      }
+
+      const validUserFields = await Field.find({ _id: { $in: fields } });
+
+      if (validUserFields.length !== fields.length) {
+        sendResponse(
+          res,
+          null,
+          "Some fields are invalid",
+          STATUS_CODES.BAD_REQUEST
+        );
+        return;
+      }
+
+      userFieldIds = validUserFields.map(
+        (f) => f._id as mongoose.Types.ObjectId
+      );
+    }
+
+    const allFieldIds: mongoose.Types.ObjectId[] = [
+      ...requiredFields.map((f) => f._id as mongoose.Types.ObjectId),
+      ...fixedFields.map((f) => f._id as mongoose.Types.ObjectId),
+      ...userFieldIds,
+    ];
+
+    const uniqueFieldIds = Array.from(
+      new Map(allFieldIds.map((id) => [id.toString(), id])).values()
+    );
+
+    form.name = name ?? form.name;
+    form.description = description ?? form.description;
+    form.subCategory = subCategory ?? form.subCategory;
+    form.zone = zone ?? form.zone;
+    form.fields = uniqueFieldIds;
+    form.language = language ?? form.language;
+    form.setting = setting ?? form.setting;
+    form.userDocuments = userDocuments ?? form.userDocuments;
+    form.leaserDocuments = leaserDocuments ?? form.leaserDocuments;
+
+    await form.save();
+
+    sendResponse(res, form, "Form updated successfully", STATUS_CODES.OK);
+  } catch (error) {
+    next(error);
   }
-
-  res.status(200).json(updatedForm);
 };
 
 export const deleteForm = async (
