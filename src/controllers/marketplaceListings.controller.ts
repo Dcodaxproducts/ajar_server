@@ -16,6 +16,7 @@ import { validateDocuments } from "../middlewares/documentvalidationhelper.middl
 import { User } from "../models/user.model";
 import { Review } from "../models/review.model";
 import { sendNotification } from "../utils/notifications";
+import { FavouriteCheck } from "../models/favouriteChecks.model";
 
 // controllers/marketplaceListings.controller.ts]
 const toCamelCase = (str: string) =>
@@ -1125,6 +1126,7 @@ export const deleteMarketplaceListing = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
       return;
@@ -1146,16 +1148,14 @@ export const deleteMarketplaceListing = async (
       return;
     }
 
-    // Delete the listing itself
-    await existingListing.deleteOne();
+    await FavouriteCheck.deleteMany({ listing: id });
 
-    // Cascade delete bookings related to this listing
-    await Booking.deleteMany({ marketplaceListingId: id });
+    await existingListing.deleteOne();
 
     sendResponse(
       res,
       existingListing,
-      "Listing and related bookings deleted",
+      "Listing, related favourites deleted",
       STATUS_CODES.OK
     );
   } catch (err) {
