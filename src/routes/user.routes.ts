@@ -159,7 +159,6 @@ router.get("/all", useAuth, asyncHandler(getAllUsers));
 router.get("/wallet", useAuth, asyncHandler(getWallet));
 
 router.get("/my-withdrawals/range", useAuth, asyncHandler(getWithdrawalHistoryByRange));
-// router.get("/wallet/graph", useAuth, asyncHandler(getWalletGraph));
 
 router.get(
   "/my-withdrawals",
@@ -186,7 +185,7 @@ router.post("/wallet/deduct", useAuth, asyncHandler(deductFromWallet));
 // router.get("/bank-account", useAuth, asyncHandler(getBankAccounts));
 router.post("/bank-account", useAuth, asyncHandler(addBankAccount));
 
-router.put("/bank-account/:bankAccountId", useAuth, asyncHandler(updateBankAccount));
+router.patch("/bank-account/:bankAccountId", useAuth, asyncHandler(updateBankAccount));
 router.delete("/bank-account/:bankAccountId", useAuth, asyncHandler(deleteBankAccount));
 
 router.post("/withdrawals-request", useAuth, asyncHandler(instantWithdrawal));

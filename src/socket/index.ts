@@ -9,17 +9,35 @@ export interface UserSocketHelpers {
   getIO: () => SocketIOServer;
 }
 
-const users = new Map<string, Set<string>>();
-const userStatus = new Map<string, boolean>(); // Track online status
+// const users = new Map<string, Set<string>>();
+// const userStatus = new Map<string, boolean>(); // Track online status
+
+
+// ================== GLOBAL STATE ==================
+export const users = new Map<string, Set<string>>();
+export const userStatus = new Map<string, boolean>();
+
+//GLOBAL activeChats (FIX)
+export const activeChats = new Map<string, Set<string>>();
+
 
 let io: SocketIOServer;
 
 export const initSocket = (server: any) => {
   io = new SocketIOServer(server, {
     cors: {
-      origin: allowedOrigins,
+      // origin: allowedOrigins,
+       origin: "*", // ✅ IMPORTANT for mobile & testing
       credentials: true,
     },
+     transports: ["websocket", "polling"], // ✅ REQUIRED
+    allowEIO3: true, // ✅ Mobile compatibility
+  });
+
+    // 🔍 AUTH LOGGING (DEBUG)
+  io.use((socket, next) => {
+    console.log("🔐 Socket auth data:", socket.handshake.auth);
+    next();
   });
 
   io.use(authMiddleware);

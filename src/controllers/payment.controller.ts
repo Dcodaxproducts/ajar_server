@@ -31,8 +31,17 @@ export const createBookingPayment = async (req: Request, res: Response) => {
 
     // FIX: Price is already calculated in booking controller
     const amount = booking.priceDetails.totalPrice;
+    const amountInCents = Math.round(amount * 100);
 
     console.log("Charging EXACT booking total:", amount);
+
+
+    if (!amount || amountInCents < 50) {
+      return res.status(400).json({
+        message: "Booking amount must be at least $0.50",
+        amount,
+      });
+    }
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount * 100),
