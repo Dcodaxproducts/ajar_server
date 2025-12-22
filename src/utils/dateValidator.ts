@@ -1,9 +1,6 @@
 import { Booking } from "../models/booking.model";
 import mongoose from "mongoose";
 
-/**
- * Check if the new booking dates overlap with existing approved bookings.
- */
 export const isBookingDateAvailable = async (
   listingId: mongoose.Types.ObjectId,
   newCheckIn: Date,
@@ -12,7 +9,7 @@ export const isBookingDateAvailable = async (
 ): Promise<boolean> => {
   const overlappingBooking = await Booking.findOne({
     marketplaceListingId: listingId,
-    status: { $in: ["approved", "pending"] }, // consider these as active
+    status: { $in: ["approved", "pending"] },
     _id: { $ne: excludeBookingId },
     $or: [
       {

@@ -6,7 +6,6 @@ import formRoutes from "./forms.routes";
 import marketplacelistingRoutes from "./marketplaceListings.routes";
 import fieldRoutes from "./field.routes";
 import dropdownRoutes from "./dropdown.routes";
-import paymentRoutes from "./payment.routes";
 import bookingRoutes from "./booking.routes";
 import damageReportRoutes from "./damageReport.routes";
 import BusinessSetting from "./businessSetting.routes";
@@ -24,16 +23,18 @@ import analyticsRoutes from "./analytics.routes";
 import refundPoliciesRoutes from "./refundPolicies.routes";
 import refundRequestsRoutes from "./refundRequests.routes";
 import dashboardRoutes from "./dashboard.routes";
-import userForm from "./userForm.routes";
-// import userDocs from "./userDocs.routes";
+import userGoogleRoutes from "./usergoogle.routes";
+import paymentRoutes from "./payment.routes";
+import notificationRoutes from "./notification.routes";
+import twofaRoutes from "./twofa.routes";
+import articlesRoutes from "./article.routes";
 
 const router = express.Router();
 
+router.use("/notifications", notificationRoutes)
+router.use("/2fa", twofaRoutes);
 router.use("/users", userRoutes);
-// router.use("/userForm", userForm);
-// router.use("/userdocs", userDocs);
 router.use("/dashboard", dashboardRoutes);
-// router.use("/messages", messageRoutes);
 router.use("/chats", conversationRoutes);
 router.use("/payments", paymentRoutes);
 router.use("/zones", zoneRoutes);
@@ -56,5 +57,8 @@ router.use("/queries", helpSupportRoutes);
 router.use("/contact-us", contactUsRoutes);
 router.use("/favourites", favouritesRoutes);
 router.use("/analytics", analyticsRoutes);
+router.use("/oauth", userGoogleRoutes); 
+router.use("/messages", messageRoutes);
+router.use("/articles", articlesRoutes);
 
 export default router;

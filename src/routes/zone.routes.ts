@@ -16,11 +16,13 @@ import { Zone } from "../models/zone.model";
 
 const router = express.Router();
 
-router.get("/", authMiddleware, getAllZones);
+const useAuth = authMiddleware as any;
+
+router.get("/", useAuth, getAllZones);
 router.get("/:id", getZoneDetails);
 router.post(
   "/",
-  authMiddleware,
+  useAuth,
   upload.single("thumbnail"),
   validateRequest({ body: zoneSchema }),
   createZone
@@ -55,38 +57,38 @@ import {
 // GET each section
 router.get(
   "/:zoneId/rental-policies/security-deposit-rules",
-  authMiddleware,
+  useAuth,
   asyncHandler(getSecurityDepositRules)
 );
 
 router.get(
   "/:zoneId/rental-policies/damage-liability-terms",
-  authMiddleware,
+  useAuth,
   asyncHandler(getDamageLiabilityTerms)
 );
 
 router.get(
   "/:zoneId/rental-policies/rental-duration-limits",
-  authMiddleware,
+  useAuth,
   asyncHandler(getRentalDurationLimits)
 );
 
 //Update each section
 router.patch(
   "/:zoneId/rental-policies/security-deposit-rules",
-  authMiddleware,
+  useAuth,
   asyncHandler(updateSecurityDepositRules)
 );
 
 router.patch(
   "/:zoneId/rental-policies/damage-liability-terms",
-  authMiddleware,
+  useAuth,
   asyncHandler(updateDamageLiabilityTerms)
 );
 
 router.patch(
   "/:zoneId/rental-policies/rental-duration-limits",
-  authMiddleware,
+  useAuth,
   asyncHandler(updateRentalDurationLimits)
 );
 

@@ -6,7 +6,13 @@ import mongoose from "mongoose";
 import asyncHandler from "express-async-handler";
 import { Booking } from "../models/booking.model";
 import { paginateQuery } from "../utils/paginate";
-import { AuthRequest } from "../middlewares/auth.middleware";
+
+interface AuthRequest extends Request {
+  user?: {
+    id: string;
+    role: string;
+  };
+}
 
 // Helper function to check if ObjectId is valid and exists
 const isValidObjectIdAndExists = async (
@@ -18,7 +24,7 @@ const isValidObjectIdAndExists = async (
 
 //Create Refund Settings (Admin)
 export const createRefundSettings = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request & { user?: any }, res: Response, next: NextFunction) => {
     const allowedAdminFields = [
       "zone",
       "subCategory",
@@ -64,7 +70,7 @@ export const createRefundSettings = asyncHandler(
 
 //Get All Refund Settings (Admin)
 export const getAllRefundSettings = asyncHandler(
-  async (req: Request, res: Response) => {
+  async (req: Request & { user?: any }, res: Response) => {
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
@@ -92,7 +98,7 @@ export const getAllRefundSettings = asyncHandler(
 
 //Update Refund Settings (Admin)
 export const updateRefundSettings = asyncHandler(
-  async (req: Request, res: Response) => {
+  async (req: Request  & { user?: any }, res: Response) => {
     const { id } = req.params;
     const {
       zone,
@@ -145,7 +151,7 @@ export const updateRefundSettings = asyncHandler(
 
 //Delete Refund Settings (Admin)
 export const deleteRefundSettings = asyncHandler(
-  async (req: Request, res: Response) => {
+  async (req: Request & { user?: any }, res: Response) => {
     const { id } = req.params;
 
     const refund = await RefundManagement.findByIdAndDelete(id);
@@ -164,7 +170,10 @@ export const deleteRefundSettings = asyncHandler(
 //for leaser
 // Create Refund Request (User)
 export const createRefundRequest = asyncHandler(
-  async (req: AuthRequest, res: Response): Promise<void> => {
+  async (req: Request & { user?: any }, res: Response): Promise<void> => {
+    // ✅ FIX: Cast req to AuthRequest to safely access req.user
+    const { user } = req as any;
+
     const allowedUserFields = ["booking", "reason", "selectTime"];
 
     const sanitizedBody: any = {};
@@ -233,7 +242,7 @@ export const createRefundRequest = asyncHandler(
       flatFee: policy.flatFee,
       time: policy.time,
       note: policy.note,
-      user: req.user?.id, // now storing the user
+      user: user?.id, // ✅ FIX: use casted user
     });
 
     res.status(201).json({
@@ -244,9 +253,11 @@ export const createRefundRequest = asyncHandler(
   }
 );
 
-//Update Refund Request (User)
+// Update Refund Request (User)
 export const updateRefundRequest = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
+  async (req: Request & { user?: any }, res: Response) => {
+    // ✅ FIX: Cast req to AuthRequest
+    const { user } = req as any;
     const { id } = req.params;
 
     const refund = await RefundManagement.findById(id);
@@ -286,7 +297,7 @@ export const updateRefundRequest = asyncHandler(
 
 //Delete Refund Request (User)
 export const deleteRefundRequest = asyncHandler(
-  async (req: Request, res: Response) => {
+  async (req: Request & { user?: any }, res: Response) => {
     const { id } = req.params;
 
     const refund = await RefundManagement.findByIdAndDelete(id);
@@ -304,7 +315,7 @@ export const deleteRefundRequest = asyncHandler(
 
 // Get Refund Request by ID (User/Admin)
 export const getRefundRequestById = asyncHandler(
-  async (req: Request, res: Response): Promise<void> => {
+  async (req: Request & { user?: any }, res: Response): Promise<void> => {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -331,12 +342,15 @@ export const getRefundRequestById = asyncHandler(
 
 // Get All Refund Requests (User Only)
 export const getMyRefundRequests = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
+  async (req: Request & { user?: any }, res: Response) => {
+    // ✅ FIX: Cast req to AuthRequest
+    const { user } = req as any;
+
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-    const isAdmin = req.user?.role === "admin";
-    const filter: any = isAdmin ? {} : { user: req.user?.id };
+    const isAdmin = user?.role === "admin";
+    const filter: any = isAdmin ? {} : { user: user?.id };
 
     const baseQuery = RefundManagement.find(filter)
       .populate("zone", "zoneName")
@@ -367,7 +381,7 @@ export const getMyRefundRequests = asyncHandler(
 
 // Update Refund Request Status (Admin Only)
 export const updateRefundStatus = asyncHandler(
-  async (req: Request, res: Response) => {
+  async (req: Request & { user?: any }, res: Response) => {
     const { id } = req.params;
     const { status } = req.body;
 

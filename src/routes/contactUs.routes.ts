@@ -19,15 +19,24 @@ const adminOnly = (
 ): void => {
   if (req.user?.role !== "admin") {
     res.status(403).json({ success: false, message: "Forbidden: Admins only" });
-    return; //Ensure void return
+    return;
   }
   next();
 };
 
-router.post("/", authMiddleware, adminOnly, createContact);
+function asyncHandler(fn: any) {
+  return function (req: any, res: any, next: any) {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
+
+const useAuth = authMiddleware as any;
+
+router.post("/", useAuth, asyncHandler(adminOnly), createContact);
 router.get("/", getAllContacts);
 router.get("/:id", getContactById);
-router.patch("/:id", authMiddleware, adminOnly, updateContact);
-router.delete("/:id", authMiddleware, adminOnly, deleteContact);
+router.patch("/:id", useAuth, asyncHandler(adminOnly), updateContact);
+router.delete("/:id", useAuth, asyncHandler(adminOnly), deleteContact);
 
 export default router;

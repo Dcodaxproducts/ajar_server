@@ -2,7 +2,6 @@ import { Router } from "express";
 import {
   markMessageDelivered,
   markMessagesSeen,
-  sendMessage,
 } from "../controllers/message.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
@@ -14,14 +13,14 @@ function asyncHandler(fn: any) {
   };
 }
 
-router.post("/", authMiddleware, asyncHandler(sendMessage));
+const useAuth = authMiddleware as any;
 
 router.patch(
   "/:messageId/delivered",
-  authMiddleware,
+  useAuth,
   asyncHandler(markMessageDelivered)
 );
 
-router.patch("/:chatId/seen", authMiddleware, asyncHandler(markMessagesSeen));
+router.patch("/:chatId/seen", useAuth, asyncHandler(markMessagesSeen));
 
 export default router;

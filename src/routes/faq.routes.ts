@@ -18,18 +18,17 @@ function asyncHandler(fn: any) {
   };
 }
 
-router.post("/", authMiddleware, createFAQ);
+const useAuth = authMiddleware as any;
+
+router.post("/", useAuth, createFAQ);
 router.get("/", getAllFAQs);
 router.get("/:id", getFAQById);
-
-
 router.patch(
   "/:id",
-  authMiddleware,
+  useAuth,
   asyncHandler(languageTranslationMiddleware(FAQ)),
   updateFAQ
 );
-
-router.delete("/:id", authMiddleware, deleteFAQ);
+router.delete("/:id", useAuth, deleteFAQ);
 
 export default router;

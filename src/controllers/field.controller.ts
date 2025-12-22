@@ -168,7 +168,12 @@ export const getFieldDetails = async (
       }
     }
 
-    sendResponse(res, field, "Field details fetched successfully", STATUS_CODES.OK);
+    sendResponse(
+      res,
+      field,
+      "Field details fetched successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
@@ -191,7 +196,12 @@ export const createNewField = async (
     const newField = new Field(fieldData);
     await newField.save();
 
-    sendResponse(res, newField, "Field created successfully", STATUS_CODES.CREATED);
+    sendResponse(
+      res,
+      newField,
+      "Field created successfully",
+      STATUS_CODES.CREATED
+    );
   } catch (error) {
     next(error);
   }
@@ -238,7 +248,12 @@ export const updateField = async (
       return;
     }
 
-    sendResponse(res, updatedField, "Field updated successfully", STATUS_CODES.OK);
+    sendResponse(
+      res,
+      updatedField,
+      "Field updated successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
@@ -258,12 +273,30 @@ export const deleteField = async (
       return;
     }
 
-    const deleted = await Field.findByIdAndDelete(id);
+    // Find the field first
+    const field = await Field.findById(id);
 
-    if (!deleted) {
+    if (!field) {
       sendResponse(res, null, "Field not found", STATUS_CODES.NOT_FOUND);
       return;
     }
+
+    // Restricted field names
+    const restrictedNames = ["name", "subTitle", "description", "price", "rentalImages"];
+
+    // Check if the field name is restricted
+    if (restrictedNames.includes(field.name)) {
+      sendResponse(
+        res,
+        null,
+        `You cannot delete the '${field.name}' field.`,
+        STATUS_CODES.FORBIDDEN
+      );
+      return;
+    }
+
+    // Proceed to delete
+    const deleted = await Field.findByIdAndDelete(id);
 
     await Form.updateMany({ fields: id }, { $pull: { fields: id } });
 
@@ -272,3 +305,4 @@ export const deleteField = async (
     next(error);
   }
 };
+

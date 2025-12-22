@@ -36,14 +36,14 @@ export const getAllCategories = async (
     if (typeLower === "subcategory") {
       baseQuery = Category.find(filter)
         .populate({ path: "category" })
-        .sort({ createdAt: -1 }); // NEW: Show newest subcategories first
+        .sort({ createdAt: -1 });
     } else if (typeLower === "category") {
-      baseQuery = Category.find(filter).sort({ createdAt: -1 }); // NEW: Show newest categories first
+      baseQuery = Category.find(filter).sort({ createdAt: -1 });
     } else {
       // 2. No type filter – show all with subcategory/category relations
       baseQuery = Category.find()
         .populate([{ path: "category" }])
-        .sort({ createdAt: -1 }); // NEW: Show newest first
+        .sort({ createdAt: -1 });
     }
 
     // Pagination
@@ -220,7 +220,6 @@ export const getCategoryDetails = async (
         ? "category"
         : typeQuery;
 
-    // Validate ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid Category ID", STATUS_CODES.BAD_REQUEST);
       return;
@@ -320,7 +319,7 @@ export const getCategoryDetails = async (
       return;
     }
 
-    // === DEFAULT CASE: Fetch category or subcategory without type ===
+    // DEFAULT CASE: Fetch category or subcategory without type
     const category = await Category.findById(id)
       .populate<{ category: ICategory }>("category")
       .lean();
@@ -429,7 +428,6 @@ export const createNewCategory = async (
       STATUS_CODES.CREATED
     );
   } catch (error) {
-    // Clean up any uploaded files on error
     if (req.files) {
       Object.values(req.files).forEach((files) => {
         files.forEach((file: { path: string }) => deleteFile(file.path));
@@ -455,7 +453,6 @@ export const updateCategory = async (
   try {
     const existingCategory = await Category.findById(categoryId);
     if (!existingCategory) {
-      // Clean up any uploaded files if category not found
       if (req.files) {
         const files = req.files as Record<string, Express.Multer.File[]>;
         Object.values(files).forEach((fileArray: Express.Multer.File[]) => {
@@ -488,12 +485,10 @@ export const updateCategory = async (
           const oldPath = path.join(process.cwd(), existingValue);
           deleteFile(oldPath);
         }
-        // Set new file path
         existingCategory.set(field, `/uploads/${files[field][0].filename}`);
       }
     });
 
-    // Update other fields
     if (name) existingCategory.name = name;
     if (parentCategoryId) existingCategory.category = parentCategoryId;
     if (description) existingCategory.description = description;
@@ -513,7 +508,6 @@ export const updateCategory = async (
       STATUS_CODES.OK
     );
   } catch (error) {
-    // Clean up any uploaded files on error
     if (req.files) {
       const files = req.files as Record<string, Express.Multer.File[]>;
       Object.values(files).forEach((fileArray: Express.Multer.File[]) => {
@@ -626,14 +620,11 @@ export const deleteCategory = async (
         deleteFile(filePath);
       } catch (fileError) {
         console.error("Error deleting thumbnail file:", fileError);
-        // Continue with deletion even if file deletion fails
       }
     }
 
-    // Finally delete the category itself
     await Category.findByIdAndDelete(categoryId).session(session);
 
-    // Commit the transaction
     await session.commitTransaction();
     session.endSession();
 
@@ -644,7 +635,6 @@ export const deleteCategory = async (
       STATUS_CODES.OK
     );
   } catch (error) {
-    // Abort transaction on error
     await session.abortTransaction();
     session.endSession();
     console.error("Error deleting category:", error);
@@ -652,12 +642,10 @@ export const deleteCategory = async (
   }
 };
 
-// Enhanced cascade delete function with transaction support
 const cascadeDeleteSubCategory = async (
   subCategoryId: string,
   session: mongoose.ClientSession
 ) => {
-  // Convert string to ObjectId
   const id = new mongoose.Types.ObjectId(subCategoryId);
 
   console.log(`Cascading delete for subCategory: ${id}`);

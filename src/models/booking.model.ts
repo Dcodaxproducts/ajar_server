@@ -1,10 +1,18 @@
 import mongoose, { Schema, Document, model } from "mongoose";
+import { IMarketplaceListing } from "./marketplaceListings.model";
+import { IUser } from "./user.model";
 
 interface IPriceDetails {
   price: number;
   adminFee: number;
   tax: number;
   totalPrice: number;
+}
+
+interface IPricingMeta {
+  priceFromListing: number;
+  unit: "hour" | "day" | "month" | "year";
+  duration: number;
 }
 
 interface IExtraRequestCharges {
@@ -23,17 +31,21 @@ interface IDamagesCharges {
 }
 
 export interface IBooking extends Document {
-  status: "pending" | "approved" | "rejected" | "completed" | "cancelled";
-  renter: mongoose.Types.ObjectId;
-  leaser?: mongoose.Types.ObjectId;
-  marketplaceListingId: mongoose.Types.ObjectId;
+
+    _id: mongoose.Types.ObjectId; 
+  status: "pending" | "approved" | "in_progress" | "rejected" | "completed" | "cancelled";
+  renter: mongoose.Types.ObjectId | IUser;
+  leaser?: mongoose.Types.ObjectId | IUser;
+  marketplaceListingId: mongoose.Types.ObjectId | IMarketplaceListing;
   dates: {
     checkIn: Date;
     checkOut: Date;
   };
   language?: string;
   otp?: string;
+  isVerified?: boolean;
   priceDetails: IPriceDetails;
+  pricingMeta: IPricingMeta;
   extraRequestCharges?: IExtraRequestCharges;
   specialRequest?: string;
   extendCharges?: IExtendCharges;
@@ -45,13 +57,14 @@ export interface IBooking extends Document {
     returnDate?: Date;
   };
   previousBookingId?: mongoose.Types.ObjectId;
+  
 }
 
 const BookingSchema = new Schema<IBooking>(
   {
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected", "completed", "cancelled"],
+      enum: ["pending", "approved", "in_progress", "rejected", "completed", "cancelled"],
       default: "pending",
     },
     renter: {
@@ -74,6 +87,7 @@ const BookingSchema = new Schema<IBooking>(
     },
     language: { type: String, default: "en" },
     otp: { type: String, default: "" },
+    isVerified: { type: Boolean, default: false },
 
     priceDetails: {
       price: { type: Number, required: true },
@@ -82,8 +96,18 @@ const BookingSchema = new Schema<IBooking>(
       totalPrice: { type: Number, required: true },
     },
 
+    pricingMeta: {
+      priceFromListing: { type: Number, required: true },
+      unit: {
+        type: String,
+        enum: ["hour", "day", "month", "year"],
+        required: true,
+      },
+      duration: { type: Number, required: true },
+    },
+
     extraRequestCharges: {
-      additionalCharges: { type: Number },
+      additionalCharges: { type: Number, default: 0 },
       totalPrice: { type: Number },
     },
 

@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
-import { IUser, User } from "../models/user.model";
+import { IUserDocument, User } from "../models/user.model";
 import { Form } from "../models/form.model";
 import {
   generateAccessToken,
@@ -12,7 +11,6 @@ import {
 } from "../utils/jwt.utils";
 import { sendEmail } from "../helpers/node-mailer";
 import { createCustomer } from "../helpers/stripe-functions";
-import { redis } from "../utils/redis.client";
 import { generateZodSchema } from "../utils/generate-zod-schema";
 import { UserDocument } from "../models/userDocs.model";
 import { Category } from "../models/category.model";
@@ -95,11 +93,9 @@ export const loginUser = async (
 
   try {
     if (role === "staff") {
+      // STAFF login unchanged
       const employee = await Employee.findOne({ email })
-        .populate({
-          path: "allowAccess",
-          select: "-__v",
-        })
+        .populate({ path: "allowAccess", select: "-__v" })
         .select("-__v")
         .lean();
 
@@ -109,12 +105,7 @@ export const loginUser = async (
       }
 
       if (employee.password !== password) {
-        sendResponse(
-          res,
-          null,
-          "Invalid email or password",
-          STATUS_CODES.UNAUTHORIZED
-        );
+        sendResponse(res, null, "Invalid email or password", STATUS_CODES.UNAUTHORIZED);
         return;
       }
 
@@ -123,61 +114,71 @@ export const loginUser = async (
         role: "staff",
       });
 
-      sendResponse(
-        res,
-        {
-          token: accessToken,
-          user: employee,
-        },
-        "Login successful (staff)",
-        STATUS_CODES.OK
+      sendResponse(res, { token: accessToken, user: employee }, "Login successful (staff)", STATUS_CODES.OK);
+      return;
+    }
+
+    // USER / ADMIN login
+    const user = await User.findOne({ email, role });
+    if (!user) {
+      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      sendResponse(res, null, "Invalid email or password", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
+    // --- ONLY FOR USERS WITH 2FA ENABLED ---
+    if (user.twoFactor?.enabled) {
+      // 1) Generate short-lived temp token for 2FA stage
+      const tempToken = generateAccessToken(
+        { id: user._id, role: user.role, twoFAStage: true },
+        "5m" // 5-minute token
       );
-    } else if (role === "user" || role === "admin") {
-      const user = await User.findOne({ email, role })
-        .select("-password")
-        .lean();
 
-      if (!user) {
-        sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
-        return;
-      }
+      // 2) Generate 6-digit login OTP
+      const loginCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-      const isPasswordValid = await bcrypt.compare(
-        password,
-        (await User.findOne({ email, role }))?.password || ""
-      );
-      if (!isPasswordValid) {
-        sendResponse(
-          res,
-          null,
-          "Invalid email or password",
-          STATUS_CODES.UNAUTHORIZED
-        );
-        return;
-      }
-
-      const accessToken = generateAccessToken({
-        id: user._id,
-        role: user.role,
+      await User.findByIdAndUpdate(user._id, {
+        "twoFactor.loginCode": loginCode,
+        "twoFactor.loginExpiry": new Date(Date.now() + 5 * 60 * 1000),
       });
 
+      // 3) Send OTP to email
+      await sendEmail({
+        to: user.email,
+        name: user.name,
+        subject: "Your 2FA Login Code",
+        content: `Your login 2FA code is: ${loginCode}. It expires in 5 minutes.`,
+      });
+
+      // 4) Respond requiring 2FA
       sendResponse(
         res,
         {
-          token: accessToken,
-          user: user,
+          require2FA: true,
+          tempToken,
+          email: user.email,
+          message: "Enter the 6-digit 2FA code or backup code",
         },
-        "Login successful",
-        STATUS_CODES.OK
+        "2FA required",
+        206
       );
-    } else {
-      sendResponse(
-        res,
-        null,
-        "Invalid role provided",
-        STATUS_CODES.BAD_REQUEST
-      );
+      return;
     }
+
+    // --- NORMAL LOGIN FLOW (2FA not enabled) ---
+    const accessToken = generateAccessToken({
+      id: user._id,
+      role: user.role,
+      twoFactorVerified: true, // no 2FA required, so verified by default
+    });
+
+    sendResponse(res, { token: accessToken, user }, "Login successful", STATUS_CODES.OK);
+
   } catch (error) {
     next(error);
   }
@@ -235,10 +236,64 @@ export const logout = async (
   sendResponse(res, null, "Logged out successfully", STATUS_CODES.OK);
 };
 
+ // Save FCM token
+export const saveFcmToken = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { fcmToken } = req.body;
+    const userId = req.user?.id; // now TS knows id exists
+
+    if (!userId) {
+      return sendResponse(
+        res,
+        null,
+        "Unauthorized: User not logged in",
+        STATUS_CODES.UNAUTHORIZED
+      );
+    }
+
+    if (!fcmToken) {
+      return sendResponse(
+        res,
+        null,
+        "FCM token is required",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { fcmToken },
+      { new: true }
+    ).select("-password");
+
+    if (!user) {
+      return sendResponse(
+        res,
+        null,
+        "User not found",
+        STATUS_CODES.NOT_FOUND
+      );
+    }
+
+    sendResponse(
+      res,
+      { user },
+      "FCM token saved successfully",
+      STATUS_CODES.OK
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
 interface AuthRequest extends Request {
   user?: {
     _id: string;
-    id?: string;   
+    id?: string;
     role: string | string[];
   };
 }
@@ -277,7 +332,7 @@ export const getUserDetails = async (
           path: "allowAccess",
           select: "-__v",
         })
-        .select("-__v") // Remove -password to match login response
+        .select("-__v")
         .lean();
 
       if (user) {
@@ -285,7 +340,6 @@ export const getUserDetails = async (
         user.role = "staff";
 
         // Check if name already exists (from the database)
-        // If not, create it from firstName and lastName if they exist
         if (!user.name) {
           if (user.firstName && user.lastName) {
             user.name = `${user.firstName} ${user.lastName}`;
@@ -333,24 +387,36 @@ export const resendOtp = async (
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
+
     if (!user) {
       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    const otp = Math.floor(1000 + Math.random() * 9000);
-    user.otp.isVerified = false;
-    user.otp.code = otp.toString();
-    user.otp.expiry = new Date(Date.now() + 5 * 60 * 1000);
+    // Generate new OTP
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    user.otp = {
+      code: otp,
+      expiry: new Date(Date.now() + 5 * 60 * 1000),
+      isVerified: false,
+    };
     await user.save();
+
     await sendEmail({
       to: email,
       name: user.name,
-      subject: "Your OTP Code",
-      content: `Your OTP is: ${otp}`,
+      subject: "Your New OTP Code",
+      content: `
+        <p>Hello ${user.name || "User"},</p>
+        <p>Your new OTP is:</p>
+        <div style="background: #f4f4f4; padding: 10px; color: #2e7d32; border-radius: 5px; border: 1px solid #ccc; display: inline-block;">
+          <strong>${otp}</strong>
+        </div>
+        <p>This OTP will expire in 5 minutes.</p>
+      `,
     });
 
-    sendResponse(res, null, "OTP sent successfully", STATUS_CODES.OK);
+    sendResponse(res, null, "OTP resent successfully", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -370,29 +436,21 @@ export const verifyOtp = async (
       user.otp.code !== otp ||
       user.otp.expiry.getTime() < Date.now()
     ) {
-      sendResponse(
-        res,
-        null,
-        "Invalid or expired OTP",
-        STATUS_CODES.BAD_REQUEST
-      );
+      sendResponse(res, null, "Invalid or expired OTP", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
+    // Mark OTP as verified
     user.otp.isVerified = true;
-    user.otp.code = "";
-    user.otp.expiry = new Date(0);
     await user.save();
 
     const accessToken = generateAccessToken({ id: user._id, role: user.role });
-    const userWithoutPassword = user.toObject();
-    const { password: _, ...userWithoutPasswordDetails } = userWithoutPassword;
 
     sendResponse(
       res,
       {
         token: accessToken,
-        user: userWithoutPasswordDetails,
+        userId: user._id,
       },
       "OTP verified successfully",
       STATUS_CODES.OK
@@ -408,38 +466,48 @@ export const forgotPassword = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { email } = req.body;
-    const user = await User.findOne({ email });
+    const email = req.body.email?.trim();
 
+    // Check if user exists
+    const user = await User.findOne({ email: { $regex: `^${email}$`, $options: "i" } });
     if (!user) {
       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    const resetToken = generateResetToken({ id: user._id });
-    user.otp.resetToken = resetToken;
-    user.otp.resetTokenExpiry = new Date(Date.now() + 30 * 60 * 1000);
+    // Generate a 4-digit OTP
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+
+    // Save OTP and expiry (5 minutes)
+    user.otp = {
+      code: otp,
+      expiry: new Date(Date.now() + 5 * 60 * 1000),
+      isVerified: false,
+    };
     await user.save();
 
+    // Send OTP via email
     await sendEmail({
       to: email,
       name: user.name,
-      subject: "Reset Your Password",
+      subject: "Your Password Reset OTP",
       content: `
-      <p style="color: #555;">Use the token below to reset your password:</p>
-      <div style="background: #f4f4f4; padding: 10px; color: green; border-radius: 5px; border: 1px solid #ccc; display: inline-block;" id="token">${resetToken}</div>
-      <p style="text-align: center;">
-    `,
+        <p>Hello ${user.name || "User"},</p>
+        <p>Your OTP for password reset is:</p>
+        <div style="background: #f4f4f4; padding: 10px; color: #2e7d32; border-radius: 5px; border: 1px solid #ccc; display: inline-block;">
+          <strong>${otp}</strong>
+        </div>
+        <p>This OTP will expire in 5 minutes.</p>
+      `,
     });
 
     sendResponse(
       res,
       {
-        resetToken,
-        resetTokenExpiry: user.otp.resetTokenExpiry,
-        userId: user._id,
+        email: user.email,
+        otpExpiry: user.otp.expiry,
       },
-      "Password reset token sent",
+      "OTP sent to your email",
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -447,18 +515,56 @@ export const forgotPassword = async (
   }
 };
 
-
 export const resetPassword = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { password } = req.body;
-    const userId = (req as any).user?.id;
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    // Ensure OTP was verified
+    if (!user.otp.isVerified) {
+      sendResponse(res, null, "OTP not verified", STATUS_CODES.FORBIDDEN);
+      return;
+    }
+
+    // Hash and save new password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user.password = hashedPassword;
+
+    // Clear OTP fields
+    user.otp = {
+      code: "",
+      expiry: new Date(0),
+      isVerified: false,
+    };
+
+    await user.save();
+
+    sendResponse(res, null, "Password reset successfully", STATUS_CODES.OK);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const changePassword = async (
+  req: any,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user?.id; // coming from auth middleware
+    const { oldPassword, newPassword } = req.body;
 
     if (!userId) {
-      sendResponse(res, null, "Unauthorized", STATUS_CODES.UNAUTHORIZED);
+      sendResponse(res, null, "User not authenticated", STATUS_CODES.UNAUTHORIZED);
       return;
     }
 
@@ -469,15 +575,38 @@ export const resetPassword = async (
       return;
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Check old password
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) {
+      sendResponse(res, null, "Old password is incorrect", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    // Check if new password is same as old
+    if (oldPassword === newPassword) {
+      sendResponse(
+        res,
+        null,
+        "New password must be different from old password",
+        STATUS_CODES.BAD_REQUEST
+      );
+      return;
+    }
+
+    // Hash & update password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedPassword;
 
-    user.otp.resetToken = "";
-    user.otp.resetTokenExpiry = new Date(0);
+    // remove OTP stored for reset (if any)
+    user.otp = {
+      code: "",
+      expiry: new Date(0),
+      isVerified: false,
+    };
 
     await user.save();
 
-    sendResponse(res, null, "Password reset successfully", STATUS_CODES.OK);
+    sendResponse(res, null, "Password updated successfully", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -563,53 +692,61 @@ export const getAllUsersWithStats = async (
   }
 };
 
-// controllers/user.controller.ts
-
+//updateUserProfile
 export const updateUserProfile = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const userId = req.user?._id;
+    const userId = req.user?.id;
+    if (!userId) {
+      sendResponse(res, null, "User not authenticated", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
 
-    // Start collecting updates
     const updates: any = { ...req.body };
-
-    // Handle documents upload dynamically
-if (req.files) {
-  for (const [key, files] of Object.entries(req.files)) {
-    // Each `key` corresponds to a fieldId
-    const fieldId = key; // field._id from Form schema
-    const uploadedFiles = (files as Express.Multer.File[]).map(file => ({
-      url: `/uploads/${file.filename}`,
-      side: "single", // you can infer from field definition if needed
-      status: "pending"
-    }));
-
-    // Upsert into UserDocument collection
-    await UserDocument.findOneAndUpdate(
-      { user: userId, field: fieldId },
-      { $push: { values: { $each: uploadedFiles } } },
-      { upsert: true, new: true }
-    );
-  }
-}
-
-
-    // Update user in DB
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
+    const user = await User.findById(userId);
 
     if (!user) {
       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    const { password, ...userWithoutPassword } = user.toObject();
+    if (req.files && Array.isArray(req.files)) {
+      for (const file of req.files as Express.Multer.File[]) {
+        const fieldName = file.fieldname;
+        const fileUrl = `/uploads/${file.filename}`;
+
+        if (fieldName === "profilePicture") {
+          user.profilePicture = fileUrl;
+          continue; 
+        }
+
+        const existingDocIndex = user.documents.findIndex(
+          (d) => d.name === fieldName
+        );
+
+        if (existingDocIndex >= 0) {
+          user.documents[existingDocIndex].filesUrl.push(fileUrl);
+        } else {
+          user.documents.push({
+            name: fieldName,
+            filesUrl: [fileUrl],
+            status: "pending",
+          });
+        }
+      }
+    }
+    if (updates.profilePicture) {
+      user.profilePicture = updates.profilePicture;
+      delete updates.profilePicture; 
+    }
+
+    Object.assign(user, updates);
+
+    const updatedUser = await user.save();
+    const { password, ...userWithoutPassword } = updatedUser.toObject();
 
     sendResponse(
       res,
@@ -975,9 +1112,7 @@ export const deleteUser = async (
   }
 };
 
-
 // for documents get dropdown
-
 import { Dropdown } from "../models/dropdown.model";
 
 export const getUserDocuments = async (
@@ -1008,3 +1143,781 @@ export const getListingDocuments = async (
   }
 };
 
+//socail logins 
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+import admin from "firebase-admin";
+
+dotenv.config();
+
+//  Initialize Firebase Admin once
+if (!admin.apps.length) {
+  const serviceAccount = require("../config/ajar-48a79-firebase-adminsdk-fbsvc-50588602d0.json");
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
+
+export const googleLogin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { idToken, platform } = req.body;
+
+    // Validate Firebase token input
+    if (!idToken) {
+      sendResponse(res, null, "Missing Firebase ID token", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    //  Verify Firebase token with Admin SDK
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    console.log("Firebase decoded token:", decodedToken);
+
+    const { email, name, picture, uid } = decodedToken;
+
+    if (!email) {
+      sendResponse(res, null, "Email not found in Firebase token", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    //  Check if user exists
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      const hashedPassword = await bcrypt.hash("firebase-login", 10);
+
+      user = new User({
+        email,
+        password: hashedPassword,
+        name: name || "Google User",
+        role: "user",
+        otp: { isVerified: true },
+        profilePicture: picture || "",
+        firebaseUid: uid,
+      });
+
+      // Optional: Stripe customer
+      const stripeCustomer = await createCustomer(email, name);
+      if (stripeCustomer?.id) {
+        user.stripe = {
+          customerId: stripeCustomer.id,
+          subscriptionId: "",
+          connectedAccountId: "",
+          connectedAccountLink: "",
+        };
+      }
+
+      await user.save();
+
+      // Optional: Welcome email
+      await sendEmail({
+        to: email,
+        name,
+        subject: "Welcome to our App",
+        content: `Hi ${name || "there"}, your account has been created via Google (Firebase) login.`,
+      });
+    }
+
+    // Generate Access Token using your util (same as loginUser)
+    const accessToken = generateAccessToken({
+      id: user._id,
+      role: user.role,
+    });
+
+    console.log("Access Token:", accessToken);
+
+    // Send success response
+    sendResponse(
+      res,
+      {
+        token: accessToken,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          avatar: user.profilePicture,
+          provider: "google",
+          platform: platform || "mobile",
+        },
+      },
+      "Firebase Google login successful",
+      STATUS_CODES.OK
+    );
+  } catch (error) {
+    console.error("Firebase Google login error:", error);
+    next(error);
+  }
+};
+
+// Controller: Apple Login
+import jwksClient from "jwks-rsa";
+import { WalletTransaction } from "../models/walletTransaction.model";
+import { WithdrawRequest } from "../models/withdrawRequest.model";
+import mongoose from "mongoose";
+
+dotenv.config();
+
+//Apple JWKS client to get Apple public keys
+const client = jwksClient({
+  jwksUri: "https://appleid.apple.com/auth/keys",
+});
+
+//Helper to get Apple public key by key ID
+const getApplePublicKey = (kid: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    client.getSigningKey(kid, (err, key) => {
+      if (err) return reject(err);
+      const signingKey = key?.getPublicKey();
+      if (!signingKey) return reject("Unable to get Apple public key");
+      resolve(signingKey);
+    });
+  });
+};
+
+const ALLOWED_APPLE_AUDIENCES = new Set(
+  [
+    process.env.APPLE_CLIENT_ID,   // e.g. com.dcodax.ajar.app
+    process.env.APPLE_WEB_ID,      // optional, if you add one later
+  ].filter(Boolean)
+);
+
+//Apple Login Controller
+export const appleLogin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { idToken, platform } = req.body;
+
+    if (!idToken) {
+      sendResponse(res, null, "Missing Apple ID token", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    // Decode JWT header to extract `kid`
+    const decodedHeader = jwt.decode(idToken, { complete: true }) as {
+      header: { kid: string; alg: string };
+    } | null;
+
+    if (!decodedHeader?.header?.kid) {
+      sendResponse(res, null, "Invalid Apple token header", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
+    // Fetch Apple public key & verify token
+    const publicKey = await getApplePublicKey(decodedHeader.header.kid);
+    const applePayload = jwt.verify(idToken, publicKey, {
+      algorithms: ["RS256"],
+    }) as {
+      email?: string;
+      email_verified?: string;
+      sub: string;
+      aud: string;
+      iss: string;
+    };
+
+    // Validate issuer & audience
+    if (applePayload.iss !== "https://appleid.apple.com") {
+      sendResponse(res, null, "Invalid issuer", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
+    if (!ALLOWED_APPLE_AUDIENCES.has(applePayload.aud)) {
+      sendResponse(res, null, "Invalid audience", STATUS_CODES.UNAUTHORIZED);
+      return;
+    }
+
+    const email = applePayload.email;
+    const name = "Apple User";
+    const picture = "";
+
+    if (!email) {
+      sendResponse(res, null, "Email not found in Apple token", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    //Find or create user
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      const hashedPassword = await bcrypt.hash("apple-login", 10);
+
+      user = new User({
+        name,
+        email,
+        password: hashedPassword,
+        role: "user",
+        otp: { isVerified: true },
+        profilePicture: picture,
+      });
+
+      // Optional: Stripe customer creation
+      const stripeCustomer = await createCustomer(email, name).catch(() => null);
+      if (stripeCustomer?.id) {
+        user.stripe = {
+          customerId: stripeCustomer.id,
+          subscriptionId: '',
+          connectedAccountId: '',
+          connectedAccountLink: ''
+        };
+      }
+
+      await user.save();
+
+      // Optional: Welcome email
+      await sendEmail({
+        to: email,
+        name,
+        subject: "Welcome to our App",
+        content: `Hi ${name}, your account has been created via Apple login.`,
+      });
+    }
+
+    // Generate token using the same utility as normal login
+    const accessToken = generateAccessToken({
+      id: user._id,
+      email: user.email,
+      role: user.role,
+    });
+
+
+    //Success response
+    sendResponse(
+      res,
+      {
+        token:accessToken,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          avatar: user.profilePicture,
+          provider: "apple",
+          platform: platform || "ios",
+        },
+      },
+      "Apple login successful",
+      STATUS_CODES.OK
+    );
+  } catch (error) {
+    console.error("Apple login error:", error);
+    next(error);
+  }
+};
+
+//wallet controller 
+// Get wallet balance & transactions
+export const getWallet = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+
+    // const user = await User.findById(userId).select("wallet balance");
+    const user = await User.findById(userId).select("wallet");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Fetch transactions from WalletTransaction collection
+    const transactions = await WalletTransaction.find({ userId }).sort({ createdAt: -1 });
+
+    res.status(200).json({
+      balance: user.wallet.balance,
+      transactions,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
+
+// Add money to wallet
+export const addToWallet = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { amount, description } = req.body;
+
+    if (!amount || amount <= 0) return res.status(400).json({ message: "Invalid amount" });
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Update balance
+    user.wallet.balance += amount;
+    await user.save();
+
+    // Create transaction in separate collection
+    const transaction = new WalletTransaction({
+      userId,
+      type: "credit",
+      amount,
+      source: "stripe",
+      description,
+      createdAt: new Date(),
+    });
+    await transaction.save();
+
+    res.status(200).json({
+      message: "Wallet credited",
+      balance: user.wallet.balance,
+      transaction,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
+
+// Deduct money from wallet
+export const deductFromWallet = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { amount, description } = req.body;
+
+    if (!amount || amount <= 0) return res.status(400).json({ message: "Invalid amount" });
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (user.wallet.balance < amount)
+      return res.status(400).json({ message: "Insufficient wallet balance" });
+
+    // Update balance
+    user.wallet.balance -= amount;
+    await user.save();
+
+    // Create transaction in separate collection
+    const transaction = new WalletTransaction({
+      userId,
+      type: "debit",
+      amount,
+      source: "booking",
+      description,
+      createdAt: new Date(),
+    });
+    await transaction.save();
+
+    res.status(200).json({
+      message: "Wallet debited",
+      balance: user.wallet.balance,
+      transaction,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
+
+// Add bank account to user profile
+export const addBankAccount = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return sendResponse(res, null, "Unauthorized user", 401);
+    }
+
+    const { bankName, accountName, accountNumber, ibanNumber } = req.body;
+
+    if (!bankName || !accountName || !accountNumber || !ibanNumber) {
+      return sendResponse(res, null, "All fields are required", 400);
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      {
+        $push: {
+          bankAccounts: {
+            bankName,
+            accountName,
+            accountNumber,
+            ibanNumber,
+          },
+        },
+      },
+      { new: true }
+    ).select("-password");
+
+    return sendResponse(
+      res,
+      { user: updatedUser },
+      "Bank account added successfully",
+      201
+    );
+  } catch (error) {
+    console.log(error);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};
+
+export const getBankAccounts = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+
+    const user = await User.findById(userId)
+      .select("name email phone bankAccounts")
+      .lean();
+
+    if (!user) {
+      return sendResponse(res, null, "User not found", 404);
+    }
+
+    return sendResponse(
+      res,
+     {
+        userDetails: {
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+        },
+        bankAccounts: user.bankAccounts || [],
+      },
+      "Bank accounts fetched successfully",
+      200
+    );
+  } catch (err) {
+    console.error(err);
+    sendResponse(res, null, "Server error", 500);
+  }
+};
+
+// Update a specific bank account
+export const updateBankAccount = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { bankAccountId } = req.params;
+    const { bankName, accountName, accountNumber, ibanNumber } = req.body;
+
+    if (!userId) {
+      return sendResponse(res, null, "Unauthorized user", STATUS_CODES.UNAUTHORIZED);
+    }
+
+    if (!bankName || !accountName || !accountNumber || !ibanNumber) {
+      return sendResponse(res, null, "All fields are required", STATUS_CODES.BAD_REQUEST);
+    }
+
+    // Update the specific bank account inside the array
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: userId, "bankAccounts._id": bankAccountId },
+      {
+        $set: {
+          "bankAccounts.$.bankName": bankName,
+          "bankAccounts.$.accountName": accountName,
+          "bankAccounts.$.accountNumber": accountNumber,
+          "bankAccounts.$.ibanNumber": ibanNumber,
+        },
+      },
+      { new: true }
+    ).select("-password");
+
+    if (!updatedUser) {
+      return sendResponse(res, null, "Bank account not found", STATUS_CODES.NOT_FOUND);
+    }
+
+    return sendResponse(res, { user: updatedUser }, "Bank account updated successfully", STATUS_CODES.OK);
+  } catch (error) {
+    console.error(error);
+    return sendResponse(res, null, "Server error", STATUS_CODES.INTERNAL_SERVER_ERROR);
+  }
+};
+
+// Delete a specific bank account
+export const deleteBankAccount = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { bankAccountId } = req.params;
+
+    if (!userId) {
+      return sendResponse(res, null, "Unauthorized user", STATUS_CODES.UNAUTHORIZED);
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $pull: { bankAccounts: { _id: bankAccountId } } },
+      { new: true }
+    ).select("-password");
+
+    if (!updatedUser) {
+      return sendResponse(res, null, "Bank account not found", STATUS_CODES.NOT_FOUND);
+    }
+
+    return sendResponse(res, { user: updatedUser }, "Bank account deleted successfully", STATUS_CODES.OK);
+  } catch (error) {
+    console.error(error);
+    return sendResponse(res, null, "Server error", STATUS_CODES.INTERNAL_SERVER_ERROR);
+  }
+};
+
+export const instantWithdrawal = async (req: any, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const { amount, bankAccountId } = req.body;
+
+    // Validation
+    if (!amount || amount <= 0) {
+      return sendResponse(res, null, "Invalid withdrawal amount", 400);
+    }
+
+    if (!bankAccountId) {
+      return sendResponse(res, null, "Bank account is required", 400);
+    }
+
+    // Get user
+    const user = await User.findById(userId);
+    if (!user) return sendResponse(res, null, "User not found", 404);
+
+    // Check wallet balance
+    if (user.wallet.balance < amount) {
+      return sendResponse(res, null, "Insufficient wallet balance", 400);
+    }
+
+    // Deduct from wallet
+    user.wallet.balance -= amount;
+    await user.save();
+
+    // Create wallet transaction
+    const transaction = new WalletTransaction({
+      userId,
+      type: "debit",
+      amount,
+      source: "withdraw",
+      bankAccountId,
+      description: "Withdrawal processed instantly",
+      createdAt: new Date(),
+    });
+
+    await transaction.save();
+
+    // Response
+    return sendResponse(
+      res,
+      {
+        message: "Withdrawal successful",
+        balance: user.wallet.balance,
+        transaction,
+      },
+      "Withdrawal processed",
+      200
+    );
+  } catch (err) {
+    console.error(err);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};
+
+// Get user's withdrawals
+export const getUserWithdrawals = async (req: any, res: Response) => {
+  try {
+    const userId = req.user.id;
+
+    // Fetch only withdrawal transactions
+    const withdrawals = await WalletTransaction.find({
+      userId,
+      type: "debit",
+      source: "withdraw"
+    }).sort({ createdAt: -1 }); // latest first
+
+    return sendResponse(
+      res,
+      { withdrawals },
+      "Your withdrawal history fetched",
+      200
+    );
+  } catch (err) {
+    console.error(err);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};
+
+// NEW: Monthly wallet graph (withdrawals + topups)
+export const getWithdrawalHistoryByRange = async (req: any, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const { range, days, startDate: startStr, endDate: endStr } = req.query;
+
+    const now = new Date();
+    let startDate: Date | undefined;
+    let endDate: Date | undefined = now;
+
+    // 1️⃣ Custom startDate / endDate
+    if (startStr) startDate = new Date(startStr);
+    if (endStr) endDate = new Date(endStr);
+
+    // 2️⃣ Weekly, monthly, or last N days
+    if (!startDate) {
+      switch (range) {
+        case "weekly":
+          startDate = new Date(now);
+          startDate.setDate(now.getDate() - now.getDay()); // Sunday
+          startDate.setHours(0, 0, 0, 0);
+          break;
+        case "monthly":
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        default:
+          if (days) {
+            const dayCount = parseInt(days as string, 10);
+            if (isNaN(dayCount) || dayCount <= 0)
+              return sendResponse(res, null, "Invalid 'days' query", 400);
+            startDate = new Date(now);
+            startDate.setDate(now.getDate() - dayCount);
+          } else {
+            // Default last 6 months
+            startDate = new Date();
+            startDate.setMonth(startDate.getMonth() - 6);
+          }
+      }
+    }
+
+    // 3️⃣ Fetch raw withdrawal transactions
+    const withdrawals = await WalletTransaction.find({
+      userId,
+      type: "debit",
+      source: "withdraw",
+      createdAt: { $gte: startDate, $lte: endDate },
+    }).sort({ createdAt: -1 });
+
+    // 4️⃣ Aggregate graph data (withdrawals + top-ups)
+    const graphData = await WalletTransaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          createdAt: { $gte: startDate, $lte: endDate },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$createdAt" },
+            month: { $month: "$createdAt" },
+            week: { $week: "$createdAt" },
+            day: { $dayOfMonth: "$createdAt" },
+          },
+          totalWithdraw: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ["$type", "debit"] }, { $eq: ["$source", "withdraw"] }] },
+                "$amount",
+                0,
+              ],
+            },
+          },
+          totalTopup: {
+            $sum: {
+              $cond: [{ $eq: ["$type", "credit"] }, "$amount", 0],
+            },
+          },
+        },
+      },
+      { $sort: { "_id.year": 1, "_id.month": 1, "_id.week": 1, "_id.day": 1 } },
+    ]);
+
+    // 5️⃣ Format graph for frontend
+    const finalGraph = graphData.map((item: any) => {
+      let label = "";
+
+      if (range === "weekly") {
+        label = `Week ${item._id.week}, ${item._id.year}`;
+      } else if (range === "monthly") {
+        label = new Date(item._id.year, item._id.month - 1).toLocaleString("en-US", {
+          month: "long",
+        });
+      } else if (days || startStr || endStr) {
+        label = `${item._id.day}-${item._id.month}-${item._id.year}`;
+      } else {
+        label = new Date(item._id.year, item._id.month - 1).toLocaleString("en-US", {
+          month: "long",
+        });
+      }
+
+      return {
+        label,
+        withdraw: item.totalWithdraw,
+        topup: item.totalTopup,
+      };
+    });
+
+    // 6️⃣ Return raw withdrawals + graph
+    return sendResponse(
+      res,
+      { withdrawals, graph: finalGraph },
+      `Withdrawal history from ${startDate.toDateString()} to ${endDate.toDateString()}`,
+      200
+    );
+  } catch (err) {
+    console.error(err);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};
+
+// Get all withdrawals (admin)
+export const getAllWithdrawals = async (req: any, res: Response) => {
+  try {
+    const withdrawals = await WithdrawRequest.find().populate("userId", "name email");
+    return sendResponse(res, { withdrawals }, "All withdrawal requests fetched", 200);
+  } catch (err) {
+    console.error(err);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};
+
+// Admin approves/rejects withdrawal
+export const processWithdrawal = async (req: any, res: Response) => {
+  try {
+    const { requestId } = req.params;
+    const { action, reason } = req.body; // action = 'approve' | 'reject'
+
+    const withdrawRequest = await WithdrawRequest.findById(requestId);
+    if (!withdrawRequest) return sendResponse(res, null, "Request not found", 404);
+    if (withdrawRequest.status !== "pending")
+      return sendResponse(res, null, "Request already processed", 400);
+
+    const user = await User.findById(withdrawRequest.userId);
+    if (!user) return sendResponse(res, null, "User not found", 404);
+
+    if (action === "approve") {
+      if (user.wallet.balance < withdrawRequest.amount) {
+        return sendResponse(res, null, "Insufficient wallet balance", 400);
+      }
+
+      // Deduct from wallet
+      user.wallet.balance -= withdrawRequest.amount;
+      await user.save();
+
+      //FIX ADDED: bankAccountId is now passed in transaction
+      const transaction = new WalletTransaction({
+        userId: user._id,
+        type: "debit",
+        amount: withdrawRequest.amount,
+        bankAccountId: withdrawRequest.bankAccountId, //REQUIRED FIELD ADDED
+        source: "withdraw",
+        description: `Withdrawal approved`,
+      });
+      await transaction.save();
+
+      withdrawRequest.status = "approved";
+      withdrawRequest.processedAt = new Date();
+      await withdrawRequest.save();
+
+      return sendResponse(
+        res,
+        { withdrawRequest, transaction },
+        "Withdrawal approved",
+        200
+      );
+
+    } else if (action === "reject") {
+      withdrawRequest.status = "rejected";
+      withdrawRequest.reason = reason || "Rejected by admin";
+      withdrawRequest.processedAt = new Date();
+      await withdrawRequest.save();
+
+      return sendResponse(res, { withdrawRequest }, "Withdrawal rejected", 200);
+    } else {
+      return sendResponse(res, null, "Invalid action", 400);
+    }
+  } catch (err) {
+    console.error(err);
+    return sendResponse(res, null, "Server error", 500);
+  }
+};

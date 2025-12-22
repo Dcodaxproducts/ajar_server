@@ -17,7 +17,7 @@ interface IEmployee extends Document {
   password: string;
   confirmPassword: string;
   status: "active" | "inactive" | "blocked";
-  role: string; // This can be used for a primary role if needed
+  role: string;
   allowAccess: mongoose.Types.ObjectId;
   images: string[];
   profileImage: string;
@@ -45,7 +45,6 @@ const AccessPermissionSchema = new Schema<IAccessPermission>(
 const EmployeeSchema = new Schema<IEmployee>(
   {
     name: { type: String, required: true, trim: true },
-    // lastName: { type: String, required: true, trim: true },
     email: {
       type: String,
       required: true,

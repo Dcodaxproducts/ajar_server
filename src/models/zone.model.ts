@@ -14,7 +14,7 @@ export interface IDamageLiabilityTerms {
 
 export interface IRentalDuration {
   value: number;
-  unit: "Days" | "Weeks" | "Months"; // You can expand units if needed
+  unit: "Days" | "Weeks" | "Months"; 
 }
 
 export interface IRentalDurationLimits {
@@ -31,7 +31,7 @@ export interface RentalPolicies {
 
 export interface IZoneLanguage {
   locale: string;
-  translations: Record<string, any>; // flexible translations
+  translations: Record<string, any>; 
 }
 
 export interface IZone extends Document {
@@ -45,8 +45,6 @@ export interface IZone extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
-
-// ---------------- Schemas ----------------
 
 // Rental Policies
 const SecurityDepositRulesSchema = new Schema<ISecurityDepositRules>(
@@ -102,7 +100,7 @@ const ZoneLanguageSchema = new Schema<IZoneLanguage>(
   { _id: false }
 );
 
-// ---------------- Zone Schema ----------------
+//Zone Schema
 
 const ZoneSchema = new Schema<IZone>(
   {
@@ -133,5 +131,4 @@ ZoneSchema.index({ polygons: "2dsphere" });
 
 ZoneSchema.index({ name: 1 });
 
-// ---------------- Model ----------------
 export const Zone = mongoose.model<IZone>("Zone", ZoneSchema);

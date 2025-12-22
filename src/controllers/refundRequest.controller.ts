@@ -9,7 +9,7 @@ import { AuthRequest } from "../middlewares/auth.middleware";
 
 // Create Refund Request
 export const createRefundRequest = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
+  async (req: Request & { user?: any }, res: Response) => {
     const { booking, reason, selectTime } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(booking)) {
@@ -79,7 +79,7 @@ export const createRefundRequest = asyncHandler(
 
 // Get My Refund Requests
 export const getMyRefundRequests = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
+  async (req: Request & { user?: any }, res: Response) => {
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
@@ -116,7 +116,7 @@ export const getMyRefundRequests = asyncHandler(
 
 // Get Refund Request by ID
 export const getRefundRequestById = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
+  async (req: Request & { user?: any }, res: Response)=> {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -155,7 +155,7 @@ export const getRefundRequestById = asyncHandler(
 
 // Update Refund Request
 export const updateRefundRequest = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
+  async (req: Request & { user?: any }, res: Response) => {
     const { id } = req.params;
 
     const refund = await RefundRequest.findByIdAndUpdate(id, req.body, {

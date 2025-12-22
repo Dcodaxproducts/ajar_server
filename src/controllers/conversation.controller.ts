@@ -8,7 +8,6 @@ import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { User } from "../models/user.model";
 
-
 // Create or get existing conversation
 export const createConversation = async (req: AuthRequest, res: Response) => {
   try {
@@ -34,7 +33,7 @@ export const createConversation = async (req: AuthRequest, res: Response) => {
     }
 
     const sender = new mongoose.Types.ObjectId(req.user!.id);
-    const receiver = new mongoose.Types.ObjectId(receiverStr); //uses correct receiver id
+    const receiver = new mongoose.Types.ObjectId(receiverStr);
     const adId = req.body.adId
       ? new mongoose.Types.ObjectId(req.body.adId)
       : undefined;
@@ -213,7 +212,7 @@ export const getConversationMessages = async (
       );
     }
 
-    // Fetch receiver details safely
+    // Fetch receiver details
     const receiver = await User.findById(receiverId).select(
       "name email profilePicture"
     );

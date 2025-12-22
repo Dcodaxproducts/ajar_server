@@ -1,9 +1,33 @@
-import { Response } from "express";
+import { Response,Request } from "express";
 import mongoose from "mongoose";
 import { Conversation } from "../models/conversation.model";
-import { Message } from "../models/message.model";
+import { IMessage, Message } from "../models/message.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { getIO } from "../socket";
+import { sendNotification } from "../utils/notifications";
+import { IUser, User } from "../models/user.model";
+
+
+interface MulterRequest extends Request {
+  files: Express.Multer.File[];
+}
+
+export const uploadChatFiles = async (req: MulterRequest, res: Response) => {
+  try {
+    const files = req.files;
+
+    const urls = files.map(f => `/chat/${f.filename}`);
+
+    return res.status(201).json({
+      success: true,
+      message: "Files uploaded successfully",
+      attachments: urls,
+    });
+  } catch (error) {
+    console.error("Upload error:", error);
+    res.status(500).json({ error: "File upload failed" });
+  }
+};
 
 // Send message
 export const sendMessage = async (req: AuthRequest, res: Response) => {
@@ -17,7 +41,7 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: "Conversation not found" });
     }
 
-    // Ensure sender or receiver is participant
+    // Ensure user is participant
     if (
       !conversation.participants.some(
         (p) => p.equals(sender) || p.equals(receiver)
@@ -28,27 +52,63 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
         .json({ error: "You are not allowed in this chat" });
     }
 
-    // Create message
-    const newMessage = await Message.create({
+    const newMessage = (await Message.create({
       chatId: conversation._id,
       sender,
       receiver,
       text,
       attachments,
       seen: false,
-    });
+    })) as IMessage & { _id: mongoose.Types.ObjectId };
 
-    // Update lastMessage
-    conversation.lastMessage = newMessage._id as mongoose.Types.ObjectId;
+    // Update conversation last message
+    conversation.lastMessage = newMessage._id;
     await conversation.save();
 
-    // Populate sender and receiver before sending response
+    // Populate sender & receiver
     const populatedMessage = await Message.findById(newMessage._id)
       .populate("sender", "name email profilePicture")
       .populate("receiver", "name email profilePicture");
 
-    // 🔹 Emit directly to receiver’s room
+    // Emit the new message to receiver
     getIO().to(`user:${receiver}`).emit("message:new", populatedMessage);
+
+    // Send internal + push notifications
+    try {
+
+      const receiverUser = await User.findById(receiver) as (IUser & {
+        _id: mongoose.Types.ObjectId;
+      }) | null;
+
+      const senderUser = await User.findById(sender) as (IUser & {
+        _id: mongoose.Types.ObjectId;
+      }) | null;
+
+      if (receiverUser) {
+
+        // Save notification in DB + push if token exists
+        await sendNotification(
+          receiverUser._id.toString(),          
+          "New Message",
+          `${senderUser?.name || "Someone"} sent you a message`,
+          {
+            type: "system",
+            chatId: chatId.toString(),
+            messageId: newMessage._id.toString(),   
+          }
+        );
+
+        // Emit in-app notification
+        getIO().to(`user:${receiver}`).emit("notification:new", {
+          title: "New Message",
+          message: `${senderUser?.name || "Someone"} sent you a message`,
+          chatId,
+          messageId: newMessage._id.toString(),
+        });
+      }
+    } catch (err) {
+      console.error("Failed to send chat notification:", err);
+    }
 
     res.status(201).json({
       success: true,
@@ -71,7 +131,7 @@ export const markMessageDelivered = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: "Message not found" });
     }
 
-    // Only the intended receiver can mark delivered
+    //Only the intended receiver can mark delivered
     if (!message.receiver.equals(userId)) {
       return res.status(403).json({ error: "Not authorised" });
     }
@@ -81,7 +141,7 @@ export const markMessageDelivered = async (req: AuthRequest, res: Response) => {
       message.deliveredAt = new Date();
       await message.save();
 
-      // ✅ Notify sender via their personal room
+      //Notify sender via their personal room
       getIO().to(`user:${message.sender}`).emit("message:delivered", {
         messageId: message._id,
         chatId: message.chatId,
@@ -105,7 +165,7 @@ export const markMessagesSeen = async (req: AuthRequest, res: Response) => {
     const { chatId } = req.params;
     const userId = new mongoose.Types.ObjectId(req.user!.id);
 
-    // Find unseen messages for this user
+    //Find unseen messages for this user
     const unseenMessages = await Message.find({
       chatId,
       receiver: userId,
@@ -118,14 +178,19 @@ export const markMessagesSeen = async (req: AuthRequest, res: Response) => {
         .json({ success: true, message: "No unseen messages" });
     }
 
-    // ✅ Update all unseen messages
+    //Update all unseen messages
     const now = new Date();
     await Message.updateMany(
       { _id: { $in: unseenMessages.map((m) => m._id) } },
       { $set: { seen: true, readAt: now } }
     );
 
-    // ✅ Notify each sender (looping is fine here, but could be batched later)
+    //FIX: update conversation timestamp
+    await Conversation.findByIdAndUpdate(chatId, {
+      updatedAt: new Date(),
+    });
+
+    //Notify each sender (looping is fine here, but could be batched later)
     unseenMessages.forEach((msg) => {
       getIO().to(`user:${msg.sender}`).emit("message:seen", {
         messageId: msg._id,
