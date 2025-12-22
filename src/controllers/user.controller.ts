@@ -612,8 +612,6 @@ export const changePassword = async (
   }
 };
 
-
-
 // Embedded pagination logic directly inside the controller
 const paginateQuery = async <T>(
   query: import("mongoose").Query<T[], any>,
