@@ -25,25 +25,58 @@ export const createUserForm = async (req: Request, res: Response) => {
     // Check zone exists
     const zoneExists = await Zone.findById(zone);
     if (!zoneExists) {
-      return sendResponse(res, null, "Invalid zone ID", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "Invalid zone ID",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
 
     // Check subCategory exists (must be type subCategory)
-    const subCatExists = await Category.findOne({ _id: subCategory, type: "subCategory" });
+    const subCatExists = await Category.findOne({
+      _id: subCategory,
+      type: "subCategory",
+    });
     if (!subCatExists) {
-      return sendResponse(res, null, "Invalid subCategory ID", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "Invalid subCategory ID",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
 
     // Check fields exist
     const existingFields = await Field.find({ _id: { $in: fields } });
     if (existingFields.length !== fields.length) {
-      return sendResponse(res, null, "One or more fieldIds are invalid", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "One or more fieldIds are invalid",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
 
-    const newUserForm = await UserForm.create({ zone, subCategory, fields, type });
-    return sendResponse(res, newUserForm, "UserForm created successfully", STATUS_CODES.CREATED);
+    const newUserForm = await UserForm.create({
+      zone,
+      subCategory,
+      fields,
+      type,
+    });
+    return sendResponse(
+      res,
+      newUserForm,
+      "UserForm created successfully",
+      STATUS_CODES.CREATED
+    );
   } catch (error: any) {
-    return sendResponse(res, null, error.message, STATUS_CODES.INTERNAL_SERVER_ERROR);
+    return sendResponse(
+      res,
+      null,
+      error.message,
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
@@ -63,8 +96,9 @@ export const getUserForms = async (req: Request, res: Response) => {
 
     if (type) filter.type = type;
 
-    const userForms = await UserForm.find(filter)
-      .populate("zone subCategory fields");
+    const userForms = await UserForm.find(filter).populate(
+      "zone subCategory fields"
+    );
 
     return sendResponse(
       res,
@@ -73,20 +107,42 @@ export const getUserForms = async (req: Request, res: Response) => {
       STATUS_CODES.OK
     );
   } catch (error: any) {
-    return sendResponse(res, null, error.message, STATUS_CODES.INTERNAL_SERVER_ERROR);
+    return sendResponse(
+      res,
+      null,
+      error.message,
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
 // Get single UserForm
 export const getUserFormById = async (req: Request, res: Response) => {
   try {
-    const userForm = await UserForm.findById(req.params.id).populate("zone subCategory fields");
+    const userForm = await UserForm.findById(req.params.id).populate(
+      "zone subCategory fields"
+    );
     if (!userForm) {
-      return sendResponse(res, null, "UserForm not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(
+        res,
+        null,
+        "UserForm not found",
+        STATUS_CODES.NOT_FOUND
+      );
     }
-    return sendResponse(res, userForm, "UserForm fetched successfully", STATUS_CODES.OK);
+    return sendResponse(
+      res,
+      userForm,
+      "UserForm fetched successfully",
+      STATUS_CODES.OK
+    );
   } catch (error: any) {
-    return sendResponse(res, null, error.message, STATUS_CODES.INTERNAL_SERVER_ERROR);
+    return sendResponse(
+      res,
+      null,
+      error.message,
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
@@ -98,7 +154,12 @@ export const updateUserForm = async (req: Request, res: Response) => {
     if (fields) {
       const existingFields = await Field.find({ _id: { $in: fields } });
       if (existingFields.length !== fields.length) {
-        return sendResponse(res, null, "One or more fieldIds are invalid", STATUS_CODES.BAD_REQUEST);
+        return sendResponse(
+          res,
+          null,
+          "One or more fieldIds are invalid",
+          STATUS_CODES.BAD_REQUEST
+        );
       }
     }
 
@@ -109,12 +170,27 @@ export const updateUserForm = async (req: Request, res: Response) => {
     ).populate("zone subCategory fields");
 
     if (!updatedUserForm) {
-      return sendResponse(res, null, "UserForm not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(
+        res,
+        null,
+        "UserForm not found",
+        STATUS_CODES.NOT_FOUND
+      );
     }
 
-    return sendResponse(res, updatedUserForm, "UserForm updated successfully", STATUS_CODES.OK);
+    return sendResponse(
+      res,
+      updatedUserForm,
+      "UserForm updated successfully",
+      STATUS_CODES.OK
+    );
   } catch (error: any) {
-    return sendResponse(res, null, error.message, STATUS_CODES.INTERNAL_SERVER_ERROR);
+    return sendResponse(
+      res,
+      null,
+      error.message,
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
@@ -123,10 +199,25 @@ export const deleteUserForm = async (req: Request, res: Response) => {
   try {
     const deletedUserForm = await UserForm.findByIdAndDelete(req.params.id);
     if (!deletedUserForm) {
-      return sendResponse(res, null, "UserForm not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(
+        res,
+        null,
+        "UserForm not found",
+        STATUS_CODES.NOT_FOUND
+      );
     }
-    return sendResponse(res, deletedUserForm, "UserForm deleted successfully", STATUS_CODES.OK);
+    return sendResponse(
+      res,
+      deletedUserForm,
+      "UserForm deleted successfully",
+      STATUS_CODES.OK
+    );
   } catch (error: any) {
-    return sendResponse(res, null, error.message, STATUS_CODES.INTERNAL_SERVER_ERROR);
+    return sendResponse(
+      res,
+      null,
+      error.message,
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };

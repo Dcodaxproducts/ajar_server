@@ -22,6 +22,10 @@ export const marketplaceListingSchema = z.object({
     message: "Invalid Zone ID",
   }),
 
+  price: z.number().positive(),
+  priceUnit: z.enum(["hour", "day", "month", "year"]),
+
+
   ratings: z
     .object({
       count: z.number().int().nonnegative().default(0),
@@ -29,9 +33,6 @@ export const marketplaceListingSchema = z.object({
     })
     .optional(),
 
-  // rentalImages: z
-  //   .array(z.string())
-  //   .min(1, "At least one rental image is required"),
 
   language: z.string().default("en").optional(),
 

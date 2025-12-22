@@ -22,8 +22,6 @@ const createNodeMailerTransporter = async () => {
         user: config.email,
         pass: config.password,
       },
-      //   logger: true,
-      //   debug: true,
     });
     return transporter;
   } catch (error) {

@@ -6,26 +6,32 @@ dotenv.config();
 
 const ACCESS_SECRET = config.ACCESS_TOKEN_SECRET as jwt.Secret;
 const REFRESH_SECRET = config.REFRESH_TOKEN_SECRET as jwt.Secret;
-const ACCESS_EXPIRATION: string = config.ACCESS_TOKEN_EXPIRATION || "15m"; // Short lifespan
-const REFRESH_EXPIRATION: string = config.REFRESH_TOKEN_EXPIRATION || "7d"; // Longer lifespan
+const ACCESS_EXPIRATION: string = config.ACCESS_TOKEN_EXPIRATION || "15m";
+const REFRESH_EXPIRATION: string = config.REFRESH_TOKEN_EXPIRATION || "7d";
 
 if (!ACCESS_SECRET || !REFRESH_SECRET) {
   throw new Error("JWT Secrets are not defined in environment variables");
 }
 
-/**
- * Generate an Access Token (Short lifespan)
- */
-export const generateAccessToken = (payload: object): string => {
+// //Generate an Access Token (Short lifespan)
+// jwt.utils.ts
+export const generateAccessToken = (payload: object, expiresIn?: string): string => {
   const signOptions: SignOptions = {
-    expiresIn: ACCESS_EXPIRATION as SignOptions["expiresIn"],
-  };
+    expiresIn: expiresIn || ACCESS_EXPIRATION, // use default if not provided
+  }  as SignOptions;
   return jwt.sign(payload, ACCESS_SECRET, signOptions);
 };
 
-/**
- * Generate a Refresh Token (Long lifespan)
- */
+
+// export const generateAccessToken = (payload: object): string => {
+//   const signOptions: SignOptions = {
+//     expiresIn: ACCESS_EXPIRATION as SignOptions["expiresIn"],
+//   };
+//   return jwt.sign(payload, ACCESS_SECRET, signOptions);
+// };
+
+// //Generate a Refresh Token (Long lifespan)
+
 export const generateRefreshToken = (
   payload: object,
   expiry: string
@@ -52,7 +58,7 @@ export const verifyRefreshToken = (token: string): JwtPayload | null => {
   }
 };
 
-/// create function to generate token ( generateResetToken )
+//create function to generate token ( generateResetToken )
 
 export const generateResetToken = (payload: object): string => {
   const signOptions: SignOptions = {

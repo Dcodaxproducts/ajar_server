@@ -15,13 +15,15 @@ import upload from "../utils/multer";
 
 const router = express.Router();
 
+const useAuth = authMiddleware as any;
+
 router.get("/", getAllForms);
 
 router.get("/form", getFormByZoneAndSubCategory);
 
 router.get("/:id", getFormDetails);
 
-router.post("/", upload.single("thumbnail"), authMiddleware, createNewForm);
+router.post("/", upload.single("thumbnail"), useAuth, createNewForm);
 
 function asyncHandler(fn: any) {
   return function (req: any, res: any, next: any) {
@@ -36,6 +38,6 @@ router.patch(
   asyncHandler(updateForm)
 );
 
-router.delete("/:id", authMiddleware, deleteForm);
+router.delete("/:id", useAuth, deleteForm);
 
 export default router;

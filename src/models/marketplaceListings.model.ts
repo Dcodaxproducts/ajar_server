@@ -1,8 +1,10 @@
-import mongoose, { Schema, Document, model } from "mongoose";
+import mongoose, { Schema, Document, model, Types } from "mongoose";
+
+export type PriceUnit = "hour" | "day" | "month" | "year";
 
 export interface IListingDocument {
-  name: string;         // e.g. "property_paper"
-  filesUrl: string[];      // uploaded file link
+  name: string;
+  filesUrl: string[];
   expiryDate?: Date;
   verified?: boolean;
 }
@@ -13,6 +15,7 @@ interface ILanguageTranslation {
 }
 
 export interface IMarketplaceListing extends Document {
+  _id: Types.ObjectId;  
   leaser: mongoose.Types.ObjectId;
   subCategory: mongoose.Types.ObjectId;
   zone: mongoose.Types.ObjectId;
@@ -25,6 +28,7 @@ export interface IMarketplaceListing extends Document {
   address: string;
   currency?: string;
   price: number;
+  priceUnit: PriceUnit; 
   isActive?: boolean;
   language?: string;
   languages?: ILanguageTranslation[];
@@ -45,7 +49,11 @@ const ListingDocumentSchema = new Schema<IListingDocument>({
 const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
   {
     leaser: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    subCategory: { type: Schema.Types.ObjectId, ref: "subCategory", required: true },
+    subCategory: {
+      type: Schema.Types.ObjectId,
+      ref: "subCategory",
+      required: true,
+    },
     zone: { type: Schema.Types.ObjectId, ref: "Zone", required: true },
 
     ratings: {
@@ -75,7 +83,7 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
     currentBookingId: [
       { type: Schema.Types.ObjectId, ref: "Booking", default: null },
     ],
-     // 🔹 NEW status field
+
     status: {
       type: String,
       enum: ["pending", "approved", "rejected"],

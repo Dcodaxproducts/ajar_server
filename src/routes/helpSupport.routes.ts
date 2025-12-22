@@ -16,14 +16,16 @@ function asyncHandler(fn: any) {
   };
 }
 
-// Create ticket
-router.post("/", authMiddleware, asyncHandler(createHelpSupport));
+const useAuth = authMiddleware as any;
 
-// Update status (admin or self - you can enhance this logic)
-router.patch("/:id", authMiddleware, asyncHandler(updateHelpSupportStatus));
+// Create ticket
+router.post("/", useAuth, asyncHandler(createHelpSupport));
+
+// Update status
+router.patch("/:id", useAuth, asyncHandler(updateHelpSupportStatus));
 
 // Get user's own tickets
-router.get("/", authMiddleware, asyncHandler(getMyHelpSupportTickets));
+router.get("/", useAuth, asyncHandler(getMyHelpSupportTickets));
 
 router.get("/:id", asyncHandler(getHelpSupportById));
 

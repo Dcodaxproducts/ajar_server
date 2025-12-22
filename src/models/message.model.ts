@@ -35,7 +35,6 @@ const MessageSchema: Schema<IMessage> = new Schema(
     attachments: [{ type: String }],
     seen: { type: Boolean, default: false },
 
-    // Extra fields
     deliveredAt: { type: Date },
     readAt: { type: Date },
     deletedAt: { type: Date },

@@ -1,34 +1,12 @@
 import { Request, Response, NextFunction } from "express";
-import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
-import { IUser, User } from "../models/user.model";
-import { Form } from "../models/form.model";
-import {
-  generateAccessToken,
-  generateResetToken,
-  verifyRefreshToken,
-} from "../utils/jwt.utils";
-import { sendEmail } from "../helpers/node-mailer";
-import { createCustomer } from "../helpers/stripe-functions";
-import { redis } from "../utils/redis.client";
-import { generateZodSchema } from "../utils/generate-zod-schema";
-import { UserDocument } from "../models/userDocs.model";
-import { Category } from "../models/category.model";
-import { Booking } from "../models/booking.model";
-import { MarketplaceListing } from "../models/marketplaceListings.model";
-import { Employee } from "../models/employeeManagement.model";
-import { Zone } from "../models/zone.model";
-
-
-import { Dropdown } from "../models/dropdown.model";
-
+import { User } from "../models/user.model";
 
 interface AuthRequest extends Request {
   user?: {
     _id: string;
-    id?: string;   
+    id?: string;
     role: string | string[];
   };
 }
@@ -44,7 +22,7 @@ export const uploadUserDocuments = async (
       return sendResponse(res, null, "Unauthorized", STATUS_CODES.UNAUTHORIZED);
     }
 
-    const { expiryDate, name, oldUrl, filesUrl } = req.body; // added filesUrl (string/array)
+    const { expiryDate, name, oldUrl, filesUrl } = req.body;
     const files = req.files as Express.Multer.File[];
 
     if (!name) {
@@ -64,7 +42,7 @@ export const uploadUserDocuments = async (
       if (Array.isArray(filesUrl)) {
         newUrls = filesUrl;
       } else {
-        newUrls = [filesUrl]; // if single string
+        newUrls = [filesUrl];
       }
     } else {
       return sendResponse(
@@ -169,14 +147,21 @@ export const reviewUserDocument = async (
     ).select("-password");
 
     if (!user) {
-      sendResponse(res, null, "User or document not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(
+        res,
+        null,
+        "User or document not found",
+        STATUS_CODES.NOT_FOUND
+      );
       return;
     }
 
     sendResponse(
       res,
       user,
-      `Document ${status === "approved" ? "approved" : "rejected"} successfully`,
+      `Document ${
+        status === "approved" ? "approved" : "rejected"
+      } successfully`,
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -201,7 +186,12 @@ export const getAllUsers = async (
     }
 
     const users = await User.find().select("-password"); // exclude password
-    return sendResponse(res, users, "Users fetched successfully", STATUS_CODES.OK);
+    return sendResponse(
+      res,
+      users,
+      "Users fetched successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
@@ -221,7 +211,12 @@ export const getUserById = async (
       return sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
     }
 
-    return sendResponse(res, user, "User fetched successfully", STATUS_CODES.OK);
+    return sendResponse(
+      res,
+      user,
+      "User fetched successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }

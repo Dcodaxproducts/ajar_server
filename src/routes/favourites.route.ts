@@ -16,25 +16,27 @@ function asyncHandler(fn: any) {
   };
 }
 
+const useAuth = authMiddleware as any;
+
 // Add to favorites
-router.post("/", authMiddleware, asyncHandler(addFavourite));
+router.post("/", useAuth, asyncHandler(addFavourite));
 
 // Remove from favorites
-router.patch("/", authMiddleware, asyncHandler(removeFavourite));
+router.patch("/", useAuth, asyncHandler(removeFavourite));
 
-router.get("/", authMiddleware, asyncHandler(getAllFavourites));
+router.get("/", useAuth, asyncHandler(getAllFavourites));
 
 // Get user's favorites
 router.get(
   "/:userId/favourites",
-  authMiddleware,
+  useAuth,
   asyncHandler(getUserFavourites)
 );
 
 // Check if item is favorited
 router.get(
   "/:userId/is-favourites",
-  authMiddleware,
+  useAuth,
   asyncHandler(checkIsFavourited)
 );
 

@@ -22,32 +22,25 @@ function asyncHandler(fn: any) {
   };
 }
 
-router.post("/", authMiddleware, asyncHandler(createBooking));
+const useAuth = authMiddleware as any;
+
+router.post("/", useAuth, asyncHandler(createBooking));
 router.get("/", asyncHandler(getAllBookings));
 router.get("/:id", getBookingById);
-
 router.get(
   "/admin/user/:userId",
-  authMiddleware,
+  useAuth,
   asyncHandler(getBookingsByUserIdForAdmin)
 );
-
-router.get("/user/bookings", authMiddleware, asyncHandler(getBookingsByUser));
-
+router.get("/user/bookings", useAuth, asyncHandler(getBookingsByUser));
 router.patch(
   "/:id",
-  authMiddleware,
+  useAuth,
   asyncHandler(languageTranslationMiddleware(Booking)),
   asyncHandler(updateBooking)
 );
-
-
-router.patch("/:id/status", authMiddleware, asyncHandler(updateBookingStatus));
-
-router.delete("/:id", authMiddleware, deleteBooking);
-
-router.post("/:id/submit-pin", authMiddleware, asyncHandler(submitBookingPin));
-
-
+router.patch("/:id/status", useAuth, asyncHandler(updateBookingStatus));
+router.delete("/:id", useAuth, deleteBooking);
+router.post("/:id/submit-pin", useAuth, asyncHandler(submitBookingPin));
 
 export default router;

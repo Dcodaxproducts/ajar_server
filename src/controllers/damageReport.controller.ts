@@ -7,7 +7,6 @@ import { STATUS_CODES } from "../config/constants";
 import { paginateQuery } from "../utils/paginate";
 import { AuthRequest } from "../middlewares/auth.middleware";
 
-
 // POST /api/damage-report
 export const createDamageReport = async (
   req: AuthRequest,
@@ -24,18 +23,29 @@ export const createDamageReport = async (
     } = req.body;
 
     const attachments = (
-      (req.files as { [fieldname: string]: Express.Multer.File[] })?.attachments || []
+      (req.files as { [fieldname: string]: Express.Multer.File[] })
+        ?.attachments || []
     ).map((file) => file.path);
 
     // Validate booking ID
     if (!mongoose.Types.ObjectId.isValid(bookingId)) {
-      return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "Invalid booking ID",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
 
     // Find booking
     const booking = await Booking.findById(bookingId);
     if (!booking) {
-      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(
+        res,
+        null,
+        "Booking not found",
+        STATUS_CODES.NOT_FOUND
+      );
     }
 
     // Parse numeric values safely
@@ -56,21 +66,6 @@ export const createDamageReport = async (
     const baseTotal = booking.priceDetails?.totalPrice || 0;
     const extraTotal = booking.extraRequestCharges?.additionalCharges || 0;
     const extendTotal = booking.extendCharges?.extendCharges || 0;
-
-    // // If booking already has damage charges, add to them
-    // const existingDamage = booking.damagesCharges?.damagedCharges || 0;
-    // const newTotalDamage = existingDamage + damageAmount;
-
-    // // Calculate final updated total
-    // const updatedTotal = baseTotal + extraTotal + extendTotal + newTotalDamage;
-
-    // // Update booking damage details
-    // booking.damagesCharges = {
-    //   damagedCharges: newTotalDamage,
-    //   totalPrice: updatedTotal,
-    // };
-
-    // await booking.save();
 
     // Populate for response
     const updatedBooking = await Booking.findById(bookingId)
@@ -107,17 +102,17 @@ export const getAllDamageReports = async (
 
     const queryObj: any = {};
 
-    // 🟢 Admin → get all reports (no filter)
+    //Admin → get all reports (no filter)
     if (role === "admin") {
       // no restrictions — admin sees everything
     }
 
-    // 🔵 Renter → only reports created by themselves
+    //Renter → only reports created by themselves
     else if (role === "renter") {
       queryObj.user = userId;
     }
 
-    // 🟠 Leaser → reports linked to bookings for their listings
+    //Leaser → reports linked to bookings for their listings
     else if (role === "leaser") {
       // Step 1: find all booking IDs owned by this leaser
       const bookings = await Booking.find({ leaser: userId }).select("_id");
@@ -127,12 +122,12 @@ export const getAllDamageReports = async (
       queryObj.booking = { $in: bookingIds };
     }
 
-    // 🧩 Optional: Filter by status (pending/resolved)
+    //Optional: Filter by status (pending/resolved)
     if (status && ["pending", "resolved"].includes(status)) {
       queryObj.status = status;
     }
 
-    // 🧩 Query with population
+    //Query with population
     const query = DamageReport.find(queryObj)
       .populate({
         path: "booking",
@@ -271,18 +266,39 @@ export const updateDamageReportStatus = async (
 
     //Only admin can update status
     if (userRole !== "admin") {
-      return sendResponse(res, null, "Only admin can update damage report status", STATUS_CODES.FORBIDDEN);
+      return sendResponse(
+        res,
+        null,
+        "Only admin can update damage report status",
+        STATUS_CODES.FORBIDDEN
+      );
     }
 
     //Validate report ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendResponse(res, null, "Invalid report ID", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "Invalid report ID",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
 
     //Validate status value (according to your schema)
-    const allowedStatuses = ["pending", "approved", "paid", "rejected", "resolved"];
+    const allowedStatuses = [
+      "pending",
+      "approved",
+      "paid",
+      "rejected",
+      "resolved",
+    ];
     if (!allowedStatuses.includes(status)) {
-      return sendResponse(res, null, "Invalid status value", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "Invalid status value",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
 
     //Update report status
@@ -302,10 +318,14 @@ export const updateDamageReportStatus = async (
       .populate("user", "firstName lastName email role");
 
     if (!updatedReport) {
-      return sendResponse(res, null, "Damage report not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(
+        res,
+        null,
+        "Damage report not found",
+        STATUS_CODES.NOT_FOUND
+      );
     }
 
-    // Send success response
     return sendResponse(
       res,
       updatedReport,

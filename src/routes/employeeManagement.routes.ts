@@ -37,21 +37,23 @@ const wrapTranslationMiddleware = (model: any) => {
   });
 };
 
+const useAuth = authMiddleware as any;
+
 // EMPLOYEE ROUTES (Admin only)
 router.get(
   "/",
-  authMiddleware,
+  useAuth,
   asyncHandler(employeeController.getAllEmployees)
 );
 router.get(
   "/:id",
-  authMiddleware,
+  useAuth,
   asyncHandler(employeeController.getEmployeeById)
 );
 
 router.post(
   "/",
-  authMiddleware,
+  useAuth,
   // upload.array("images", 5),
   upload.fields([
     { name: "images", maxCount: 5 },
@@ -62,7 +64,7 @@ router.post(
 
 router.patch(
   "/:id",
-  authMiddleware,
+  useAuth,
   upload.fields([
     { name: "images", maxCount: 5 },
     { name: "profileImage", maxCount: 1 },
@@ -73,7 +75,7 @@ router.patch(
 
 router.delete(
   "/:id",
-  authMiddleware,
+  useAuth,
   asyncHandler(employeeController.deleteEmployee)
 );
 
@@ -93,9 +95,8 @@ router.patch(
   asyncHandler(zoneController.updateZone)
 );
 
-router.get("/zones", authMiddleware, asyncHandler(zoneController.getAllZones));
+router.get("/zones", useAuth, asyncHandler(zoneController.getAllZones));
 
-// router.get("/zones", employeeAuthMiddleware("zone", "read"), asyncHandler(zoneController.getAllZones));
 router.get(
   "/zones/:id",
   employeeAuthMiddleware("zone", "read"),

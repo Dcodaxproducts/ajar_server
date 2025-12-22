@@ -10,17 +10,19 @@ import { authMiddleware } from "../middlewares/auth.middleware";
 
 const router = express.Router();
 
-router.post("/", authMiddleware, createRefundPolicy);
-router.get("/", authMiddleware, getAllRefundPolicies);
+const useAuth = authMiddleware as any;
+
+router.post("/", useAuth, createRefundPolicy);
+router.get("/", useAuth, getAllRefundPolicies);
 // router.patch("/:id", authMiddleware, updateRefundPolicy)
-router.patch("/:zone/:subCategory", authMiddleware, updateRefundPolicy);
+router.patch("/:zone/:subCategory", useAuth, updateRefundPolicy);
 
 router.get(
   "/:zone/:subCategory",
-  authMiddleware,
+  useAuth,
   getRefundPoliciesByZoneAndCategory
 );
 
-router.delete("/:id", authMiddleware, deleteRefundPolicy);
+router.delete("/:id", useAuth, deleteRefundPolicy);
 
 export default router;

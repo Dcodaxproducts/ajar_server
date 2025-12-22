@@ -6,7 +6,8 @@ import {
   getConversationMessages,
 } from "../controllers/conversation.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
-import { sendMessage } from "../controllers/message.controller";
+import { sendMessage, uploadChatFiles } from "../controllers/message.controller";
+import { chatUpload } from "../middlewares/chatUpload.middleware";
 
 const router = Router();
 
@@ -16,10 +17,20 @@ function asyncHandler(fn: any) {
   };
 }
 
-router.use(authMiddleware);
+const useAuth = authMiddleware as any;
+
+router.use(useAuth);
+
+
+//attachment upload route
+router.post(
+  "/upload-attachment",
+  chatUpload,       
+  asyncHandler(uploadChatFiles) 
+);
 
 router.post("/", asyncHandler(createConversation));
-router.post("/send-message", authMiddleware, asyncHandler(sendMessage));
+router.post("/send-message", useAuth, asyncHandler(sendMessage));
 router.get("/", asyncHandler(getAllConversations));
 router.get("/:chatId", asyncHandler(getConversationById));
 router.get("/:chatId/messages", asyncHandler(getConversationMessages));

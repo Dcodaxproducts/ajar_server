@@ -14,21 +14,20 @@ import { authMiddleware } from "../middlewares/auth.middleware";
 
 const router = express.Router();
 
+const useAuth = authMiddleware as any;
+
 // for admin
-router.post("/admin", authMiddleware, createRefundSettings);
-router.get("/admin", authMiddleware, getAllRefundSettings);
-router.patch("/admin/:id", authMiddleware, updateRefundSettings);
-router.delete("/admin/:id", authMiddleware, deleteRefundSettings);
-router.patch("/admin/:id/status", authMiddleware, updateRefundStatus);
-router.patch("/admin/:id/status", authMiddleware, updateRefundStatus);
-// /zone/subcategory
-
-
+router.post("/admin", useAuth, createRefundSettings);
+router.get("/admin", useAuth, getAllRefundSettings);
+router.patch("/admin/:id", useAuth, updateRefundSettings);
+router.delete("/admin/:id", useAuth, deleteRefundSettings);
+router.patch("/admin/:id/status", useAuth, updateRefundStatus);
+router.patch("/admin/:id/status", useAuth, updateRefundStatus);
 
 // for user
-router.post("/user", authMiddleware, createRefundRequest);
-router.get("/user", authMiddleware, getMyRefundRequests);
-router.patch("/user/:id", authMiddleware, updateRefundRequest);
-router.delete("/user/:id", authMiddleware, deleteRefundRequest);
+router.post("/user", useAuth, createRefundRequest);
+router.get("/user", useAuth, getMyRefundRequests);
+router.patch("/user/:id", useAuth, updateRefundRequest);
+router.delete("/user/:id", useAuth, deleteRefundRequest);
 
 export default router;

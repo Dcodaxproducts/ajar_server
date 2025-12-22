@@ -27,7 +27,7 @@ router.get("/:id/subcategories", getCategoryWithSubcategories);
 
 router.post(
   "/",
-  authMiddleware,
+  authMiddleware as any,
   uploadFiles(["thumbnail", "icon", "image"]),
   validateRequest({ body: categorySchema }),
   createNewCategory
@@ -48,7 +48,7 @@ router.patch(
 
 router.patch(
   "/:id/thumbnail",
-  authMiddleware,
+  authMiddleware as any,
   upload.single("thumbnail"),
   updateCategoryThumbnail
 );

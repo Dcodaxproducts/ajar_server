@@ -11,7 +11,6 @@ import { Form } from "../models/form.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { RefundManagement } from "../models/refundManagement.model";
 import { RefundPolicy } from "../models/refundPolicy.model";
-// import redisClient from "../utils/redisClient";
 
 // helper for polygon check
 const isPointInPolygon = (
@@ -49,7 +48,6 @@ export const getAllZones = async (
       .populate("subCategories")
       .sort({ createdAt: -1 });
 
-    // const baseQuery = Zone.find().populate("subCategories");
     const { data, total } = await paginateQuery(baseQuery, {
       page: Number(page),
       limit: Number(limit),
@@ -60,7 +58,7 @@ export const getAllZones = async (
 
     let filteredData = data;
 
-    // Apply locale translations (already working)
+    // Apply locale translations
     if (locale) {
       filteredData = filteredData
         .filter((zone: any) =>

@@ -13,6 +13,7 @@ import {
   updateListingStatus,
   getAllMarketplaceListingsforLeaser,
   getMarketplaceListingByIdforLeaser,
+  getPopularMarketplaceListings,
 } from "../controllers/marketplaceListings.controller";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
@@ -28,47 +29,49 @@ function asyncHandler(fn: any) {
   };
 }
 
+const useAuth = authMiddleware as any;
+
 router.get("/search", asyncHandler(searchMarketplaceListings));
 
+router.get("/listing", useAuth, asyncHandler(getAllMarketplaceListingsforLeaser));
 
-router.get("/listing", authMiddleware, getAllMarketplaceListingsforLeaser);
+router.get("/", useAuth, asyncHandler(getAllMarketplaceListings));
 
-
-router.get("/", authMiddleware, getAllMarketplaceListings);
-
-router.get("/guest", getAllMarketplaceListings);
+router.get("/guest", asyncHandler(getAllMarketplaceListings));
 
 router.get("/listing/:id", asyncHandler(getMarketplaceListingByIdforLeaser));
+router.get("/popular", getPopularMarketplaceListings);
+
 router.get("/:id", asyncHandler(getMarketplaceListingById));
-
-
-
 
 router.get(
   "/:id/bookings",
-  authMiddleware,
+  useAuth,
   asyncHandler(getBookingsForListing)
 );
 
 router.post(
   "/",
-  authMiddleware,
-  uploadAny, // Middleware to accept any file field
+  useAuth,
+  uploadAny,
   asyncHandler(createMarketplaceListing)
 );
 
-
 // Admin approves/rejects listing
-router.patch("/:listingId/status", authMiddleware, asyncHandler(updateListingStatus));
+router.patch(
+  "/:listingId/status",
+  useAuth,
+  asyncHandler(updateListingStatus)
+);
 
 router.patch(
   "/:id",
   uploadFiles(["images", "rentalImages"]),
-  authMiddleware,
+  useAuth,
   asyncHandler(languageTranslationMiddleware(MarketplaceListing)),
-  updateMarketplaceListing
+  asyncHandler(updateMarketplaceListing)
 );
 
-router.delete("/:id", authMiddleware, deleteMarketplaceListing);
+router.delete("/:id", useAuth, asyncHandler(deleteMarketplaceListing));
 
 export default router;

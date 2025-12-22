@@ -267,10 +267,10 @@ export const updateEmployee = async (
       return;
     }
 
-    // 🔹 First apply body updates
+    // First apply body updates
     Object.assign(employee, req.body);
 
-    // 🔹 Then override with any uploaded files (so files win over body)
+    // Then override with any uploaded files (so files win over body)
     const files = req.files as
       | { [fieldname: string]: { filename: string }[] }
       | undefined;
