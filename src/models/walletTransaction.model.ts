@@ -22,7 +22,7 @@ const WalletTransactionSchema = new Schema<IWalletTransaction>({
   bankAccountId: { type: Schema.Types.ObjectId, required: false },
   status: { type: String, enum: ["pending", "succeeded", "failed"], default: "pending" },
   source: { type: String, required: true },
-  paymentIntentId: { type: String, required: true },
+  paymentIntentId: { type: String },
   description: { type: String },
   createdAt: { type: Date, default: Date.now },
   requestedAt: { type: Date, default: Date.now },
