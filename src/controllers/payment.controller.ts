@@ -1,5 +1,5 @@
 import { Booking } from "../models/booking.model";
-import { IUser } from "../models/user.model";
+import { IUser, User } from "../models/user.model";
 import { Payment } from "../models/payment.model";
 import stripe from "../utils/stripe";
 import mongoose from "mongoose";
@@ -233,6 +233,12 @@ export const stripeWebhook = async (req: Request, res: Response) => {
         );
 
         console.log("updated")
+
+        const user = await User.findById(userRenterId);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        user.wallet.balance += paymentIntent?.amount;
+        await user.save();
 
         // Notifications
         if (userRenterId) {
