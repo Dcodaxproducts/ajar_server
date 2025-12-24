@@ -9,29 +9,17 @@ export interface UserSocketHelpers {
   getIO: () => SocketIOServer;
 }
 
-export const users = new Map<string, Set<string>>();
-export const userStatus = new Map<string, boolean>();
-
-//GLOBAL activeChats (FIX)
-export const activeChats = new Map<string, Set<string>>();
-
+const users = new Map<string, Set<string>>();
+const userStatus = new Map<string, boolean>(); // Track online status
 
 let io: SocketIOServer;
 
 export const initSocket = (server: any) => {
-io = new SocketIOServer(server, {
-  cors: {
-    origin: "*",
-    credentials: true,
-  },
-  transports: ["websocket"],
-});
-
-
-    //AUTH LOGGING (DEBUG)
-  io.use((socket, next) => {
-    console.log("Socket auth data:", socket.handshake.auth);
-    next();
+  io = new SocketIOServer(server, {
+    cors: {
+      origin: allowedOrigins,
+      credentials: true,
+    },
   });
 
   io.use(authMiddleware);
@@ -42,13 +30,14 @@ io = new SocketIOServer(server, {
     console.log(`User ${userId} connected with socket ${socket.id}`);
 
     socket.join(`user:${userId}`);
-    socket.join(`chat:status:${userId}`);
+    socket.join(`chat:status:${userId}`); // Room for status updates
 
     if (!users.has(userId)) users.set(userId, new Set());
     users.get(userId)!.add(socket.id);
 
     // Mark user as online if first connection
-    const wasOnline = users.get(userId)!.size > 0;
+    
+   const wasOnline = users.get(userId)!.size > 0;
     if (!wasOnline) {
       userStatus.set(userId, true);
       io.emit("user:online", userId);
@@ -85,6 +74,7 @@ io = new SocketIOServer(server, {
 
   return io;
 };
+
 
 export const getIO = () => {
   if (!io) throw new Error("Socket.io not initialized!");

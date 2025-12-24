@@ -4,11 +4,14 @@ import { connectDB } from "./config/db";
 import { config } from "./config/env";
 import { initSocket } from "./socket";
 
-const PORT = Number(process.env.PORT || 3000);
+
+const PORT = config.PORT || 5001;
 
 connectDB().then(() => {
   initSocket(server);
-  server.listen(PORT, "0.0.0.0", () => {
+  server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
 });
+
+
