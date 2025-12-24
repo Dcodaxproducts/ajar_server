@@ -9,11 +9,6 @@ export interface UserSocketHelpers {
   getIO: () => SocketIOServer;
 }
 
-// const users = new Map<string, Set<string>>();
-// const userStatus = new Map<string, boolean>(); // Track online status
-
-
-// ================== GLOBAL STATE ==================
 export const users = new Map<string, Set<string>>();
 export const userStatus = new Map<string, boolean>();
 
@@ -24,19 +19,18 @@ export const activeChats = new Map<string, Set<string>>();
 let io: SocketIOServer;
 
 export const initSocket = (server: any) => {
-  io = new SocketIOServer(server, {
-    cors: {
-      // origin: allowedOrigins,
-       origin: "*", // ✅ IMPORTANT for mobile & testing
-      credentials: true,
-    },
-     transports: ["websocket", "polling"], // ✅ REQUIRED
-    allowEIO3: true, // ✅ Mobile compatibility
-  });
+io = new SocketIOServer(server, {
+  cors: {
+    origin: "*",
+    credentials: true,
+  },
+  transports: ["websocket"],
+});
 
-    // 🔍 AUTH LOGGING (DEBUG)
+
+    //AUTH LOGGING (DEBUG)
   io.use((socket, next) => {
-    console.log("🔐 Socket auth data:", socket.handshake.auth);
+    console.log("Socket auth data:", socket.handshake.auth);
     next();
   });
 
@@ -48,7 +42,7 @@ export const initSocket = (server: any) => {
     console.log(`User ${userId} connected with socket ${socket.id}`);
 
     socket.join(`user:${userId}`);
-    socket.join(`chat:status:${userId}`); // Room for status updates
+    socket.join(`chat:status:${userId}`);
 
     if (!users.has(userId)) users.set(userId, new Set());
     users.get(userId)!.add(socket.id);

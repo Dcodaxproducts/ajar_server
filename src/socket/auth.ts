@@ -26,7 +26,7 @@ export function authMiddleware(socket: Socket, next: (err?: Error) => void) {
     (socket as any).userId = decoded.id;
     next();
   } catch(err) {
-    console.log("❌ Socket auth failed:", err);
+    console.log("Socket auth failed:", err);
     next(new Error("Unauthorized"));
   }
 }
