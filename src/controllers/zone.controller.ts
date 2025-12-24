@@ -342,6 +342,24 @@ export const updateZone = async (
       subCategories: rawSubCategoryIds,
     } = req.body;
 
+    //  Check if name is provided and not the same as existing name
+    if (name && name !== existingZone.name) {
+      const zoneWithSameName = await Zone.findOne({
+        name: name.trim(),
+        _id: { $ne: zoneId },
+      });
+
+      if (zoneWithSameName) {
+        sendResponse(
+          res,
+          null,
+          "Zone with this name already exists",
+          STATUS_CODES.BAD_REQUEST
+        );
+        return;
+      }
+    }
+
     //Handle polygons parsing
     let polygons = existingZone.polygons;
     if (rawPolygons) {
