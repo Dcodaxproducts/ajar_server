@@ -221,6 +221,20 @@ export const createZone = async (
 
     console.log("Creating zone with data:", req.body);
 
+    const existingZone = await Zone.findOne({
+      name: { $regex: `^${name.trim()}$`, $options: "i" },
+    });
+
+    if (existingZone) {
+      sendResponse(
+        res,
+        null,
+        "Zone with this name already exists",
+        STATUS_CODES.CONFLICT
+      );
+      return;
+    }
+
     let polygons;
     if (rawPolygons) {
       polygons =

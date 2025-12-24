@@ -332,7 +332,6 @@ export const updateBookingStatus = async (
 ) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-
   try {
     const { id } = req.params;
     const { status, additionalCharges, isExtendApproval } = req.body;
@@ -1013,6 +1012,7 @@ export const updateBooking = async (
   next: NextFunction
 ) => {
   try {
+    console.log("hello")
     const { id } = req.params;
     const user = (req as any).user;
 

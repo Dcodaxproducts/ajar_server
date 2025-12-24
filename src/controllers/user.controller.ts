@@ -236,7 +236,7 @@ export const logout = async (
   sendResponse(res, null, "Logged out successfully", STATUS_CODES.OK);
 };
 
- // Save FCM token
+// Save FCM token
 export const saveFcmToken = async (
   req: AuthRequest,
   res: Response,
@@ -720,7 +720,7 @@ export const updateUserProfile = async (
 
         if (fieldName === "profilePicture") {
           user.profilePicture = fileUrl;
-          continue; 
+          continue;
         }
 
         const existingDocIndex = user.documents.findIndex(
@@ -740,7 +740,7 @@ export const updateUserProfile = async (
     }
     if (updates.profilePicture) {
       user.profilePicture = updates.profilePicture;
-      delete updates.profilePicture; 
+      delete updates.profilePicture;
     }
 
     Object.assign(user, updates);
@@ -995,17 +995,17 @@ export const getDashboardStats = async (
       userTrend =
         userRecords.length >= 2
           ? calcTrend(
-              userRecords[userRecords.length - 1].totalUsers,
-              userRecords[userRecords.length - 2].totalUsers
-            )
+            userRecords[userRecords.length - 1].totalUsers,
+            userRecords[userRecords.length - 2].totalUsers
+          )
           : { value: "0", trend: "up" };
 
       earningTrend =
         earningRecords.length >= 2
           ? calcTrend(
-              earningRecords[earningRecords.length - 1].totalEarning,
-              earningRecords[earningRecords.length - 2].totalEarning
-            )
+            earningRecords[earningRecords.length - 1].totalEarning,
+            earningRecords[earningRecords.length - 2].totalEarning
+          )
           : { value: "0", trend: "up" };
     }
 
@@ -1389,7 +1389,7 @@ export const appleLogin = async (
     sendResponse(
       res,
       {
-        token:accessToken,
+        token: accessToken,
         user: {
           id: user._id,
           name: user.name,
@@ -1564,7 +1564,7 @@ export const getBankAccounts = async (req: AuthRequest, res: Response) => {
 
     return sendResponse(
       res,
-     {
+      {
         userDetails: {
           name: user.name,
           email: user.email,

@@ -223,6 +223,8 @@ export const stripeWebhook = async (req: Request, res: Response) => {
       if (event.type === "payment_intent.succeeded") {
         console.log("Payment confirmed by Stripe");
 
+        const amountInDollars = paymentIntent.amount / 100;
+
         await WalletTransaction.findOneAndUpdate(
           {
             userId: userRenterId,
@@ -237,16 +239,16 @@ export const stripeWebhook = async (req: Request, res: Response) => {
         const user = await User.findById(userRenterId);
         if (!user) return res.status(404).json({ message: "User not found" });
 
-        user.wallet.balance += paymentIntent?.amount;
+        user.wallet.balance += amountInDollars;
         await user.save();
 
         // Notifications
         if (userRenterId) {
           await sendNotification(
             userRenterId,
-            "Payment Successful",
-            `Your payment was successful.`,
-            { userId: userRenterId, type: "payment_succeeded" }
+            "Wallet Credited Successfully",
+            `Your wallet has been credited with $${amountInDollars}. The amount is now available for use.`,
+            { userId: userRenterId, type: "wallet_credit" }
           );
         }
       }
