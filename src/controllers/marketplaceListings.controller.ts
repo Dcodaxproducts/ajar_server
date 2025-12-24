@@ -821,7 +821,7 @@ export const getMarketplaceListingByIdforLeaser = async (
   }
 };
 
-//for admin
+// get by id
 export const getMarketplaceListingById = async (
   req: AuthRequest,
   res: Response,
@@ -857,30 +857,67 @@ export const getMarketplaceListingById = async (
       return;
     }
 
-    //remove zone field from final response
+    /* =========================================================
+       🔴 FIX: STORE ZONE BEFORE DELETING IT
+    ========================================================= */
+    const zoneId = doc.zone;
+
+    // remove zone field from final response (unchanged behaviour)
     delete (doc as any).zone;
 
-    //fetch Form to include userDocuments
+    /* =========================================================
+       FETCH FORM (WITH SETTING)
+    ========================================================= */
     const form = await Form.findOne({
       subCategory: doc.subCategory?._id || doc.subCategory,
-      zone: doc.zone,
+      zone: zoneId, // ✅ FIX: use stored zone
     })
-      .select("userDocuments leaserDocuments")
+      .select("userDocuments leaserDocuments setting")
       .session(session)
       .lean();
 
     if (form) {
       (doc as any).userDocuments = form.userDocuments || [];
       (doc as any).leaserDocuments = form.leaserDocuments || [];
+
+      /* =========================================================
+         ADMIN FEE & TAX (SAME LOGIC AS GET ALL)
+      ========================================================= */
+      if (form.setting && doc.price) {
+        const renterCommission =
+          form.setting?.renterCommission?.value || 0;
+        const leaserCommission =
+          form.setting?.leaserCommission?.value || 0;
+        const taxPercent = form.setting?.tax || 0;
+
+        const totalCommissionPercent =
+          renterCommission + leaserCommission;
+
+        const adminFee =
+          doc.price * (totalCommissionPercent / 100);
+
+        const tax =
+          (doc.price + adminFee) * (taxPercent / 100);
+
+        (doc as any).adminFee = adminFee;
+        (doc as any).tax = tax;
+      } else {
+        (doc as any).adminFee = 0;
+        (doc as any).tax = 0;
+      }
     }
 
-    //Check if referenced subCategory exists
+    /* =========================================================
+       CHECK SUBCATEGORY EXISTS (UNCHANGED)
+    ========================================================= */
     const subCategoryExists = await SubCategory.exists({
       _id: doc.subCategory,
     }).session(session);
 
     if (!subCategoryExists) {
-      await MarketplaceListing.findByIdAndDelete(id).session(session);
+      await MarketplaceListing.findByIdAndDelete(id)
+        .session(session);
+
       await session.commitTransaction();
       session.endSession();
 
@@ -893,25 +930,31 @@ export const getMarketplaceListingById = async (
       return;
     }
 
-    //Translate listing description if locale matches
+    /* =========================================================
+       LANGUAGE TRANSLATION (UNCHANGED)
+    ========================================================= */
     if (Array.isArray(doc.languages)) {
-      const match = doc.languages.find((l: any) => l.locale === locale);
+      const match = doc.languages.find(
+        (l: any) => l.locale === locale
+      );
       if (match?.translations) {
-        doc.description = match.translations.description || doc.description;
+        doc.description =
+          match.translations.description || doc.description;
       }
     }
     delete (doc as any).languages;
 
-    //Translate subCategory fields if locale matches
     const subCategoryObj = doc.subCategory as any;
     if (subCategoryObj && Array.isArray(subCategoryObj.languages)) {
       const match = subCategoryObj.languages.find(
         (l: any) => l.locale === locale
       );
       if (match?.translations) {
-        subCategoryObj.name = match.translations.name || subCategoryObj.name;
+        subCategoryObj.name =
+          match.translations.name || subCategoryObj.name;
         subCategoryObj.description =
-          match.translations.description || subCategoryObj.description;
+          match.translations.description ||
+          subCategoryObj.description;
       }
       delete subCategoryObj.languages;
     }
