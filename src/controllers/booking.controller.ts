@@ -510,6 +510,26 @@ export const updateBookingStatus = async (
   if (renter.wallet.balance < totalAmount) {
     await session.abortTransaction();
     session.endSession();
+
+     // Notify renter about insufficient balance
+    try {
+      await sendNotification(
+        renterId,
+        "Booking Approval Failed",
+        `Your booking for "${listingName}" could not be approved due to insufficient wallet balance. Please add funds to proceed.`,
+        {
+          bookingId: parentBooking._id.toString(),
+          type: "booking",
+          status: "payment_required",
+          requiredBalance: totalAmount,
+          currentBalance: renter.wallet.balance,
+        }
+      );
+    } catch (err) {
+      console.error("Failed to notify renter about wallet issue:", err);
+    }
+
+
     return sendResponse(
       res,
       {
