@@ -57,7 +57,6 @@ export interface IBooking extends Document {
     returnDate?: Date;
   };
   previousBookingId?: mongoose.Types.ObjectId;
-  
 }
 
 const BookingSchema = new Schema<IBooking>(

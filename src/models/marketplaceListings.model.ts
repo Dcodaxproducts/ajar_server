@@ -77,7 +77,7 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
       },
     ],
 
-    documents: [ListingDocumentSchema], // embedded listing-specific docs
+    documents: [ListingDocumentSchema],
 
     isAvailable: { type: Boolean, default: true },
     currentBookingId: [
