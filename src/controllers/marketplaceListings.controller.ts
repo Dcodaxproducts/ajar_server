@@ -848,6 +848,10 @@ export const getMarketplaceListingById = async (
         path: "subCategory",
         populate: { path: "category" },
       })
+      .populate({
+    path: "zone",
+    select: "name", 
+  })
       .populate("leaser")
       .session(session)
       .lean();
@@ -859,20 +863,19 @@ export const getMarketplaceListingById = async (
       return;
     }
 
-    /* =========================================================
-       🔴 FIX: STORE ZONE BEFORE DELETING IT
-    ========================================================= */
-    const zoneId = doc.zone;
+    const zoneId =
+    typeof doc.zone === "object"
+    ? (doc.zone as any)._id
+    : doc.zone;
+
+    // const zoneId = doc.zone;
 
     // remove zone field from final response (unchanged behaviour)
-    delete (doc as any).zone;
+    // delete (doc as any).zone;
 
-    /* =========================================================
-       FETCH FORM (WITH SETTING)
-    ========================================================= */
     const form = await Form.findOne({
       subCategory: doc.subCategory?._id || doc.subCategory,
-      zone: zoneId, // ✅ FIX: use stored zone
+      zone: zoneId, 
     })
       .select("userDocuments leaserDocuments setting")
       .session(session)
@@ -882,9 +885,7 @@ export const getMarketplaceListingById = async (
       (doc as any).userDocuments = form.userDocuments || [];
       (doc as any).leaserDocuments = form.leaserDocuments || [];
 
-      /* =========================================================
-         ADMIN FEE & TAX (SAME LOGIC AS GET ALL)
-      ========================================================= */
+
       if (form.setting && doc.price) {
         const renterCommission =
           form.setting?.renterCommission?.value || 0;
@@ -909,9 +910,6 @@ export const getMarketplaceListingById = async (
       }
     }
 
-    /* =========================================================
-       CHECK SUBCATEGORY EXISTS (UNCHANGED)
-    ========================================================= */
     const subCategoryExists = await SubCategory.exists({
       _id: doc.subCategory,
     }).session(session);
@@ -932,9 +930,6 @@ export const getMarketplaceListingById = async (
       return;
     }
 
-    /* =========================================================
-       LANGUAGE TRANSLATION (UNCHANGED)
-    ========================================================= */
     if (Array.isArray(doc.languages)) {
       const match = doc.languages.find(
         (l: any) => l.locale === locale
