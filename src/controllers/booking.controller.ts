@@ -955,7 +955,14 @@ export const getBookingById = async (
     }
 
     let booking = await Booking.findById(id)
-      .populate("marketplaceListingId")
+      // .populate("marketplaceListingId")
+      .populate({
+        path: "marketplaceListingId",
+        populate: {
+        path: "leaser",
+        select: "name email profilePicture",
+        },
+    })
       .populate("renter")
       .lean();
 
