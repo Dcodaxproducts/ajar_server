@@ -332,6 +332,8 @@ export const getAllMarketplaceListingsforLeaser = async (
     const pipeline: any[] = [
       { $match: filter },
 
+       { $sort: { createdAt: -1 } },
+
       {
         $lookup: {
           from: "categories",
