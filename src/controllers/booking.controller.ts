@@ -380,7 +380,7 @@ export const updateBookingStatus = async (
       const childBooking = await Booking.findOne({
         previousBookingId: id,
         status: "pending",
-      });
+      }).session(session);
 
       if (!childBooking) {
         await session.abortTransaction();
@@ -393,19 +393,62 @@ export const updateBookingStatus = async (
         );
       }
 
-      finalStatus = "approved";
+      const renter = parentBooking.renter as any;
+      const leaser = parentBooking.leaser as any;
+
       const extendChargeAmount = Number(additionalCharges) || 0;
+      const extensionTotal =
+        childBooking.priceDetails.totalPrice + extendChargeAmount;
 
-      const childBasePrice = childBooking.priceDetails.totalPrice;
+      // NEW: WALLET CHECK
+      if (!renter?.wallet || renter.wallet.balance < extensionTotal) {
+        await session.abortTransaction();
+        session.endSession();
 
+        try {
+          await sendNotification(
+            renterId,
+            "Extension Approval Failed",
+            `Your extension for "${listingName}" could not be approved due to insufficient wallet balance.`,
+            {
+              bookingId: childBooking._id.toString(),
+              type: "extension",
+              status: "payment_required",
+              requiredBalance: extensionTotal,
+              currentBalance: renter.wallet?.balance || 0,
+            }
+          );
+        } catch (err) {
+          console.error("Failed to notify renter about wallet issue:", err);
+        }
+
+        return sendResponse(
+          res,
+          {
+            requiredBalance: extensionTotal,
+            currentBalance: renter.wallet?.balance || 0,
+          },
+          "Insufficient wallet balance for extension approval",
+          STATUS_CODES.BAD_REQUEST
+        );
+      }
+
+      // NEW: WALLET DEDUCTION & CREDIT
+      renter.wallet.balance -= extensionTotal;
+      await renter.save({ session });
+
+      if (leaser?.wallet) {
+        leaser.wallet.balance += extensionTotal;
+        await leaser.save({ session });
+      }
+
+      // EXISTING LOGIC (UNCHANGED)
       childBooking.isExtend = true;
       childBooking.status = "approved";
-
       childBooking.extendCharges = {
         extendCharges: extendChargeAmount,
-        totalPrice: childBasePrice + extendChargeAmount,
+        totalPrice: extensionTotal,
       };
-
       (childBooking as any).extensionRequestedDate = undefined;
 
       await childBooking.save({ session });
@@ -417,17 +460,12 @@ export const updateBookingStatus = async (
       session.endSession();
 
       try {
-        const childRenterId =
-          typeof childBooking.renter === "object"
-            ? (childBooking.renter as any)?._id?.toString()
-            : (childBooking.renter as any)?.toString();
-
         await sendNotification(
-          childRenterId,
+          renterId,
           "Extension Approved",
-          `Your extension request for listing "${listingName}" has been approved.`,
+          `Your extension request for "${listingName}" has been approved.`,
           {
-            bookingId: childBooking._id?.toString(),
+            bookingId: childBooking._id.toString(),
             type: "extension",
             status: "approved",
           }
@@ -443,6 +481,78 @@ export const updateBookingStatus = async (
         STATUS_CODES.OK
       );
     }
+
+    // if (isExtendApproval) {
+    //   const childBooking = await Booking.findOne({
+    //     previousBookingId: id,
+    //     status: "pending",
+    //   });
+
+    //   if (!childBooking) {
+    //     await session.abortTransaction();
+    //     session.endSession();
+    //     return sendResponse(
+    //       res,
+    //       null,
+    //       "No pending extension request found for this booking",
+    //       STATUS_CODES.BAD_REQUEST
+    //     );
+    //   }
+
+    //   finalStatus = "approved";
+    //   const extendChargeAmount = Number(additionalCharges) || 0;
+
+    //   const childBasePrice = childBooking.priceDetails.totalPrice;
+
+    //   childBooking.isExtend = true;
+    //   childBooking.status = "approved";
+
+    //   childBooking.extendCharges = {
+    //     extendCharges: extendChargeAmount,
+    //     totalPrice: childBasePrice + extendChargeAmount,
+    //   };
+
+    //   (childBooking as any).extensionRequestedDate = undefined;
+
+    //   await childBooking.save({ session });
+
+    //   parentBooking.isExtend = true;
+    //   await parentBooking.save({ session });
+
+    //   await session.commitTransaction();
+    //   session.endSession();
+
+    //   try {
+    //     const childRenterId =
+    //       typeof childBooking.renter === "object"
+    //         ? (childBooking.renter as any)?._id?.toString()
+    //         : (childBooking.renter as any)?.toString();
+
+    //     await sendNotification(
+    //       childRenterId,
+    //       "Extension Approved",
+    //       `Your extension request for listing "${listingName}" has been approved.`,
+    //       {
+    //         bookingId: childBooking._id?.toString(),
+    //         type: "extension",
+    //         status: "approved",
+    //       }
+    //     );
+    //   } catch (err) {
+    //     console.error("Failed to notify renter about extension approval:", err);
+    //   }
+
+    //   return sendResponse(
+    //     res,
+    //     childBooking,
+    //     "Extension approved successfully",
+    //     STATUS_CODES.OK
+    //   );
+    // }
+
+
+
+
     const allowedStatuses = ["approved", "rejected", "completed", "cancelled"];
     if (!allowedStatuses.includes(finalStatus)) {
       await session.abortTransaction();
@@ -484,9 +594,7 @@ export const updateBookingStatus = async (
     let finalBooking: IBooking | null = null;
     let pin: string | undefined;
 
-    if (finalStatus === "approved") {
-
-
+ 
      if (finalStatus === "approved") {
   // populated docs
   const renter = parentBooking.renter as any;
@@ -675,7 +783,7 @@ export const updateBookingStatus = async (
       `Booking status updated to ${finalStatus}`,
       STATUS_CODES.OK
     );
-  }
+ 
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
