@@ -325,6 +325,403 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 };
 
 // updateBookingStatus
+// export const updateBookingStatus = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+//   try {
+//     const { id } = req.params;
+//     const { status, additionalCharges, isExtendApproval } = req.body;
+//     const user = (req as any).user;
+//     const userId = user.id || user._id;
+
+//     let parentBooking = await Booking.findById(id)
+//       .populate("renter", "email name fcmToken wallet")
+//       .populate("leaser", "email name fcmToken wallet")
+//       .populate("marketplaceListingId");
+
+//     if (!parentBooking) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(
+//         res,
+//         null,
+//         "Booking not found",
+//         STATUS_CODES.NOT_FOUND
+//       );
+//     }
+
+//     const renterId =
+//       typeof parentBooking.renter === "object"
+//         ? (parentBooking.renter as any)?._id?.toString()
+//         : (parentBooking.renter as any)?.toString();
+
+//     const leaserId =
+//       typeof parentBooking.leaser === "object"
+//         ? (parentBooking.leaser as any)?._id?.toString()
+//         : (parentBooking.leaser as any)?.toString();
+
+//     const isRenter = userId?.toString() === renterId;
+//     const isLeaser = userId?.toString() === leaserId;
+
+//     const bookingIdString = parentBooking._id?.toString() as string;
+//     let finalStatus = status;
+
+//     const listingName =
+//       typeof parentBooking.marketplaceListingId === "object" &&
+//       "name" in parentBooking.marketplaceListingId
+//         ? (parentBooking.marketplaceListingId as any).name
+//         : "";
+
+//     if (isExtendApproval) {
+//       const childBooking = await Booking.findOne({
+//         previousBookingId: id,
+//         status: "pending",
+//       }).session(session);
+
+//       if (!childBooking) {
+//         await session.abortTransaction();
+//         session.endSession();
+//         return sendResponse(
+//           res,
+//           null,
+//           "No pending extension request found for this booking",
+//           STATUS_CODES.BAD_REQUEST
+//         );
+//       }
+
+//       const renter = parentBooking.renter as any;
+//       const leaser = parentBooking.leaser as any;
+
+//       const extendChargeAmount = Number(additionalCharges) || 0;
+//       const extensionTotal =
+//         childBooking.priceDetails.totalPrice + extendChargeAmount;
+
+//       // NEW: WALLET CHECK
+//       if (!renter?.wallet || renter.wallet.balance < extensionTotal) {
+//         await session.abortTransaction();
+//         session.endSession();
+
+//         try {
+//           await sendNotification(
+//             renterId,
+//             "Extension Approval Failed",
+//             `Your extension for "${listingName}" could not be approved due to insufficient wallet balance.`,
+//             {
+//               bookingId: childBooking._id.toString(),
+//               type: "extension",
+//               status: "payment_required",
+//               requiredBalance: extensionTotal,
+//               currentBalance: renter.wallet?.balance || 0,
+//             }
+//           );
+//         } catch (err) {
+//           console.error("Failed to notify renter about wallet issue:", err);
+//         }
+
+//         return sendResponse(
+//           res,
+//           {
+//             requiredBalance: extensionTotal,
+//             currentBalance: renter.wallet?.balance || 0,
+//           },
+//           "Insufficient wallet balance for extension approval",
+//           STATUS_CODES.BAD_REQUEST
+//         );
+//       }
+
+//       // NEW: WALLET DEDUCTION & CREDIT
+//       renter.wallet.balance -= extensionTotal;
+//       await renter.save({ session });
+
+//       if (leaser?.wallet) {
+//         leaser.wallet.balance += extensionTotal;
+//         await leaser.save({ session });
+//       }
+
+//       // EXISTING LOGIC (UNCHANGED)
+//       childBooking.isExtend = true;
+//       childBooking.status = "approved";
+//       childBooking.extendCharges = {
+//         extendCharges: extendChargeAmount,
+//         totalPrice: extensionTotal,
+//       };
+//       (childBooking as any).extensionRequestedDate = undefined;
+
+//       await childBooking.save({ session });
+
+//       parentBooking.isExtend = true;
+//       await parentBooking.save({ session });
+
+//       await session.commitTransaction();
+//       session.endSession();
+
+//       try {
+//         await sendNotification(
+//           renterId,
+//           "Extension Approved",
+//           `Your extension request for "${listingName}" has been approved.`,
+//           {
+//             bookingId: childBooking._id.toString(),
+//             type: "extension",
+//             status: "approved",
+//           }
+//         );
+//       } catch (err) {
+//         console.error("Failed to notify renter about extension approval:", err);
+//       }
+
+//       return sendResponse(
+//         res,
+//         childBooking,
+//         "Extension approved successfully",
+//         STATUS_CODES.OK
+//       );
+//     }
+
+
+//     const allowedStatuses = ["approved", "rejected", "completed", "cancelled"];
+//     if (!allowedStatuses.includes(finalStatus)) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(
+//         res,
+//         null,
+//         "Invalid status",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//     }
+
+//     if (finalStatus === "cancelled" && !isRenter) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(
+//         res,
+//         null,
+//         "Only renter can cancel the booking",
+//         STATUS_CODES.FORBIDDEN
+//       );
+//     }
+
+//     if (
+//       ["approved", "rejected", "completed"].includes(finalStatus) &&
+//       !isLeaser
+//     ) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(
+//         res,
+//         null,
+//         "Only leaser can change the booking status",
+//         STATUS_CODES.FORBIDDEN
+//       );
+//     }
+
+//     let updateFields: any = { status: finalStatus };
+//     let finalBooking: IBooking | null = null;
+//     let pin: string | undefined;
+
+ 
+//      if (finalStatus === "approved") {
+//   // populated docs
+//   const renter = parentBooking.renter as any;
+//   const leaser = parentBooking.leaser as any;
+
+//   const totalAmount = parentBooking.priceDetails.totalPrice;
+
+//   //Wallet existence check
+//   if (!renter?.wallet) {
+//     await session.abortTransaction();
+//     session.endSession();
+//     return sendResponse(
+//       res,
+//       null,
+//       "Renter wallet not found",
+//       STATUS_CODES.BAD_REQUEST
+//     );
+//   }
+
+//   //  Balance validation
+//   if (renter.wallet.balance < totalAmount) {
+//     await session.abortTransaction();
+//     session.endSession();
+
+//      // Notify renter about insufficient balance
+//     try {
+//       await sendNotification(
+//         renterId,
+//         "Booking Approval Failed",
+//         `Your booking for "${listingName}" could not be approved due to insufficient wallet balance. Please add funds to proceed.`,
+//         {
+//           bookingId: parentBooking._id.toString(),
+//           type: "booking",
+//           status: "payment_required",
+//           requiredBalance: totalAmount,
+//           currentBalance: renter.wallet.balance,
+//         }
+//       );
+//     } catch (err) {
+//       console.error("Failed to notify renter about wallet issue:", err);
+//     }
+
+
+//     return sendResponse(
+//       res,
+//       {
+//         requiredBalance: totalAmount,
+//         currentBalance: renter.wallet.balance,
+//       },
+//       "Insufficient wallet balance. Booking cannot be approved.",
+//       STATUS_CODES.BAD_REQUEST
+//     );
+//   }
+
+//   // Deduct renter wallet
+//   renter.wallet.balance -= totalAmount;
+//   await renter.save({ session });
+
+//   // Credit leaser wallet
+//   if (leaser?.wallet) {
+//     leaser.wallet.balance += totalAmount;
+//     await leaser.save({ session });
+//   }
+
+//       pin = generatePIN(4);
+//       updateFields.otp = pin;
+//     }
+
+//     if (finalStatus === "completed") {
+//       updateFields["bookingDates.returnDate"] = new Date();
+//     }
+
+//     finalBooking = await Booking.findByIdAndUpdate(
+//       id,
+//       { $set: updateFields },
+//       { new: true }
+//     )
+//       .populate("renter", "email name fcmToken")
+//       .populate("leaser", "email name fcmToken");
+
+//     if (!finalBooking) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return sendResponse(
+//         res,
+//         null,
+//         "Booking update failed",
+//         STATUS_CODES.INTERNAL_SERVER_ERROR
+//       );
+//     }
+
+//     const listing = await MarketplaceListing.findById(
+//       finalBooking.marketplaceListingId
+//     );
+
+//     if (listing) {
+//       if (finalStatus === "approved") {
+//         listing.isAvailable = false;
+//         listing.currentBookingId = [
+//           ...(listing.currentBookingId || []).filter(
+//             (item) => item.toString() !== bookingIdString
+//           ),
+//           finalBooking._id as mongoose.Types.ObjectId,
+//         ];
+//       } else {
+//         listing.isAvailable = true;
+//         listing.currentBookingId = (listing.currentBookingId || []).filter(
+//           (item) => item.toString() !== bookingIdString
+//         );
+//       }
+
+//       await listing.save();
+//     }
+
+//     await session.commitTransaction();
+//     session.endSession();
+
+//     try {
+//       const renter = finalBooking.renter as any;
+//       const leaser = finalBooking.leaser as any;
+
+//       const renterId =
+//         typeof renter === "object"
+//           ? renter._id?.toString()
+//           : renter?.toString();
+
+//       const leaserId =
+//         typeof leaser === "object"
+//           ? leaser._id?.toString()
+//           : leaser?.toString();
+
+//       const listingId = listing?._id?.toString() || "";
+
+//       if (finalStatus === "approved") {
+//         await sendEmail({
+//           to: leaser.email,
+//           name: leaser.name,
+//           subject: "Booking Approved - PIN Code",
+//           content: `
+//       <h2>Booking Approved</h2>
+//       <p>Your listing "<strong>${listingName}</strong>" has been booked and approved.</p>
+//       <p><strong>PIN Code:</strong> ${pin}</p>
+//       <p>Please keep this PIN safe.  
+//       The renter will provide this PIN at the check-in date/time for verification.</p>
+//     `,
+//         });
+
+//         await sendNotification(
+//           leaserId,
+//           "Booking Approved - PIN Code",
+//           `The booking for "${listingName}" is approved. PIN Code: ${pin}`,
+//           {
+//             bookingId: finalBooking._id?.toString(),
+//             listingId,
+//             type: "booking",
+//             status: finalStatus,
+//           }
+//         );
+//       }
+
+//       let renterMsg = `Your booking ${finalBooking._id?.toString()} status changed to ${finalStatus}.`;
+
+//       if (finalStatus === "approved") {
+//         renterMsg = `Your booking for "${listingName}" has been approved. PIN has been sent to the leaser. You will enter the PIN at check-in.`;
+//       } else if (finalStatus === "rejected") {
+//         renterMsg = `Your booking for "${listingName}" has been rejected.`;
+//       } else if (finalStatus === "completed") {
+//         renterMsg = `The booking for "${listingName}" has been completed.`;
+//       } else if (finalStatus === "cancelled") {
+//         renterMsg = `Your booking for "${listingName}" has been cancelled.`;
+//       }
+
+//       await sendNotification(renterId, `Booking ${finalStatus}`, renterMsg, {
+//         bookingId: finalBooking._id?.toString(),
+//         listingId,
+//         type: "booking",
+//         status: finalStatus,
+//       });
+//     } catch (err) {
+//       console.error("Failed to notify users about booking status change:", err);
+//     }
+
+//     return sendResponse(
+//       res,
+//       finalBooking,
+//       `Booking status updated to ${finalStatus}`,
+//       STATUS_CODES.OK
+//     );
+ 
+//   } catch (err) {
+//     await session.abortTransaction();
+//     session.endSession();
+//     next(err);
+//   }
+
+// };
+// updateBookingStatus
 export const updateBookingStatus = async (
   req: Request,
   res: Response,
@@ -332,6 +729,7 @@ export const updateBookingStatus = async (
 ) => {
   const session = await mongoose.startSession();
   session.startTransaction();
+
   try {
     const { id } = req.params;
     const { status, additionalCharges, isExtendApproval } = req.body;
@@ -376,6 +774,7 @@ export const updateBookingStatus = async (
         ? (parentBooking.marketplaceListingId as any).name
         : "";
 
+    // ========== EXTENSION APPROVAL LOGIC ==========
     if (isExtendApproval) {
       const childBooking = await Booking.findOne({
         previousBookingId: id,
@@ -400,7 +799,7 @@ export const updateBookingStatus = async (
       const extensionTotal =
         childBooking.priceDetails.totalPrice + extendChargeAmount;
 
-      // NEW: WALLET CHECK
+      // Wallet check
       if (!renter?.wallet || renter.wallet.balance < extensionTotal) {
         await session.abortTransaction();
         session.endSession();
@@ -433,7 +832,7 @@ export const updateBookingStatus = async (
         );
       }
 
-      // NEW: WALLET DEDUCTION & CREDIT
+      // Deduct renter wallet & credit leaser
       renter.wallet.balance -= extensionTotal;
       await renter.save({ session });
 
@@ -442,7 +841,7 @@ export const updateBookingStatus = async (
         await leaser.save({ session });
       }
 
-      // EXISTING LOGIC (UNCHANGED)
+      // Update child booking
       childBooking.isExtend = true;
       childBooking.status = "approved";
       childBooking.extendCharges = {
@@ -450,9 +849,9 @@ export const updateBookingStatus = async (
         totalPrice: extensionTotal,
       };
       (childBooking as any).extensionRequestedDate = undefined;
-
       await childBooking.save({ session });
 
+      // Update parent booking
       parentBooking.isExtend = true;
       await parentBooking.save({ session });
 
@@ -482,77 +881,7 @@ export const updateBookingStatus = async (
       );
     }
 
-    // if (isExtendApproval) {
-    //   const childBooking = await Booking.findOne({
-    //     previousBookingId: id,
-    //     status: "pending",
-    //   });
-
-    //   if (!childBooking) {
-    //     await session.abortTransaction();
-    //     session.endSession();
-    //     return sendResponse(
-    //       res,
-    //       null,
-    //       "No pending extension request found for this booking",
-    //       STATUS_CODES.BAD_REQUEST
-    //     );
-    //   }
-
-    //   finalStatus = "approved";
-    //   const extendChargeAmount = Number(additionalCharges) || 0;
-
-    //   const childBasePrice = childBooking.priceDetails.totalPrice;
-
-    //   childBooking.isExtend = true;
-    //   childBooking.status = "approved";
-
-    //   childBooking.extendCharges = {
-    //     extendCharges: extendChargeAmount,
-    //     totalPrice: childBasePrice + extendChargeAmount,
-    //   };
-
-    //   (childBooking as any).extensionRequestedDate = undefined;
-
-    //   await childBooking.save({ session });
-
-    //   parentBooking.isExtend = true;
-    //   await parentBooking.save({ session });
-
-    //   await session.commitTransaction();
-    //   session.endSession();
-
-    //   try {
-    //     const childRenterId =
-    //       typeof childBooking.renter === "object"
-    //         ? (childBooking.renter as any)?._id?.toString()
-    //         : (childBooking.renter as any)?.toString();
-
-    //     await sendNotification(
-    //       childRenterId,
-    //       "Extension Approved",
-    //       `Your extension request for listing "${listingName}" has been approved.`,
-    //       {
-    //         bookingId: childBooking._id?.toString(),
-    //         type: "extension",
-    //         status: "approved",
-    //       }
-    //     );
-    //   } catch (err) {
-    //     console.error("Failed to notify renter about extension approval:", err);
-    //   }
-
-    //   return sendResponse(
-    //     res,
-    //     childBooking,
-    //     "Extension approved successfully",
-    //     STATUS_CODES.OK
-    //   );
-    // }
-
-
-
-
+    // ========== STATUS VALIDATION ==========
     const allowedStatuses = ["approved", "rejected", "completed", "cancelled"];
     if (!allowedStatuses.includes(finalStatus)) {
       await session.abortTransaction();
@@ -594,79 +923,102 @@ export const updateBookingStatus = async (
     let finalBooking: IBooking | null = null;
     let pin: string | undefined;
 
- 
-     if (finalStatus === "approved") {
-  // populated docs
-  const renter = parentBooking.renter as any;
-  const leaser = parentBooking.leaser as any;
+    // ========== APPROVED STATUS LOGIC ==========
+    if (finalStatus === "approved") {
+      const renter = parentBooking.renter as any;
+      const leaser = parentBooking.leaser as any;
 
-  const totalAmount = parentBooking.priceDetails.totalPrice;
+      // Force special charges if specialRequest exists
+      const hasSpecialRequest =
+        parentBooking.specialRequest && parentBooking.specialRequest.length > 0;
+      let specialCharges = Number(additionalCharges) || 0;
 
-  //Wallet existence check
-  if (!renter?.wallet) {
-    await session.abortTransaction();
-    session.endSession();
-    return sendResponse(
-      res,
-      null,
-      "Renter wallet not found",
-      STATUS_CODES.BAD_REQUEST
-    );
-  }
+      if (hasSpecialRequest && specialCharges <= 0) {
+        return sendResponse(
+          res,
+          null,
+          "Special request charges must be applied for this booking",
+          STATUS_CODES.BAD_REQUEST
+        );
+      }
 
-  //  Balance validation
-  if (renter.wallet.balance < totalAmount) {
-    await session.abortTransaction();
-    session.endSession();
+      const totalAmount = parentBooking.priceDetails.totalPrice + specialCharges;
 
-     // Notify renter about insufficient balance
-    try {
-      await sendNotification(
-        renterId,
-        "Booking Approval Failed",
-        `Your booking for "${listingName}" could not be approved due to insufficient wallet balance. Please add funds to proceed.`,
-        {
-          bookingId: parentBooking._id.toString(),
-          type: "booking",
-          status: "payment_required",
-          requiredBalance: totalAmount,
-          currentBalance: renter.wallet.balance,
+      // Wallet existence check
+      if (!renter?.wallet) {
+        await session.abortTransaction();
+        session.endSession();
+        return sendResponse(
+          res,
+          null,
+          "Renter wallet not found",
+          STATUS_CODES.BAD_REQUEST
+        );
+      }
+
+      // Balance validation
+      if (renter.wallet.balance < totalAmount) {
+        await session.abortTransaction();
+        session.endSession();
+
+        try {
+          await sendNotification(
+            renterId,
+            "Booking Approval Failed",
+            `Your booking for "${listingName}" could not be approved due to insufficient wallet balance.`,
+            {
+              bookingId: parentBooking._id.toString(),
+              type: "booking",
+              status: "payment_required",
+              requiredBalance: totalAmount,
+              currentBalance: renter.wallet.balance,
+            }
+          );
+        } catch (err) {
+          console.error("Failed to notify renter about wallet issue:", err);
         }
-      );
-    } catch (err) {
-      console.error("Failed to notify renter about wallet issue:", err);
-    }
 
+        return sendResponse(
+          res,
+          {
+            requiredBalance: totalAmount,
+            currentBalance: renter.wallet.balance,
+          },
+          "Insufficient wallet balance. Booking cannot be approved.",
+          STATUS_CODES.BAD_REQUEST
+        );
+      }
 
-    return sendResponse(
-      res,
-      {
-        requiredBalance: totalAmount,
-        currentBalance: renter.wallet.balance,
-      },
-      "Insufficient wallet balance. Booking cannot be approved.",
-      STATUS_CODES.BAD_REQUEST
-    );
-  }
+      // Deduct renter wallet & credit leaser
+      renter.wallet.balance -= totalAmount;
+      await renter.save({ session });
 
-  // Deduct renter wallet
-  renter.wallet.balance -= totalAmount;
-  await renter.save({ session });
+      if (leaser?.wallet) {
+        leaser.wallet.balance += totalAmount;
+        await leaser.save({ session });
+      }
 
-  // Credit leaser wallet
-  if (leaser?.wallet) {
-    leaser.wallet.balance += totalAmount;
-    await leaser.save({ session });
-  }
-
+      // Generate OTP PIN
       pin = generatePIN(4);
       updateFields.otp = pin;
+
+      // Update price details and extra charges
+      updateFields.priceDetails = {
+        ...parentBooking.priceDetails,
+        totalPrice: totalAmount,
+      };
+
+      updateFields.extraRequestCharges = {
+        additionalCharges: specialCharges,
+        totalPrice: totalAmount,
+      };
     }
 
     if (finalStatus === "completed") {
       updateFields["bookingDates.returnDate"] = new Date();
     }
 
+    // ========== UPDATE BOOKING ==========
     finalBooking = await Booking.findByIdAndUpdate(
       id,
       { $set: updateFields },
@@ -686,6 +1038,7 @@ export const updateBookingStatus = async (
       );
     }
 
+    // ========== UPDATE LISTING ==========
     const listing = await MarketplaceListing.findById(
       finalBooking.marketplaceListingId
     );
@@ -712,20 +1065,15 @@ export const updateBookingStatus = async (
     await session.commitTransaction();
     session.endSession();
 
+    // ========== NOTIFICATIONS ==========
     try {
       const renter = finalBooking.renter as any;
       const leaser = finalBooking.leaser as any;
 
       const renterId =
-        typeof renter === "object"
-          ? renter._id?.toString()
-          : renter?.toString();
-
+        typeof renter === "object" ? renter._id?.toString() : renter?.toString();
       const leaserId =
-        typeof leaser === "object"
-          ? leaser._id?.toString()
-          : leaser?.toString();
-
+        typeof leaser === "object" ? leaser._id?.toString() : leaser?.toString();
       const listingId = listing?._id?.toString() || "";
 
       if (finalStatus === "approved") {
@@ -737,8 +1085,7 @@ export const updateBookingStatus = async (
       <h2>Booking Approved</h2>
       <p>Your listing "<strong>${listingName}</strong>" has been booked and approved.</p>
       <p><strong>PIN Code:</strong> ${pin}</p>
-      <p>Please keep this PIN safe.  
-      The renter will provide this PIN at the check-in date/time for verification.</p>
+      <p>Please keep this PIN safe. The renter will provide this PIN at the check-in date/time for verification.</p>
     `,
         });
 
@@ -783,13 +1130,11 @@ export const updateBookingStatus = async (
       `Booking status updated to ${finalStatus}`,
       STATUS_CODES.OK
     );
- 
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
     next(err);
   }
-
 };
 
 // GET ALL BOOKINGS (Admin)
