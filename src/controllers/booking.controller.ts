@@ -958,10 +958,14 @@ export const getBookingById = async (
       // .populate("marketplaceListingId")
       .populate({
         path: "marketplaceListingId",
-        populate: {
+        populate: [{
         path: "leaser",
         select: "name email profilePicture",
         },
+         {
+        path: "zone",
+        select: "name", 
+      },]
     })
       .populate("renter")
       .lean();
