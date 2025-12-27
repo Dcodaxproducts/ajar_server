@@ -558,6 +558,9 @@ export const getAllMarketplaceListings = async (
     const pipeline: any[] = [
       { $match: filter },
 
+      // **SORT LATEST FIRST**
+      { $sort: { createdAt: -1 } },
+
       { $lookup: { from: "categories", localField: "subCategory", foreignField: "_id", as: "subCategory" } },
       { $unwind: "$subCategory" },
 
