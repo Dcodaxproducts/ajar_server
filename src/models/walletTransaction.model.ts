@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface IWalletTransaction extends Document {
   userId: mongoose.Types.ObjectId;
-  type: "credit" | "debit";
+  type: string;
   amount: number;
   source: "stripe" | "booking" | "refund" | "withdraw" | string;
   bankAccountId: mongoose.Types.ObjectId; // Refers to user's bank account

@@ -100,7 +100,6 @@ export const createBookingPayment = async (req: AuthRequest, res: Response) => {
 
       await WalletTransaction.create({
         userId,
-        type: "credit",
         amount: userAmount,
         status: "pending",
         source: "stripe",
@@ -143,6 +142,16 @@ export const stripeWebhook = async (req: Request, res: Response) => {
   try {
     const paymentIntent = event.data.object as any;
 
+    let paymentType = "none";
+
+    if (paymentIntent.latest_charge) {
+      const charge = await stripe.charges.retrieve(
+        paymentIntent.latest_charge as string
+      );
+
+      paymentType =
+        charge.payment_method_details?.card?.funding || "none";
+    }
     const userRenterId = paymentIntent.metadata?.userRenterId;
     const bookingId = paymentIntent.metadata?.bookingId;
 
@@ -210,7 +219,7 @@ export const stripeWebhook = async (req: Request, res: Response) => {
     else {
       if (!userRenterId) return res.status(400).send("Missing User ID");
 
-      const walletData = await WalletTransaction.find(
+      const walletData = await WalletTransaction.findOne(
         {
           userId: userRenterId,
           paymentIntentId: paymentIntent.id
@@ -228,9 +237,12 @@ export const stripeWebhook = async (req: Request, res: Response) => {
         await WalletTransaction.findOneAndUpdate(
           {
             userId: userRenterId,
-            paymentIntentId: paymentIntent.id
+            paymentIntentId: paymentIntent.id,
           },
-          { status: "succeeded" },
+          {
+            status: "succeeded",
+            type: paymentType
+          },
           { new: true }
         );
 
@@ -262,7 +274,10 @@ export const stripeWebhook = async (req: Request, res: Response) => {
             userId: userRenterId,
             paymentIntentId: paymentIntent.id
           },
-          { status: "failed" }
+          {
+            status: "failed",
+            type: paymentType
+          }
         );
       }
 
