@@ -148,7 +148,9 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
 
       // Skip document-type fields (file uploads handled above)
       if (field.type === "document") {
-        console.log(`Skipping validation for document-type field: ${fieldName}`);
+        console.log(
+          `Skipping validation for document-type field: ${fieldName}`
+        );
         continue;
       }
 
@@ -191,10 +193,13 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
         await sendNotification(
           adminUser._id.toString(),
           "New Listing Created",
-          `Leaser ${req.user.name || req.user.email || "A user"} has created a new listing: ${listing.name}`,
-          // { listingId: listing._id.toString(), type: "listing" }
-          { listingId: (listing._id as mongoose.Types.ObjectId).toString(), type: "listing" }
-
+          `Leaser ${
+            req.user.name || req.user.email || "A user"
+          } has created a new listing: ${listing.name}`,
+          {
+            listingId: (listing._id as mongoose.Types.ObjectId).toString(),
+            type: "listing",
+          }
         );
       } catch (err) {
         console.error("Error notifying admin:", err);
@@ -247,8 +252,11 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
         listing.leaser.toString(),
         `Listing ${status}`,
         `Your listing "${listing.name}" has been ${status}`,
-        // { listingId: listing._id.toString(), status, type: "listing" }
-         { listingId: (listing._id as mongoose.Types.ObjectId).toString(), status, type: "listing" }
+        {
+          listingId: (listing._id as mongoose.Types.ObjectId).toString(),
+          status,
+          type: "listing",
+        }
       );
     } catch (err) {
       console.error("Error notifying leaser about listing status:", err);
@@ -332,7 +340,7 @@ export const getAllMarketplaceListingsforLeaser = async (
     const pipeline: any[] = [
       { $match: filter },
 
-       { $sort: { createdAt: -1 } },
+      { $sort: { createdAt: -1 } },
 
       {
         $lookup: {
@@ -561,13 +569,34 @@ export const getAllMarketplaceListings = async (
       // **SORT LATEST FIRST**
       { $sort: { createdAt: -1 } },
 
-      { $lookup: { from: "categories", localField: "subCategory", foreignField: "_id", as: "subCategory" } },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "subCategory",
+          foreignField: "_id",
+          as: "subCategory",
+        },
+      },
       { $unwind: "$subCategory" },
 
-      { $lookup: { from: "users", localField: "leaser", foreignField: "_id", as: "leaser" } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "leaser",
+          foreignField: "_id",
+          as: "leaser",
+        },
+      },
       { $unwind: "$leaser" },
 
-      { $lookup: { from: "zones", localField: "zone", foreignField: "_id", as: "zone" } },
+      {
+        $lookup: {
+          from: "zones",
+          localField: "zone",
+          foreignField: "_id",
+          as: "zone",
+        },
+      },
       { $unwind: "$zone" },
 
       /* ---------------- BOOKINGS & REVIEWS ---------------- */
@@ -675,20 +704,28 @@ export const getAllMarketplaceListings = async (
 
     if (recent === "true") pipeline.push({ $sort: { createdAt: -1 } });
 
-    const listings = await MarketplaceListing.aggregate(pipeline).session(session);
-    const total = await MarketplaceListing.countDocuments(filter).session(session);
+    const listings = await MarketplaceListing.aggregate(pipeline).session(
+      session
+    );
+    const total = await MarketplaceListing.countDocuments(filter).session(
+      session
+    );
 
     /* ---------------- LANGUAGE HANDLING ---------------- */
     const final = listings.map((obj: any) => {
       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
       if (listingLang?.translations) {
-        obj.description = listingLang.translations.description || obj.description;
+        obj.description =
+          listingLang.translations.description || obj.description;
       }
       delete obj.languages;
       return obj;
     });
 
-    const uniqueUserIds = await MarketplaceListing.distinct("leaser", filter).session(session);
+    const uniqueUserIds = await MarketplaceListing.distinct(
+      "leaser",
+      filter
+    ).session(session);
 
     await session.commitTransaction();
     session.endSession();
@@ -737,7 +774,7 @@ export const getMarketplaceListingByIdforLeaser = async (
     const doc: any = await MarketplaceListing.findById(id)
       .populate({ path: "subCategory", populate: { path: "category" } })
       .populate("leaser")
-      .populate("zone") 
+      .populate("zone")
       .lean();
 
     if (!doc) {
@@ -747,7 +784,9 @@ export const getMarketplaceListingByIdforLeaser = async (
       return;
     }
 
-    const bookings = await Booking.find({ marketplaceListingId: id }).select("_id");
+    const bookings = await Booking.find({ marketplaceListingId: id }).select(
+      "_id"
+    );
     const bookingIds = bookings.map((b) => b._id);
 
     const reviews = await Review.find({ bookingId: { $in: bookingIds } })
@@ -809,7 +848,6 @@ export const getMarketplaceListingByIdforLeaser = async (
       delete doc.leaser.__v;
     }
 
-
     const listingLang = doc.languages?.find((l: any) => l.locale === locale);
     if (listingLang?.translations) {
       doc.description = listingLang.translations.description || doc.description;
@@ -852,9 +890,9 @@ export const getMarketplaceListingById = async (
         populate: { path: "category" },
       })
       .populate({
-    path: "zone",
-    select: "name", 
-  })
+        path: "zone",
+        select: "name",
+      })
       .populate("leaser")
       .session(session)
       .lean();
@@ -867,18 +905,11 @@ export const getMarketplaceListingById = async (
     }
 
     const zoneId =
-    typeof doc.zone === "object"
-    ? (doc.zone as any)._id
-    : doc.zone;
-
-    // const zoneId = doc.zone;
-
-    // remove zone field from final response (unchanged behaviour)
-    // delete (doc as any).zone;
+      typeof doc.zone === "object" ? (doc.zone as any)._id : doc.zone;
 
     const form = await Form.findOne({
       subCategory: doc.subCategory?._id || doc.subCategory,
-      zone: zoneId, 
+      zone: zoneId,
     })
       .select("userDocuments leaserDocuments setting")
       .session(session)
@@ -888,22 +919,16 @@ export const getMarketplaceListingById = async (
       (doc as any).userDocuments = form.userDocuments || [];
       (doc as any).leaserDocuments = form.leaserDocuments || [];
 
-
       if (form.setting && doc.price) {
-        const renterCommission =
-          form.setting?.renterCommission?.value || 0;
-        const leaserCommission =
-          form.setting?.leaserCommission?.value || 0;
+        const renterCommission = form.setting?.renterCommission?.value || 0;
+        const leaserCommission = form.setting?.leaserCommission?.value || 0;
         const taxPercent = form.setting?.tax || 0;
 
-        const totalCommissionPercent =
-          renterCommission + leaserCommission;
+        const totalCommissionPercent = renterCommission + leaserCommission;
 
-        const adminFee =
-          doc.price * (totalCommissionPercent / 100);
+        const adminFee = doc.price * (totalCommissionPercent / 100);
 
-        const tax =
-          (doc.price + adminFee) * (taxPercent / 100);
+        const tax = (doc.price + adminFee) * (taxPercent / 100);
 
         (doc as any).adminFee = adminFee;
         (doc as any).tax = tax;
@@ -918,8 +943,7 @@ export const getMarketplaceListingById = async (
     }).session(session);
 
     if (!subCategoryExists) {
-      await MarketplaceListing.findByIdAndDelete(id)
-        .session(session);
+      await MarketplaceListing.findByIdAndDelete(id).session(session);
 
       await session.commitTransaction();
       session.endSession();
@@ -934,12 +958,9 @@ export const getMarketplaceListingById = async (
     }
 
     if (Array.isArray(doc.languages)) {
-      const match = doc.languages.find(
-        (l: any) => l.locale === locale
-      );
+      const match = doc.languages.find((l: any) => l.locale === locale);
       if (match?.translations) {
-        doc.description =
-          match.translations.description || doc.description;
+        doc.description = match.translations.description || doc.description;
       }
     }
     delete (doc as any).languages;
@@ -950,11 +971,9 @@ export const getMarketplaceListingById = async (
         (l: any) => l.locale === locale
       );
       if (match?.translations) {
-        subCategoryObj.name =
-          match.translations.name || subCategoryObj.name;
+        subCategoryObj.name = match.translations.name || subCategoryObj.name;
         subCategoryObj.description =
-          match.translations.description ||
-          subCategoryObj.description;
+          match.translations.description || subCategoryObj.description;
       }
       delete subCategoryObj.languages;
     }

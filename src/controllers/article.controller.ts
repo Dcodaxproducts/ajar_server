@@ -7,10 +7,12 @@ import { paginateQuery } from "../utils/paginate";
 import fs from "fs";
 import path from "path";
 
-
 // Helper function to format image paths
 function formatPath(filePath: string) {
-  return filePath.replace(process.cwd(), "").replace(/\\/g, "/").replace("/public", "");
+  return filePath
+    .replace(process.cwd(), "")
+    .replace(/\\/g, "/")
+    .replace("/public", "");
 }
 
 // Create Article
@@ -28,7 +30,7 @@ export const createArticle = async (req: AuthRequest, res: Response) => {
     }
 
     const images = req.files
-      ? (req.files as Express.Multer.File[]).map(f => formatPath(f.path))
+      ? (req.files as Express.Multer.File[]).map((f) => formatPath(f.path))
       : [];
 
     const article = await Article.create({ title, description, images });
@@ -36,7 +38,12 @@ export const createArticle = async (req: AuthRequest, res: Response) => {
     sendResponse(res, article, "Article created successfully");
   } catch (error) {
     console.error(error);
-    sendResponse(res, null, "Error creating article", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    sendResponse(
+      res,
+      null,
+      "Error creating article",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
@@ -55,7 +62,7 @@ export const updateArticle = async (req: AuthRequest, res: Response) => {
     if (description) article.description = description;
 
     if (req.files && (req.files as Express.Multer.File[]).length > 0) {
-      const newImages = (req.files as Express.Multer.File[]).map(f =>
+      const newImages = (req.files as Express.Multer.File[]).map((f) =>
         formatPath(f.path)
       );
       article.images.push(...newImages);
@@ -65,7 +72,12 @@ export const updateArticle = async (req: AuthRequest, res: Response) => {
     sendResponse(res, article, "Article updated successfully");
   } catch (error) {
     console.error(error);
-    sendResponse(res, null, "Error updating article", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    sendResponse(
+      res,
+      null,
+      "Error updating article",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
@@ -82,8 +94,8 @@ export const getAllArticles = async (req: Request, res: Response) => {
     //Apply search if provided
     if (search) {
       filter.title = {
-        $regex: `^${search}`, 
-        $options: "i",        
+        $regex: `^${search}`,
+        $options: "i",
       };
     }
 
@@ -111,7 +123,6 @@ export const getAllArticles = async (req: Request, res: Response) => {
   }
 };
 
-
 // Get Article By ID
 export const getArticleById = async (req: Request, res: Response) => {
   try {
@@ -125,7 +136,12 @@ export const getArticleById = async (req: Request, res: Response) => {
     sendResponse(res, article, "Retrieved successfully");
   } catch (error) {
     console.error(error);
-    sendResponse(res, null, "Error retrieving article", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    sendResponse(
+      res,
+      null,
+      "Error retrieving article",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
@@ -141,7 +157,7 @@ export const deleteArticle = async (req: Request, res: Response) => {
 
     // Delete images physically
     if (article.images && article.images.length > 0) {
-      article.images.forEach(img => {
+      article.images.forEach((img) => {
         const fullPath = path.join(process.cwd(), img);
         if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
       });
@@ -152,7 +168,12 @@ export const deleteArticle = async (req: Request, res: Response) => {
     sendResponse(res, article, "Deleted successfully");
   } catch (error) {
     console.error(error);
-    sendResponse(res, null, "Error deleting article", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    sendResponse(
+      res,
+      null,
+      "Error deleting article",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
@@ -172,7 +193,6 @@ export const searchArticles = async (req: Request, res: Response) => {
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-
 
     const query = Article.find({
       title: {
@@ -203,4 +223,3 @@ export const searchArticles = async (req: Request, res: Response) => {
     );
   }
 };
-

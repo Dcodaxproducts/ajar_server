@@ -284,7 +284,7 @@ export const updateDamageReportStatus = async (
       );
     }
 
-    //Validate status value (according to your schema)
+    //Validate status value (according to schema)
     const allowedStatuses = [
       "pending",
       "approved",

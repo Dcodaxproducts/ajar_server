@@ -273,7 +273,6 @@ export const deleteField = async (
       return;
     }
 
-    // Find the field first
     const field = await Field.findById(id);
 
     if (!field) {
@@ -282,7 +281,13 @@ export const deleteField = async (
     }
 
     // Restricted field names
-    const restrictedNames = ["name", "subTitle", "description", "price", "rentalImages"];
+    const restrictedNames = [
+      "name",
+      "subTitle",
+      "description",
+      "price",
+      "rentalImages",
+    ];
 
     // Check if the field name is restricted
     if (restrictedNames.includes(field.name)) {
@@ -305,4 +310,3 @@ export const deleteField = async (
     next(error);
   }
 };
-
