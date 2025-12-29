@@ -1,4 +1,4 @@
-import { Schema, model, Document } from "mongoose";
+import { Schema, model, Document, Types } from "mongoose";
 
 export interface ILanguageTranslation {
   locale: string;
@@ -7,6 +7,11 @@ export interface ILanguageTranslation {
     label?: string;
     placeholder?: string;
   };
+}
+
+export interface IConditional {
+  dependsOn: Types.ObjectId;
+  value: string | number | boolean;
 }
 
 export interface IDocumentField {
@@ -21,6 +26,10 @@ export interface IField extends Document {
   placeholder?: string;
   label?: string;
   isMultiple?: boolean;
+
+  // Conditional rendering
+  conditional?: IConditional;
+
   options?: string[];
   order?: number;
   tooltip?: string;
@@ -49,6 +58,13 @@ const FieldSchema = new Schema<IField>(
     placeholder: { type: String, required: true },
     label: { type: String, required: true },
     isMultiple: { type: Boolean, default: false },
+    conditional: {
+      dependsOn: {
+        type: Schema.Types.ObjectId,
+        ref: "Field",
+      },
+      value: Schema.Types.Mixed,
+    },
     options: { type: [String], default: undefined },
     order: { type: Number, default: 0 },
     tooltip: { type: String },
