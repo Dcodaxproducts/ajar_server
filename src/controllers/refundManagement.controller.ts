@@ -171,7 +171,7 @@ export const deleteRefundSettings = asyncHandler(
 // Create Refund Request (User)
 export const createRefundRequest = asyncHandler(
   async (req: Request & { user?: any }, res: Response): Promise<void> => {
-    // ✅ FIX: Cast req to AuthRequest to safely access req.user
+    // FIX: Cast req to AuthRequest to safely access req.user
     const { user } = req as any;
 
     const allowedUserFields = ["booking", "reason", "selectTime"];
@@ -242,7 +242,7 @@ export const createRefundRequest = asyncHandler(
       flatFee: policy.flatFee,
       time: policy.time,
       note: policy.note,
-      user: user?.id, // ✅ FIX: use casted user
+      user: user?.id, 
     });
 
     res.status(201).json({
@@ -256,7 +256,7 @@ export const createRefundRequest = asyncHandler(
 // Update Refund Request (User)
 export const updateRefundRequest = asyncHandler(
   async (req: Request & { user?: any }, res: Response) => {
-    // ✅ FIX: Cast req to AuthRequest
+    // FIX: Cast req to AuthRequest
     const { user } = req as any;
     const { id } = req.params;
 
@@ -343,7 +343,7 @@ export const getRefundRequestById = asyncHandler(
 // Get All Refund Requests (User Only)
 export const getMyRefundRequests = asyncHandler(
   async (req: Request & { user?: any }, res: Response) => {
-    // ✅ FIX: Cast req to AuthRequest
+    //FIX: Cast req to AuthRequest
     const { user } = req as any;
 
     const page = Number(req.query.page) || 1;

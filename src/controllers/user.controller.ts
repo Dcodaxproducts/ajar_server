@@ -105,7 +105,12 @@ export const loginUser = async (
       }
 
       if (employee.password !== password) {
-        sendResponse(res, null, "Invalid email or password", STATUS_CODES.UNAUTHORIZED);
+        sendResponse(
+          res,
+          null,
+          "Invalid email or password",
+          STATUS_CODES.UNAUTHORIZED
+        );
         return;
       }
 
@@ -114,7 +119,12 @@ export const loginUser = async (
         role: "staff",
       });
 
-      sendResponse(res, { token: accessToken, user: employee }, "Login successful (staff)", STATUS_CODES.OK);
+      sendResponse(
+        res,
+        { token: accessToken, user: employee },
+        "Login successful (staff)",
+        STATUS_CODES.OK
+      );
       return;
     }
 
@@ -127,7 +137,12 @@ export const loginUser = async (
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      sendResponse(res, null, "Invalid email or password", STATUS_CODES.UNAUTHORIZED);
+      sendResponse(
+        res,
+        null,
+        "Invalid email or password",
+        STATUS_CODES.UNAUTHORIZED
+      );
       return;
     }
 
@@ -177,8 +192,12 @@ export const loginUser = async (
       twoFactorVerified: true, // no 2FA required, so verified by default
     });
 
-    sendResponse(res, { token: accessToken, user }, "Login successful", STATUS_CODES.OK);
-
+    sendResponse(
+      res,
+      { token: accessToken, user },
+      "Login successful",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }
@@ -271,12 +290,7 @@ export const saveFcmToken = async (
     ).select("-password");
 
     if (!user) {
-      return sendResponse(
-        res,
-        null,
-        "User not found",
-        STATUS_CODES.NOT_FOUND
-      );
+      return sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
     }
 
     sendResponse(
@@ -436,7 +450,12 @@ export const verifyOtp = async (
       user.otp.code !== otp ||
       user.otp.expiry.getTime() < Date.now()
     ) {
-      sendResponse(res, null, "Invalid or expired OTP", STATUS_CODES.BAD_REQUEST);
+      sendResponse(
+        res,
+        null,
+        "Invalid or expired OTP",
+        STATUS_CODES.BAD_REQUEST
+      );
       return;
     }
 
@@ -469,7 +488,9 @@ export const forgotPassword = async (
     const email = req.body.email?.trim();
 
     // Check if user exists
-    const user = await User.findOne({ email: { $regex: `^${email}$`, $options: "i" } });
+    const user = await User.findOne({
+      email: { $regex: `^${email}$`, $options: "i" },
+    });
     if (!user) {
       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
@@ -564,7 +585,12 @@ export const changePassword = async (
     const { oldPassword, newPassword } = req.body;
 
     if (!userId) {
-      sendResponse(res, null, "User not authenticated", STATUS_CODES.UNAUTHORIZED);
+      sendResponse(
+        res,
+        null,
+        "User not authenticated",
+        STATUS_CODES.UNAUTHORIZED
+      );
       return;
     }
 
@@ -578,7 +604,12 @@ export const changePassword = async (
     // Check old password
     const isMatch = await bcrypt.compare(oldPassword, user.password);
     if (!isMatch) {
-      sendResponse(res, null, "Old password is incorrect", STATUS_CODES.BAD_REQUEST);
+      sendResponse(
+        res,
+        null,
+        "Old password is incorrect",
+        STATUS_CODES.BAD_REQUEST
+      );
       return;
     }
 
@@ -701,7 +732,12 @@ export const updateUserProfile = async (
   try {
     const userId = req.user?.id;
     if (!userId) {
-      sendResponse(res, null, "User not authenticated", STATUS_CODES.UNAUTHORIZED);
+      sendResponse(
+        res,
+        null,
+        "User not authenticated",
+        STATUS_CODES.UNAUTHORIZED
+      );
       return;
     }
 
@@ -995,17 +1031,17 @@ export const getDashboardStats = async (
       userTrend =
         userRecords.length >= 2
           ? calcTrend(
-            userRecords[userRecords.length - 1].totalUsers,
-            userRecords[userRecords.length - 2].totalUsers
-          )
+              userRecords[userRecords.length - 1].totalUsers,
+              userRecords[userRecords.length - 2].totalUsers
+            )
           : { value: "0", trend: "up" };
 
       earningTrend =
         earningRecords.length >= 2
           ? calcTrend(
-            earningRecords[earningRecords.length - 1].totalEarning,
-            earningRecords[earningRecords.length - 2].totalEarning
-          )
+              earningRecords[earningRecords.length - 1].totalEarning,
+              earningRecords[earningRecords.length - 2].totalEarning
+            )
           : { value: "0", trend: "up" };
     }
 
@@ -1143,7 +1179,7 @@ export const getListingDocuments = async (
   }
 };
 
-//socail logins 
+//socail logins
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import admin from "firebase-admin";
@@ -1168,7 +1204,12 @@ export const googleLogin = async (
 
     // Validate Firebase token input
     if (!idToken) {
-      sendResponse(res, null, "Missing Firebase ID token", STATUS_CODES.BAD_REQUEST);
+      sendResponse(
+        res,
+        null,
+        "Missing Firebase ID token",
+        STATUS_CODES.BAD_REQUEST
+      );
       return;
     }
 
@@ -1179,7 +1220,12 @@ export const googleLogin = async (
     const { email, name, picture, uid } = decodedToken;
 
     if (!email) {
-      sendResponse(res, null, "Email not found in Firebase token", STATUS_CODES.BAD_REQUEST);
+      sendResponse(
+        res,
+        null,
+        "Email not found in Firebase token",
+        STATUS_CODES.BAD_REQUEST
+      );
       return;
     }
 
@@ -1217,7 +1263,9 @@ export const googleLogin = async (
         to: email,
         name,
         subject: "Welcome to our App",
-        content: `Hi ${name || "there"}, your account has been created via Google (Firebase) login.`,
+        content: `Hi ${
+          name || "there"
+        }, your account has been created via Google (Firebase) login.`,
       });
     }
 
@@ -1229,7 +1277,6 @@ export const googleLogin = async (
 
     console.log("Access Token:", accessToken);
 
-    // Send success response
     sendResponse(
       res,
       {
@@ -1278,10 +1325,7 @@ const getApplePublicKey = (kid: string): Promise<string> => {
 };
 
 const ALLOWED_APPLE_AUDIENCES = new Set(
-  [
-    process.env.APPLE_CLIENT_ID,   // e.g. com.dcodax.ajar.app
-    process.env.APPLE_WEB_ID,      // optional, if you add one later
-  ].filter(Boolean)
+  [process.env.APPLE_CLIENT_ID, process.env.APPLE_WEB_ID].filter(Boolean)
 );
 
 //Apple Login Controller
@@ -1294,7 +1338,12 @@ export const appleLogin = async (
     const { idToken, platform } = req.body;
 
     if (!idToken) {
-      sendResponse(res, null, "Missing Apple ID token", STATUS_CODES.BAD_REQUEST);
+      sendResponse(
+        res,
+        null,
+        "Missing Apple ID token",
+        STATUS_CODES.BAD_REQUEST
+      );
       return;
     }
 
@@ -1304,7 +1353,12 @@ export const appleLogin = async (
     } | null;
 
     if (!decodedHeader?.header?.kid) {
-      sendResponse(res, null, "Invalid Apple token header", STATUS_CODES.UNAUTHORIZED);
+      sendResponse(
+        res,
+        null,
+        "Invalid Apple token header",
+        STATUS_CODES.UNAUTHORIZED
+      );
       return;
     }
 
@@ -1336,7 +1390,12 @@ export const appleLogin = async (
     const picture = "";
 
     if (!email) {
-      sendResponse(res, null, "Email not found in Apple token", STATUS_CODES.BAD_REQUEST);
+      sendResponse(
+        res,
+        null,
+        "Email not found in Apple token",
+        STATUS_CODES.BAD_REQUEST
+      );
       return;
     }
 
@@ -1355,20 +1414,20 @@ export const appleLogin = async (
         profilePicture: picture,
       });
 
-      // Optional: Stripe customer creation
-      const stripeCustomer = await createCustomer(email, name).catch(() => null);
+      const stripeCustomer = await createCustomer(email, name).catch(
+        () => null
+      );
       if (stripeCustomer?.id) {
         user.stripe = {
           customerId: stripeCustomer.id,
-          subscriptionId: '',
-          connectedAccountId: '',
-          connectedAccountLink: ''
+          subscriptionId: "",
+          connectedAccountId: "",
+          connectedAccountLink: "",
         };
       }
 
       await user.save();
 
-      // Optional: Welcome email
       await sendEmail({
         to: email,
         name,
@@ -1384,8 +1443,6 @@ export const appleLogin = async (
       role: user.role,
     });
 
-
-    //Success response
     sendResponse(
       res,
       {
@@ -1408,18 +1465,19 @@ export const appleLogin = async (
   }
 };
 
-//wallet controller 
+//wallet controller
 // Get wallet balance & transactions
 export const getWallet = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.id;
 
-    // const user = await User.findById(userId).select("wallet balance");
     const user = await User.findById(userId).select("wallet");
     if (!user) return res.status(404).json({ message: "User not found" });
 
     // Fetch transactions from WalletTransaction collection
-    const transactions = await WalletTransaction.find({ userId }).sort({ createdAt: -1 });
+    const transactions = await WalletTransaction.find({ userId }).sort({
+      createdAt: -1,
+    });
 
     res.status(200).json({
       balance: user.wallet.balance,
@@ -1437,7 +1495,8 @@ export const addToWallet = async (req: AuthRequest, res: Response) => {
     const userId = req.user?.id;
     const { amount, description } = req.body;
 
-    if (!amount || amount <= 0) return res.status(400).json({ message: "Invalid amount" });
+    if (!amount || amount <= 0)
+      return res.status(400).json({ message: "Invalid amount" });
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -1474,7 +1533,8 @@ export const deductFromWallet = async (req: AuthRequest, res: Response) => {
     const userId = req.user?.id;
     const { amount, description } = req.body;
 
-    if (!amount || amount <= 0) return res.status(400).json({ message: "Invalid amount" });
+    if (!amount || amount <= 0)
+      return res.status(400).json({ message: "Invalid amount" });
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -1589,11 +1649,21 @@ export const updateBankAccount = async (req: AuthRequest, res: Response) => {
     const { bankName, accountName, accountNumber, ibanNumber } = req.body;
 
     if (!userId) {
-      return sendResponse(res, null, "Unauthorized user", STATUS_CODES.UNAUTHORIZED);
+      return sendResponse(
+        res,
+        null,
+        "Unauthorized user",
+        STATUS_CODES.UNAUTHORIZED
+      );
     }
 
     if (!bankName || !accountName || !accountNumber || !ibanNumber) {
-      return sendResponse(res, null, "All fields are required", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(
+        res,
+        null,
+        "All fields are required",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
 
     // Update the specific bank account inside the array
@@ -1611,13 +1681,28 @@ export const updateBankAccount = async (req: AuthRequest, res: Response) => {
     ).select("-password");
 
     if (!updatedUser) {
-      return sendResponse(res, null, "Bank account not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(
+        res,
+        null,
+        "Bank account not found",
+        STATUS_CODES.NOT_FOUND
+      );
     }
 
-    return sendResponse(res, { user: updatedUser }, "Bank account updated successfully", STATUS_CODES.OK);
+    return sendResponse(
+      res,
+      { user: updatedUser },
+      "Bank account updated successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     console.error(error);
-    return sendResponse(res, null, "Server error", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    return sendResponse(
+      res,
+      null,
+      "Server error",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
@@ -1628,7 +1713,12 @@ export const deleteBankAccount = async (req: AuthRequest, res: Response) => {
     const { bankAccountId } = req.params;
 
     if (!userId) {
-      return sendResponse(res, null, "Unauthorized user", STATUS_CODES.UNAUTHORIZED);
+      return sendResponse(
+        res,
+        null,
+        "Unauthorized user",
+        STATUS_CODES.UNAUTHORIZED
+      );
     }
 
     const updatedUser = await User.findByIdAndUpdate(
@@ -1638,13 +1728,28 @@ export const deleteBankAccount = async (req: AuthRequest, res: Response) => {
     ).select("-password");
 
     if (!updatedUser) {
-      return sendResponse(res, null, "Bank account not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(
+        res,
+        null,
+        "Bank account not found",
+        STATUS_CODES.NOT_FOUND
+      );
     }
 
-    return sendResponse(res, { user: updatedUser }, "Bank account deleted successfully", STATUS_CODES.OK);
+    return sendResponse(
+      res,
+      { user: updatedUser },
+      "Bank account deleted successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     console.error(error);
-    return sendResponse(res, null, "Server error", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    return sendResponse(
+      res,
+      null,
+      "Server error",
+      STATUS_CODES.INTERNAL_SERVER_ERROR
+    );
   }
 };
 
@@ -1688,7 +1793,6 @@ export const instantWithdrawal = async (req: any, res: Response) => {
 
     await transaction.save();
 
-    // Response
     return sendResponse(
       res,
       {
@@ -1714,8 +1818,8 @@ export const getUserWithdrawals = async (req: any, res: Response) => {
     const withdrawals = await WalletTransaction.find({
       userId,
       type: "debit",
-      source: "withdraw"
-    }).sort({ createdAt: -1 }); // latest first
+      source: "withdraw",
+    }).sort({ createdAt: -1 });
 
     return sendResponse(
       res,
@@ -1739,16 +1843,16 @@ export const getWithdrawalHistoryByRange = async (req: any, res: Response) => {
     let startDate: Date | undefined;
     let endDate: Date | undefined = now;
 
-    // 1️⃣ Custom startDate / endDate
+    // Custom startDate / endDate
     if (startStr) startDate = new Date(startStr);
     if (endStr) endDate = new Date(endStr);
 
-    // 2️⃣ Weekly, monthly, or last N days
+    // Weekly, monthly, or last N days
     if (!startDate) {
       switch (range) {
         case "weekly":
           startDate = new Date(now);
-          startDate.setDate(now.getDate() - now.getDay()); // Sunday
+          startDate.setDate(now.getDate() - now.getDay());
           startDate.setHours(0, 0, 0, 0);
           break;
         case "monthly":
@@ -1769,7 +1873,7 @@ export const getWithdrawalHistoryByRange = async (req: any, res: Response) => {
       }
     }
 
-    // 3️⃣ Fetch raw withdrawal transactions
+    // Fetch raw withdrawal transactions
     const withdrawals = await WalletTransaction.find({
       userId,
       type: "debit",
@@ -1777,7 +1881,7 @@ export const getWithdrawalHistoryByRange = async (req: any, res: Response) => {
       createdAt: { $gte: startDate, $lte: endDate },
     }).sort({ createdAt: -1 });
 
-    // 4️⃣ Aggregate graph data (withdrawals + top-ups)
+    //Aggregate graph data (withdrawals + top-ups)
     const graphData = await WalletTransaction.aggregate([
       {
         $match: {
@@ -1796,7 +1900,12 @@ export const getWithdrawalHistoryByRange = async (req: any, res: Response) => {
           totalWithdraw: {
             $sum: {
               $cond: [
-                { $and: [{ $eq: ["$type", "debit"] }, { $eq: ["$source", "withdraw"] }] },
+                {
+                  $and: [
+                    { $eq: ["$type", "debit"] },
+                    { $eq: ["$source", "withdraw"] },
+                  ],
+                },
                 "$amount",
                 0,
               ],
@@ -1812,22 +1921,28 @@ export const getWithdrawalHistoryByRange = async (req: any, res: Response) => {
       { $sort: { "_id.year": 1, "_id.month": 1, "_id.week": 1, "_id.day": 1 } },
     ]);
 
-    // 5️⃣ Format graph for frontend
+    //Format graph for frontend
     const finalGraph = graphData.map((item: any) => {
       let label = "";
 
       if (range === "weekly") {
         label = `Week ${item._id.week}, ${item._id.year}`;
       } else if (range === "monthly") {
-        label = new Date(item._id.year, item._id.month - 1).toLocaleString("en-US", {
-          month: "long",
-        });
+        label = new Date(item._id.year, item._id.month - 1).toLocaleString(
+          "en-US",
+          {
+            month: "long",
+          }
+        );
       } else if (days || startStr || endStr) {
         label = `${item._id.day}-${item._id.month}-${item._id.year}`;
       } else {
-        label = new Date(item._id.year, item._id.month - 1).toLocaleString("en-US", {
-          month: "long",
-        });
+        label = new Date(item._id.year, item._id.month - 1).toLocaleString(
+          "en-US",
+          {
+            month: "long",
+          }
+        );
       }
 
       return {
@@ -1837,7 +1952,7 @@ export const getWithdrawalHistoryByRange = async (req: any, res: Response) => {
       };
     });
 
-    // 6️⃣ Return raw withdrawals + graph
+    // Return raw withdrawals + graph
     return sendResponse(
       res,
       { withdrawals, graph: finalGraph },
@@ -1853,8 +1968,16 @@ export const getWithdrawalHistoryByRange = async (req: any, res: Response) => {
 // Get all withdrawals (admin)
 export const getAllWithdrawals = async (req: any, res: Response) => {
   try {
-    const withdrawals = await WithdrawRequest.find().populate("userId", "name email");
-    return sendResponse(res, { withdrawals }, "All withdrawal requests fetched", 200);
+    const withdrawals = await WithdrawRequest.find().populate(
+      "userId",
+      "name email"
+    );
+    return sendResponse(
+      res,
+      { withdrawals },
+      "All withdrawal requests fetched",
+      200
+    );
   } catch (err) {
     console.error(err);
     return sendResponse(res, null, "Server error", 500);
@@ -1868,7 +1991,8 @@ export const processWithdrawal = async (req: any, res: Response) => {
     const { action, reason } = req.body; // action = 'approve' | 'reject'
 
     const withdrawRequest = await WithdrawRequest.findById(requestId);
-    if (!withdrawRequest) return sendResponse(res, null, "Request not found", 404);
+    if (!withdrawRequest)
+      return sendResponse(res, null, "Request not found", 404);
     if (withdrawRequest.status !== "pending")
       return sendResponse(res, null, "Request already processed", 400);
 
@@ -1905,7 +2029,6 @@ export const processWithdrawal = async (req: any, res: Response) => {
         "Withdrawal approved",
         200
       );
-
     } else if (action === "reject") {
       withdrawRequest.status = "rejected";
       withdrawRequest.reason = reason || "Rejected by admin";

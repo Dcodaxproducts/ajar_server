@@ -2,7 +2,7 @@ import mongoose, { Schema, Document, model } from "mongoose";
 
 interface ILanguageTranslation {
   locale: string;
-  translations: Record<string, any>; // Flexible translations
+  translations: Record<string, any>; 
 }
 
 export interface IBusinessSetting extends Document {
