@@ -53,12 +53,33 @@ export const createNewForm = async (
       return;
     }
 
+    /**
+     * ✅ FORM UNIQUENESS CHECK (zone + subCategory)
+     */
+    const formAlreadyExists = await Form.findOne({
+      subCategory,
+      zone,
+    });
+
+    if (formAlreadyExists) {
+      sendResponse(
+        res,
+        null,
+        "Form already exists for this zone and sub-category",
+        STATUS_CODES.CONFLICT
+      );
+      return;
+    }
+
     const subCategoryExists = await SubCategory.findById(subCategory);
     if (!subCategoryExists) {
       sendResponse(res, null, "SubCategory not found", STATUS_CODES.NOT_FOUND);
       return;
     }
 
+    /**
+     * 1️⃣ User selected fields
+     */
     const validUserFields = await Field.find({ _id: { $in: fields } });
 
     if (validUserFields.length !== fields.length) {
@@ -66,6 +87,40 @@ export const createNewForm = async (
       return;
     }
 
+    /**
+     * 2️⃣ Extract + DEDUPLICATE conditional.dependsOn IDs
+     */
+    const conditionalFieldIds = Array.from(
+      new Set(
+        validUserFields
+          .map((field) => field.conditional?.dependsOn?.toString())
+          .filter(Boolean)
+      )
+    ).map((id) => new mongoose.Types.ObjectId(id));
+
+    /**
+     * 3️⃣ Validate conditional fields (NOW SAFE)
+     */
+    let conditionalFields: typeof validUserFields = [];
+    if (conditionalFieldIds.length > 0) {
+      conditionalFields = await Field.find({
+        _id: { $in: conditionalFieldIds },
+      });
+
+      if (conditionalFields.length !== conditionalFieldIds.length) {
+        sendResponse(
+          res,
+          null,
+          "Some conditional fields are invalid",
+          STATUS_CODES.BAD_REQUEST
+        );
+        return;
+      }
+    }
+
+    /**
+     * 4️⃣ Required system fields
+     */
     const requiredFieldNames = [
       "name",
       "subTitle",
@@ -92,18 +147,28 @@ export const createNewForm = async (
       return;
     }
 
+    /**
+     * 5️⃣ Fixed fields
+     */
     const fixedFields = await Field.find({ isFixed: true });
 
+    /**
+     * 6️⃣ Merge ALL field IDs (NO DUPLICATES)
+     */
     const allFieldIds: mongoose.Types.ObjectId[] = [
       ...requiredFields.map((f) => f._id as mongoose.Types.ObjectId),
       ...fixedFields.map((f) => f._id as mongoose.Types.ObjectId),
       ...validUserFields.map((f) => f._id as mongoose.Types.ObjectId),
+      ...conditionalFields.map((f) => f._id as mongoose.Types.ObjectId),
     ];
 
     const uniqueFieldIds = Array.from(
       new Map(allFieldIds.map((id) => [id.toString(), id])).values()
     );
 
+    /**
+     * 7️⃣ Create form
+     */
     const form = new Form({
       name,
       description,
@@ -123,6 +188,121 @@ export const createNewForm = async (
     next(error);
   }
 };
+
+
+// export const createNewForm = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const {
+//       name,
+//       description,
+//       subCategory,
+//       zone,
+//       fields = [],
+//       language,
+//       setting,
+//       userDocuments,
+//       leaserDocuments,
+//     } = req.body;
+
+//     if (!name || !description) {
+//       sendResponse(
+//         res,
+//         null,
+//         "Form name and description are required",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//       return;
+//     }
+
+//     if (
+//       !mongoose.Types.ObjectId.isValid(subCategory) ||
+//       !mongoose.Types.ObjectId.isValid(zone) ||
+//       !Array.isArray(fields) ||
+//       !fields.every((id: string) => mongoose.Types.ObjectId.isValid(id))
+//     ) {
+//       sendResponse(
+//         res,
+//         null,
+//         "Invalid subCategoryId, zoneId, or fieldsIds",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//       return;
+//     }
+
+//     const subCategoryExists = await SubCategory.findById(subCategory);
+//     if (!subCategoryExists) {
+//       sendResponse(res, null, "SubCategory not found", STATUS_CODES.NOT_FOUND);
+//       return;
+//     }
+
+//     const validUserFields = await Field.find({ _id: { $in: fields } });
+
+//     if (validUserFields.length !== fields.length) {
+//       sendResponse(res, null, "Some fields are invalid", STATUS_CODES.BAD_REQUEST);
+//       return;
+//     }
+
+//     const requiredFieldNames = [
+//       "name",
+//       "subTitle",
+//       "description",
+//       "price",
+//       "priceUnit",
+//       "rentalImages",
+//     ];
+
+//     const requiredFields = await Field.find({
+//       name: { $in: requiredFieldNames },
+//     });
+
+//     if (requiredFields.length !== requiredFieldNames.length) {
+//       const found = requiredFields.map((f) => f.name);
+//       const missing = requiredFieldNames.filter((n) => !found.includes(n));
+
+//       sendResponse(
+//         res,
+//         null,
+//         `Required fields missing in database: ${missing.join(", ")}`,
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//       return;
+//     }
+
+//     const fixedFields = await Field.find({ isFixed: true });
+
+//     const allFieldIds: mongoose.Types.ObjectId[] = [
+//       ...requiredFields.map((f) => f._id as mongoose.Types.ObjectId),
+//       ...fixedFields.map((f) => f._id as mongoose.Types.ObjectId),
+//       ...validUserFields.map((f) => f._id as mongoose.Types.ObjectId),
+//     ];
+
+//     const uniqueFieldIds = Array.from(
+//       new Map(allFieldIds.map((id) => [id.toString(), id])).values()
+//     );
+
+//     const form = new Form({
+//       name,
+//       description,
+//       subCategory,
+//       zone,
+//       fields: uniqueFieldIds,
+//       language,
+//       setting,
+//       userDocuments,
+//       leaserDocuments,
+//     });
+
+//     await form.save();
+
+//     sendResponse(res, form, "Form created successfully", STATUS_CODES.CREATED);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 export const getAllForms = async (
   req: Request,

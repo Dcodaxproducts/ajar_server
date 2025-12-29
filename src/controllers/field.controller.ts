@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 import { Field } from "../models/field.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
@@ -178,8 +178,7 @@ export const getFieldDetails = async (
     next(error);
   }
 };
-
-// CREATE new field
+// CREATE new Feild
 export const createNewField = async (
   req: Request,
   res: Response,
@@ -188,13 +187,30 @@ export const createNewField = async (
   try {
     const fieldData = req.body;
 
-    // If type is "document" but no config is provided, set a default empty array
+    // ✅ Existing logic
     if (fieldData.type === "document" && !fieldData.documentConfig) {
       fieldData.documentConfig = [];
     }
 
-    const newField = new Field(fieldData);
-    await newField.save();
+    let parentField = null;
+
+    // 🔒 Validate parent
+    if (fieldData.conditional?.dependsOn) {
+      if (!mongoose.Types.ObjectId.isValid(fieldData.conditional.dependsOn)) {
+        sendResponse(res, null, "Invalid parent field ID", STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+
+      parentField = await Field.findById(fieldData.conditional.dependsOn);
+
+      if (!parentField) {
+        sendResponse(res, null, "Parent field not found", STATUS_CODES.NOT_FOUND);
+        return;
+      }
+    }
+
+    // ✅ Create field
+    const newField = await Field.create(fieldData);
 
     sendResponse(
       res,
@@ -207,7 +223,37 @@ export const createNewField = async (
   }
 };
 
+// export const createNewField = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const fieldData = req.body;
+
+//     // If type is "document" but no config is provided, set a default empty array
+//     if (fieldData.type === "document" && !fieldData.documentConfig) {
+//       fieldData.documentConfig = [];
+//     }
+
+//     const newField = new Field(fieldData);
+//     await newField.save();
+
+//     sendResponse(
+//       res,
+//       newField,
+//       "Field created successfully",
+//       STATUS_CODES.CREATED
+//     );
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+
+
 // UPDATE field
+
 export const updateField = async (
   req: Request,
   res: Response,
