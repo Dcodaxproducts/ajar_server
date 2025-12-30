@@ -20,6 +20,30 @@ import { sendNotification } from "../utils/notifications";
 import { calculateBookingPrice } from "../utils/calculateBookingPrice";
 import { Payment } from "../models/payment.model";
 
+//NEW HELPER — detects date-only strings (YYYY-MM-DD)
+const isDateOnly = (value: string) => {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+};
+
+//NEW HELPER — normalize dates based on rule
+const normalizeBookingDates = (checkInRaw: string, checkOutRaw: string) => {
+  let checkIn = new Date(checkInRaw);
+  let checkOut = new Date(checkOutRaw);
+
+  //CHANGE: if both dates are date-only (NO time)
+  if (isDateOnly(checkInRaw) && isDateOnly(checkOutRaw)) {
+    // start of day
+    checkIn.setUTCHours(0, 0, 0, 0);
+
+    // end of day (23:59:59)
+    checkOut.setUTCHours(23, 59, 59, 999);
+  }
+
+  return { checkIn, checkOut };
+};
+
+
+
 // createBooking
 export const createBooking = async (req: AuthRequest, res: Response) => {
   try {
@@ -187,8 +211,13 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const checkInDate = new Date(dates.checkIn);
-    const checkOutDate = new Date(dates.checkOut);
+
+    //normalize date-only vs date-time input
+    const { checkIn: checkInDate, checkOut: checkOutDate } =
+    normalizeBookingDates(dates.checkIn, dates.checkOut);
+
+    // const checkInDate = new Date(dates.checkIn);
+    // const checkOutDate = new Date(dates.checkOut);
 
     const isAvailable = await isBookingDateAvailable(
       listingId,
