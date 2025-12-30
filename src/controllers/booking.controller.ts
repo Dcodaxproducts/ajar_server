@@ -202,11 +202,36 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const form = await Form.findOne({
-      subCategory: listing.subCategory,
-      zone: listing.zone,
-    });
-    if (!form) return res.status(400).json({ message: "Form not found" });
+    // Fetch form
+    const form = await Form.findOne({ subCategory: listing.subCategory, zone: listing.zone });
+    if (!form) return res.status(400).json({ message: "Form not found for this listing" });
+
+    // Check required documents (UNCHANGED)
+    const requiredUserDocs = form.userDocuments || [];
+    if (requiredUserDocs.length > 0) {
+      const renterProfile = await User.findById(user.id);
+      if (!renterProfile) return res.status(404).json({ message: "Renter profile not found" });
+
+      const missingDocs: string[] = [];
+      const unapprovedDocs: string[] = [];
+
+      for (const requiredDoc of requiredUserDocs) {
+        const userDoc = renterProfile.documents.find((doc: any) => doc.name === requiredDoc);
+        if (!userDoc) missingDocs.push(requiredDoc);
+        else if (userDoc.status !== "approved") unapprovedDocs.push(requiredDoc);
+      }
+
+      if (missingDocs.length > 0) {
+        return res.status(400).json({
+          message: `Booking requires the following document(s): ${missingDocs.join(", ")}`,
+        });
+      }
+      if (unapprovedDocs.length > 0) {
+        return res.status(400).json({
+          message: `The following document(s) are not approved yet: ${unapprovedDocs.join(", ")}.`,
+        });
+      }
+    }
 
     const checkInDay = checkInDate.toISOString().split("T")[0];
     const checkOutDay = checkOutDate.toISOString().split("T")[0];
