@@ -142,8 +142,8 @@ export const getAllFavourites = async (req: AuthRequest, res: Response) => {
       .populate("user", "name email") // only admin will see this populated user info
       .populate({
         path: "listing",
-        select:
-          "title price location images name description subCategory rentalImages",
+        // select:
+        //   "title price location images name description subCategory rentalImages",
         populate: {
           path: "subCategory",
           select: "name description",
