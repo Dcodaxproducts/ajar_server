@@ -106,8 +106,8 @@ const UserSchema: Schema<IUser> = new Schema(
     fcmToken: { type: String, default: "" },
     // ADD WALLET (Only balance — NO transactions inside)
     wallet: {
-      balance: { type: mongoose.Schema.Types.Decimal128, default: 0 },
-      // balance: { type: Number, default: 0 },
+      // balance: { type: mongoose.Schema.Types.Decimal128, default: 0 },
+      balance: { type: Number, default: 0 },
     },
 
         bankAccounts: [
