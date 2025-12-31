@@ -53,9 +53,7 @@ export const createNewForm = async (
       return;
     }
 
-    /**
-     * ✅ FORM UNIQUENESS CHECK (zone + subCategory)
-     */
+    // FORM UNIQUENESS CHECK (zone + subCategory)
     const formAlreadyExists = await Form.findOne({
       subCategory,
       zone,
@@ -77,9 +75,7 @@ export const createNewForm = async (
       return;
     }
 
-    /**
-     * 1️⃣ User selected fields
-     */
+    // User selected fields
     const validUserFields = await Field.find({ _id: { $in: fields } });
 
     if (validUserFields.length !== fields.length) {
@@ -87,9 +83,7 @@ export const createNewForm = async (
       return;
     }
 
-    /**
-     * 2️⃣ Extract + DEDUPLICATE conditional.dependsOn IDs
-     */
+    // Extract + DEDUPLICATE conditional.dependsOn IDs
     const conditionalFieldIds = Array.from(
       new Set(
         validUserFields
@@ -98,9 +92,7 @@ export const createNewForm = async (
       )
     ).map((id) => new mongoose.Types.ObjectId(id));
 
-    /**
-     * 3️⃣ Validate conditional fields (NOW SAFE)
-     */
+    //    Validate conditional fields (NOW SAFE)
     let conditionalFields: typeof validUserFields = [];
     if (conditionalFieldIds.length > 0) {
       conditionalFields = await Field.find({
@@ -118,9 +110,8 @@ export const createNewForm = async (
       }
     }
 
-    /**
-     * 4️⃣ Required system fields
-     */
+
+    // Required system fields
     const requiredFieldNames = [
       "name",
       "subTitle",
@@ -147,14 +138,12 @@ export const createNewForm = async (
       return;
     }
 
-    /**
-     * 5️⃣ Fixed fields
-     */
+    // Fixed fields
     const fixedFields = await Field.find({ isFixed: true });
 
-    /**
-     * 6️⃣ Merge ALL field IDs (NO DUPLICATES)
-     */
+
+    // Merge ALL field IDs (NO DUPLICATES)
+
     const allFieldIds: mongoose.Types.ObjectId[] = [
       ...requiredFields.map((f) => f._id as mongoose.Types.ObjectId),
       ...fixedFields.map((f) => f._id as mongoose.Types.ObjectId),
@@ -167,7 +156,7 @@ export const createNewForm = async (
     );
 
     /**
-     * 7️⃣ Create form
+     * Create form
      */
     const form = new Form({
       name,
@@ -188,7 +177,6 @@ export const createNewForm = async (
     next(error);
   }
 };
-
 
 // export const createNewForm = async (
 //   req: Request,
@@ -335,9 +323,9 @@ export const getAllForms = async (
       );
       const localizedZone = zone
         ? {
-            ...zone,
-            name: zoneTranslation?.translations?.name || zone.name,
-          }
+          ...zone,
+          name: zoneTranslation?.translations?.name || zone.name,
+        }
         : null;
 
       const subCat = form.subCategory as any;
@@ -346,25 +334,25 @@ export const getAllForms = async (
       );
       const localizedSubCategory = subCat
         ? {
-            ...subCat,
-            name: subCatTranslation?.translations?.name || subCat.name,
-          }
+          ...subCat,
+          name: subCatTranslation?.translations?.name || subCat.name,
+        }
         : null;
 
       const localizedFields = Array.isArray(form.fields)
         ? (form.fields as any[]).map((field) => {
-            const fieldTranslation = field?.languages?.find(
-              (entry: any) => entry.locale?.toLowerCase() === lang
-            );
-            return {
-              ...field,
-              name: fieldTranslation?.translations?.name || field.name,
-              label: fieldTranslation?.translations?.label || field.label,
-              placeholder:
-                fieldTranslation?.translations?.placeholder ||
-                field.placeholder,
-            };
-          })
+          const fieldTranslation = field?.languages?.find(
+            (entry: any) => entry.locale?.toLowerCase() === lang
+          );
+          return {
+            ...field,
+            name: fieldTranslation?.translations?.name || field.name,
+            label: fieldTranslation?.translations?.label || field.label,
+            placeholder:
+              fieldTranslation?.translations?.placeholder ||
+              field.placeholder,
+          };
+        })
         : [];
 
       return {
@@ -427,17 +415,17 @@ export const getFormDetails = async (
 
     translatedForm.fields = Array.isArray(form.fields)
       ? (form.fields as any[]).map((field: any) => {
-          const fieldTranslation = field.languages?.find(
-            (entry: any) => entry.locale?.toLowerCase() === lang
-          );
-          return {
-            ...field,
-            name: fieldTranslation?.translations?.name || field.name,
-            label: fieldTranslation?.translations?.label || field.label,
-            placeholder:
-              fieldTranslation?.translations?.placeholder || field.placeholder,
-          };
-        })
+        const fieldTranslation = field.languages?.find(
+          (entry: any) => entry.locale?.toLowerCase() === lang
+        );
+        return {
+          ...field,
+          name: fieldTranslation?.translations?.name || field.name,
+          label: fieldTranslation?.translations?.label || field.label,
+          placeholder:
+            fieldTranslation?.translations?.placeholder || field.placeholder,
+        };
+      })
       : [];
 
     const zone = form.zone as any;
@@ -446,9 +434,9 @@ export const getFormDetails = async (
     );
     translatedForm.zone = zone
       ? {
-          ...zone,
-          name: zoneTranslation?.translations?.name || zone?.name || "",
-        }
+        ...zone,
+        name: zoneTranslation?.translations?.name || zone?.name || "",
+      }
       : null;
 
     const subCat = form.subCategory as any;
@@ -457,9 +445,9 @@ export const getFormDetails = async (
     );
     translatedForm.subCategory = subCat
       ? {
-          ...subCat,
-          name: subCatTranslation?.translations?.name || subCat?.name || "",
-        }
+        ...subCat,
+        name: subCatTranslation?.translations?.name || subCat?.name || "",
+      }
       : null;
 
     sendResponse(
