@@ -114,14 +114,14 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         case "hour":
           duration = Math.ceil(
             (extensionEndDate.getTime() - extensionStartDate.getTime()) /
-              (1000 * 60 * 60)
+            (1000 * 60 * 60)
           );
           break;
 
         case "day":
           duration = Math.ceil(
             (extensionEndDate.getTime() - extensionStartDate.getTime()) /
-              (1000 * 60 * 60 * 24)
+            (1000 * 60 * 60 * 24)
           );
           break;
 
@@ -129,7 +129,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
           duration =
             (extensionEndDate.getFullYear() -
               extensionStartDate.getFullYear()) *
-              12 +
+            12 +
             (extensionEndDate.getMonth() - extensionStartDate.getMonth());
           break;
 
@@ -214,7 +214,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
     //normalize date-only vs date-time input
     const { checkIn: checkInDate, checkOut: checkOutDate } =
-    normalizeBookingDates(dates.checkIn, dates.checkOut);
+      normalizeBookingDates(dates.checkIn, dates.checkOut);
 
     // const checkInDate = new Date(dates.checkIn);
     // const checkOutDate = new Date(dates.checkOut);
@@ -428,7 +428,7 @@ export const updateBookingStatus = async (
 
     const listingName =
       typeof parentBooking.marketplaceListingId === "object" &&
-      "name" in parentBooking.marketplaceListingId
+        "name" in parentBooking.marketplaceListingId
         ? (parentBooking.marketplaceListingId as any).name
         : "";
 
@@ -529,18 +529,18 @@ export const updateBookingStatus = async (
           }
         );
 
-         // ADDED: LEASER NOTIFICATION (wallet credit)
-      await sendNotification(
-        leaserId,
-        "Extension Payment Received",
-        `You received ${extensionTotal} in your wallet for the extension of "${listingName}".`,
-        {
-          bookingId: childBooking._id.toString(),
-          type: "extension",
-          status: "approved",
-          creditedAmount: extensionTotal, //ADDED
-        }
-      );
+        // ADDED: LEASER NOTIFICATION (wallet credit)
+        await sendNotification(
+          leaserId,
+          "Extension Payment Received",
+          `You received ${extensionTotal} in your wallet for the extension of "${listingName}".`,
+          {
+            bookingId: childBooking._id.toString(),
+            type: "extension",
+            status: "approved",
+            creditedAmount: extensionTotal, //ADDED
+          }
+        );
 
       } catch (err) {
         console.error("Failed to notify renter about extension approval:", err);
@@ -771,7 +771,7 @@ export const updateBookingStatus = async (
         await sendNotification(
           leaserId,
           "Booking Approved - PIN Code",
-          `The booking for "${listingName}" is approved. PIN Code: ${pin}. Amount deducted from your wallet: ${totalPaid}.`,
+          `The booking for "${listingName}" is approved. PIN Code: ${pin}. Amount deducted from User's wallet: ${totalPaid}.`,
           {
             bookingId: finalBooking._id?.toString(),
             listingId,
@@ -780,7 +780,7 @@ export const updateBookingStatus = async (
             deductedAmount: totalPaid,
           }
         );
-         await sendNotification(
+        await sendNotification(
           leaser._id.toString(),
           "Payment Received",
           `You received ${totalPaid} in your wallet for the booking of "${listingName}".`,
@@ -796,7 +796,10 @@ export const updateBookingStatus = async (
       let renterMsg = `Your booking ${finalBooking._id?.toString()} status changed to ${finalStatus}.`;
 
       if (finalStatus === "approved") {
-        renterMsg = `Your booking for "${listingName}" has been approved. PIN has been sent to the leaser. You will enter the PIN at check-in.`;
+        const totalPaid = finalBooking.priceDetails.totalPrice;
+        renterMsg = `Your booking for "${listingName}" has been approved. 
+        Amount deducted from your wallet: ${totalPaid}. 
+        The PIN has been sent to the leaser. Please provide the PIN at check-in.`;
       } else if (finalStatus === "rejected") {
         renterMsg = `Your booking for "${listingName}" has been rejected.`;
       } else if (finalStatus === "completed") {
@@ -984,8 +987,8 @@ export const getBookingById = async (
       typeof languageHeader === "string"
         ? languageHeader.toLowerCase()
         : Array.isArray(languageHeader) && languageHeader.length > 0
-        ? languageHeader[0].toLowerCase()
-        : "en";
+          ? languageHeader[0].toLowerCase()
+          : "en";
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
