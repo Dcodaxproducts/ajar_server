@@ -142,16 +142,6 @@ export const stripeWebhook = async (req: Request, res: Response) => {
   try {
     const paymentIntent = event.data.object as any;
 
-    let paymentType = "none";
-
-    if (paymentIntent.latest_charge) {
-      const charge = await stripe.charges.retrieve(
-        paymentIntent.latest_charge as string
-      );
-
-      paymentType =
-        charge.payment_method_details?.card?.funding || "none";
-    }
     const userRenterId = paymentIntent.metadata?.userRenterId;
     const bookingId = paymentIntent.metadata?.bookingId;
 
@@ -241,7 +231,7 @@ export const stripeWebhook = async (req: Request, res: Response) => {
           },
           {
             status: "succeeded",
-            type: paymentType
+            type: "credit"
           },
           { new: true }
         );
@@ -275,8 +265,7 @@ export const stripeWebhook = async (req: Request, res: Response) => {
             paymentIntentId: paymentIntent.id
           },
           {
-            status: "failed",
-            type: paymentType
+            status: "failed"
           }
         );
       }

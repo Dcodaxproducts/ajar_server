@@ -1031,17 +1031,17 @@ export const getDashboardStats = async (
       userTrend =
         userRecords.length >= 2
           ? calcTrend(
-              userRecords[userRecords.length - 1].totalUsers,
-              userRecords[userRecords.length - 2].totalUsers
-            )
+            userRecords[userRecords.length - 1].totalUsers,
+            userRecords[userRecords.length - 2].totalUsers
+          )
           : { value: "0", trend: "up" };
 
       earningTrend =
         earningRecords.length >= 2
           ? calcTrend(
-              earningRecords[earningRecords.length - 1].totalEarning,
-              earningRecords[earningRecords.length - 2].totalEarning
-            )
+            earningRecords[earningRecords.length - 1].totalEarning,
+            earningRecords[earningRecords.length - 2].totalEarning
+          )
           : { value: "0", trend: "up" };
     }
 
@@ -1263,9 +1263,8 @@ export const googleLogin = async (
         to: email,
         name,
         subject: "Welcome to our App",
-        content: `Hi ${
-          name || "there"
-        }, your account has been created via Google (Firebase) login.`,
+        content: `Hi ${name || "there"
+          }, your account has been created via Google (Firebase) login.`,
       });
     }
 
@@ -1474,10 +1473,10 @@ export const getWallet = async (req: AuthRequest, res: Response) => {
     const user = await User.findById(userId).select("wallet");
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Fetch transactions from WalletTransaction collection
-    const transactions = await WalletTransaction.find({ userId }).sort({
-      createdAt: -1,
-    });
+    const transactions = await WalletTransaction.find({
+      userId,
+      status: { $ne: "pending" },
+    }).sort({ createdAt: -1 });
 
     res.status(200).json({
       balance: user.wallet.balance,

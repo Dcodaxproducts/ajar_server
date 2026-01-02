@@ -19,6 +19,7 @@ import { isBookingDateAvailable } from "../utils/dateValidator";
 import { sendNotification } from "../utils/notifications";
 import { calculateBookingPrice } from "../utils/calculateBookingPrice";
 import { Payment } from "../models/payment.model";
+import { WalletTransaction } from "../models/walletTransaction.model";
 
 //NEW HELPER — detects date-only strings (YYYY-MM-DD)
 const isDateOnly = (value: string) => {
@@ -499,6 +500,30 @@ export const updateBookingStatus = async (
         await leaser.save({ session });
       }
 
+      await WalletTransaction.insertMany(
+        [
+          {
+            userId: renter._id,
+            type: "debit",
+            amount: extensionTotal,
+            source: "booking",
+            status: "succeeded",
+            createdAt: new Date(),
+            requestedAt: new Date(),
+          },
+          {
+            userId: leaser._id,
+            type: "credit",
+            amount: extensionTotal,
+            source: "booking",
+            status: "succeeded",
+            createdAt: new Date(),
+            requestedAt: new Date(),
+          },
+        ],
+        { session }
+      );
+
       // Update child booking
       childBooking.isExtend = true;
       childBooking.status = "approved";
@@ -520,7 +545,7 @@ export const updateBookingStatus = async (
         await sendNotification(
           renterId,
           "Extension Approved",
-          `Your extension request for "${listingName}" has been approved. Amount deducted from your wallet: ${extensionTotal}.`,
+          `Your extension request for "${listingName}" has been approved. Amount deducted from your wallet: $${extensionTotal}.`,
           {
             bookingId: childBooking._id.toString(),
             type: "extension",
@@ -533,7 +558,7 @@ export const updateBookingStatus = async (
         await sendNotification(
           leaserId,
           "Extension Payment Received",
-          `You received ${extensionTotal} in your wallet for the extension of "${listingName}".`,
+          `You received $${extensionTotal} in your wallet for the extension of "${listingName}".`,
           {
             bookingId: childBooking._id.toString(),
             type: "extension",
@@ -672,6 +697,30 @@ export const updateBookingStatus = async (
         await leaser.save({ session });
       }
 
+      await WalletTransaction.insertMany(
+        [
+          {
+            userId: renter._id,
+            type: "debit",
+            amount: totalAmount,
+            source: "booking",
+            status: "succeeded",
+            createdAt: new Date(),
+            requestedAt: new Date(),
+          },
+          {
+            userId: leaser._id,
+            type: "credit",
+            amount: totalAmount,
+            source: "booking",
+            status: "succeeded",
+            createdAt: new Date(),
+            requestedAt: new Date(),
+          },
+        ],
+        { session }
+      );
+
       // Generate OTP PIN
       pin = generatePIN(4);
       updateFields.otp = pin;
@@ -771,7 +820,7 @@ export const updateBookingStatus = async (
         await sendNotification(
           leaserId,
           "Booking Approved - PIN Code",
-          `The booking for "${listingName}" is approved. PIN Code: ${pin}. Amount deducted from User's wallet: ${totalPaid}.`,
+          `The booking for "${listingName}" is approved. PIN Code: ${pin}. Amount deducted from User's wallet: $${totalPaid}.`,
           {
             bookingId: finalBooking._id?.toString(),
             listingId,
@@ -783,7 +832,7 @@ export const updateBookingStatus = async (
         await sendNotification(
           leaser._id.toString(),
           "Payment Received",
-          `You received ${totalPaid} in your wallet for the booking of "${listingName}".`,
+          `You received $${totalPaid} in your wallet for the booking of "${listingName}".`,
           {
             bookingId: finalBooking._id.toString(),
             type: "booking",
@@ -798,7 +847,7 @@ export const updateBookingStatus = async (
       if (finalStatus === "approved") {
         const totalPaid = finalBooking.priceDetails.totalPrice;
         renterMsg = `Your booking for "${listingName}" has been approved. 
-        Amount deducted from your wallet: ${totalPaid}. 
+        Amount deducted from your wallet: $${totalPaid}. 
         The PIN has been sent to the leaser. Please provide the PIN at check-in.`;
       } else if (finalStatus === "rejected") {
         renterMsg = `Your booking for "${listingName}" has been rejected.`;
