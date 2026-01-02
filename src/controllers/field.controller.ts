@@ -13,11 +13,17 @@ export const getAllFields = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, isChoiceField } = req.query;
     const languageHeader = req.headers["language"];
     const locale = languageHeader?.toString() || null;
 
-    const baseQuery = Field.find().sort({ createdAt: -1 });
+    const queryFilter: any = {};
+
+    if (isChoiceField) {
+      queryFilter.type = { $in: ["select", "radio"] };
+    }
+
+    const baseQuery = Field.find(queryFilter).sort({ createdAt: -1 });
 
     const { data, total } = await paginateQuery(baseQuery, {
       page: Number(page),
