@@ -13,17 +13,11 @@ export const getAllFields = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { page = 1, limit = 10, isChoiceField } = req.query;
+    const { page = 1, limit = 10 } = req.query;
     const languageHeader = req.headers["language"];
     const locale = languageHeader?.toString() || null;
 
-    const queryFilter: any = {};
-
-    if (isChoiceField) {
-      queryFilter.type = { $in: ["select", "radio"] };
-    }
-
-    const baseQuery = Field.find(queryFilter).sort({ createdAt: -1 });
+    const baseQuery = Field.find().sort({ createdAt: -1 });
 
     const { data, total } = await paginateQuery(baseQuery, {
       page: Number(page),
@@ -82,8 +76,15 @@ export const getAllFieldsWithoutPagination = async (
   try {
     const languageHeader = req.headers["language"];
     const locale = languageHeader?.toString() || null;
+    const isChoiceField = req.query.isChoiceField;
 
-    const fields = await Field.find();
+    const queryFilter: any = {};
+
+    if (isChoiceField) {
+      queryFilter.type = { $in: ["select", "radio"] };
+    }
+
+    const fields = await Field.find(queryFilter);
 
     let filteredData = fields;
 
