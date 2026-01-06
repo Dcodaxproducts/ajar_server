@@ -497,9 +497,14 @@ export const getFormByZoneAndSubCategory = async (
       zone,
       subCategory,
     })
-      .populate("fields")
       .populate("zone")
       .populate("subCategory")
+      .populate({
+        path: "fields",
+        populate: {
+          path: "conditional.dependsOn"
+        },
+      })
       .lean();
 
     if (!form) {
