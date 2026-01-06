@@ -185,6 +185,7 @@ export const getFieldDetails = async (
     next(error);
   }
 };
+
 // CREATE new Feild
 export const createNewField = async (
   req: Request,
@@ -201,22 +202,83 @@ export const createNewField = async (
 
     let parentField = null;
 
-    // 🔒 Validate parent
-    if (fieldData.conditional?.dependsOn) {
-      if (!mongoose.Types.ObjectId.isValid(fieldData.conditional.dependsOn)) {
-        sendResponse(res, null, "Invalid parent field ID", STATUS_CODES.BAD_REQUEST);
+    // 🔐 CONDITIONAL VALIDATION
+    if (fieldData.conditional) {
+      const { dependsOn, value } = fieldData.conditional;
+
+      // 1️⃣ Conditional allowed only on select & radio
+      if (!["select", "radio"].includes(fieldData.type)) {
+        sendResponse(
+          res,
+          null,
+          "Conditional logic is only allowed on select or radio fields",
+          STATUS_CODES.BAD_REQUEST
+        );
         return;
       }
 
-      parentField = await Field.findById(fieldData.conditional.dependsOn);
+      // 2️⃣ dependsOn must exist
+      if (!dependsOn || !mongoose.Types.ObjectId.isValid(dependsOn)) {
+        sendResponse(
+          res,
+          null,
+          "Invalid or missing conditional.dependsOn",
+          STATUS_CODES.BAD_REQUEST
+        );
+        return;
+      }
+
+      // 3️⃣ value must exist
+      if (value === undefined || value === null) {
+        sendResponse(
+          res,
+          null,
+          "conditional.value is required when conditional is provided",
+          STATUS_CODES.BAD_REQUEST
+        );
+        return;
+      }
+
+      // 4️⃣ Parent field must exist
+      parentField = await Field.findById(dependsOn);
 
       if (!parentField) {
-        sendResponse(res, null, "Parent field not found", STATUS_CODES.NOT_FOUND);
+        sendResponse(
+          res,
+          null,
+          "Parent field not found",
+          STATUS_CODES.NOT_FOUND
+        );
+        return;
+      }
+
+      // 5️⃣ Parent field must be select or radio
+      if (!["select", "radio"].includes(parentField.type || "")) {
+        sendResponse(
+          res,
+          null,
+          "Parent field must be of type select or radio",
+          STATUS_CODES.BAD_REQUEST
+        );
+        return;
+      }
+
+      // 6️⃣ conditional.value must match parent options
+      if (
+        parentField.options &&
+        !parentField.options.includes(value)
+      ) {
+        sendResponse(
+          res,
+          null,
+          `Value must be one of: ${parentField.options.join(", ")}`,
+          STATUS_CODES.BAD_REQUEST
+        );
         return;
       }
     }
 
-    // ✅ Create field
+    // ✅ Create field (unchanged)
     const newField = await Field.create(fieldData);
 
     sendResponse(
@@ -229,6 +291,7 @@ export const createNewField = async (
     next(error);
   }
 };
+
 
 // export const createNewField = async (
 //   req: Request,

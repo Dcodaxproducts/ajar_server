@@ -43,8 +43,6 @@ const normalizeBookingDates = (checkInRaw: string, checkOutRaw: string) => {
   return { checkIn, checkOut };
 };
 
-
-
 // createBooking
 export const createBooking = async (req: AuthRequest, res: Response) => {
   try {
@@ -268,43 +266,40 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
     let priceBreakdown;
 
-    if (checkInDay === checkOutDay) {
-      const hours = Math.ceil(
-        (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60)
-      );
+   if (checkInDay === checkOutDay) {
+  let basePrice = 0;
+  let duration = 1;
 
-      let hourlyRate = 0;
+  if (listing.priceUnit === "hour") {
+    const hours = Math.ceil(
+      (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60)
+    );
+    basePrice = listing.price * hours;
+    duration = hours;
+  } else {
+    basePrice = listing.price;
+    duration = 1;
+  }
 
-      if (listing.priceUnit === "hour") {
-        hourlyRate = listing.price;
-      } else if (listing.priceUnit === "day") {
-        hourlyRate = listing.price / 24;
-      } else if (listing.priceUnit === "month") {
-        hourlyRate = listing.price / (30 * 24);
-      } else if (listing.priceUnit === "year") {
-        hourlyRate = listing.price / (365 * 24);
-      }
+  const adminFee =
+    basePrice *
+    ((form.setting.renterCommission.value +
+      form.setting.leaserCommission.value) /
+      100);
 
-      const basePrice = hourlyRate * hours;
+  const tax = basePrice * (form.setting.tax / 100);
 
-      const adminFee =
-        basePrice *
-        ((form.setting.renterCommission.value +
-          form.setting.leaserCommission.value) /
-          100);
+  const totalPrice = basePrice + adminFee + tax;
 
-      const tax = basePrice * (form.setting.tax / 100);
-
-      const totalPrice = basePrice + adminFee + tax;
-
-      priceBreakdown = {
-        basePrice,
-        adminFee,
-        tax,
-        totalPrice,
-        duration: hours,
-      };
-    } else {
+  priceBreakdown = {
+    basePrice,
+    adminFee,
+    tax,
+    totalPrice,
+    duration,
+  };
+}
+else {
       priceBreakdown = calculateBookingPrice({
         basePrice: listing.price,
         unit: listing.priceUnit,
