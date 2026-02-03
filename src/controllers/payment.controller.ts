@@ -236,8 +236,6 @@ export const stripeWebhook = async (req: Request, res: Response) => {
           { new: true }
         );
 
-        console.log("updated")
-
         const user = await User.findById(userRenterId);
         if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -277,3 +275,57 @@ export const stripeWebhook = async (req: Request, res: Response) => {
     res.status(500).send("Webhook processing error");
   }
 };
+
+export const verifyPayment = async (req: Request, res: Response) => {
+  try {
+    const { paymentIntentId } = req.body;
+
+    if (!paymentIntentId) {
+      return res.status(400).json({ message: "Missing paymentIntentId" });
+    }
+
+    // 🔹 Always verify from Stripe
+    const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+    // Optional: ensure wallet transaction exists
+    const walletTx = await WalletTransaction.findOne({ paymentIntentId });
+    if (!walletTx) {
+      return res.status(404).json({ message: "Wallet transaction not found" });
+    }
+
+    // ===== SUCCESS =====
+    if (intent.status === "succeeded") {
+      return res.json({
+        status: "succeeded",
+        message: "Wallet payment successful",
+      });
+    }
+
+    // ===== CANCELED =====
+    if (intent.status === "canceled") {
+      return res.json({
+        status: "canceled",
+        message: "Wallet payment was canceled by user",
+      });
+    }
+
+    // ===== FAILED =====
+    if (intent.status === "requires_payment_method") {
+      return res.json({
+        status: "failed",
+        message: "Wallet payment failed",
+      });
+    }
+
+    // ===== STILL PENDING =====
+    return res.json({
+      status: "pending",
+      message: "Wallet payment is still processing",
+    });
+
+  } catch (error: any) {
+    console.error("Verify Wallet Payment Error:", error);
+    res.status(500).json({ message: "Wallet payment verification failed" });
+  }
+};
+

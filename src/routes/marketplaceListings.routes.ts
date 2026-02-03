@@ -35,7 +35,7 @@ router.get("/search", asyncHandler(searchMarketplaceListings));
 
 router.get("/listing", useAuth, asyncHandler(getAllMarketplaceListingsforLeaser));
 
-router.get("/", useAuth, asyncHandler(getAllMarketplaceListings));
+router.get("/", optionalAuth, asyncHandler(getAllMarketplaceListings));
 
 router.get("/guest", asyncHandler(getAllMarketplaceListings));
 

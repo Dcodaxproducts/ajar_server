@@ -6,6 +6,7 @@ import asyncHandler from "express-async-handler";
 import mongoose from "mongoose";
 import { paginateQuery } from "../utils/paginate";
 import { AuthRequest } from "../middlewares/auth.middleware";
+import { RefundManagement } from "../models/refundManagement.model";
 
 // Create Refund Request
 export const createRefundRequest = asyncHandler(
@@ -78,6 +79,41 @@ export const createRefundRequest = asyncHandler(
 );
 
 // Get My Refund Requests
+// export const getMyRefundRequests = asyncHandler(
+//   async (req: Request & { user?: any }, res: Response) => {
+//     const page = Number(req.query.page) || 1;
+//     const limit = Number(req.query.limit) || 10;
+
+//     const filter: any = {  };
+
+//     const baseQuery = RefundManagement.find(filter)
+//       // .populate("policy")
+//       .populate("booking");
+
+//     // Paginated results
+//     const { data, total } = await paginateQuery(baseQuery, { page, limit });
+
+//     // Status breakdown + total requests
+//     const [pending, rejected, accepted, totalRequests] = await Promise.all([
+//       RefundRequest.countDocuments({ ...filter, status: "pending" }),
+//       RefundRequest.countDocuments({ ...filter, status: "reject" }),
+//       RefundRequest.countDocuments({ ...filter, status: "accept" }),
+//       RefundRequest.countDocuments(filter),
+//     ]);
+
+//     res.status(200).json({
+//       success: true,
+//       data,
+//       totalRequests,
+//       pending,
+//       rejected,
+//       accepted,
+//       total,
+//       page,
+//       limit,
+//     });
+//   }
+// );
 export const getMyRefundRequests = asyncHandler(
   async (req: Request & { user?: any }, res: Response) => {
     const page = Number(req.query.page) || 1;
@@ -115,6 +151,7 @@ export const getMyRefundRequests = asyncHandler(
 );
 
 // Get Refund Request by ID
+
 export const getRefundRequestById = asyncHandler(
   async (req: Request & { user?: any }, res: Response)=> {
     const { id } = req.params;

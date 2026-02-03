@@ -5,6 +5,7 @@ import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { Form } from "../models/form.model";
 import { paginateQuery } from "../utils/paginate";
+import { removeEmptyConditional } from "../utils/fieldUtils";
 
 // GET all fields
 export const getAllFields = async (
@@ -195,6 +196,8 @@ export const createNewField = async (
   try {
     const fieldData = req.body;
 
+    removeEmptyConditional(fieldData);
+
     // ✅ Existing logic
     if (fieldData.type === "document" && !fieldData.documentConfig) {
       fieldData.documentConfig = [];
@@ -203,7 +206,12 @@ export const createNewField = async (
     let parentField = null;
 
     // 🔐 CONDITIONAL VALIDATION
-    if (fieldData.conditional) {
+    if (
+      fieldData.conditional &&
+      fieldData.conditional.dependsOn &&
+      fieldData.conditional.value !== null &&
+      fieldData.conditional.value !== undefined
+    ) {
       const { dependsOn, value } = fieldData.conditional;
 
       // 1️⃣ Conditional allowed only on select & radio

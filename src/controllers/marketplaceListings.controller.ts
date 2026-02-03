@@ -193,8 +193,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
         await sendNotification(
           adminUser._id.toString(),
           "New Listing Created",
-          `Leaser ${
-            req.user.name || req.user.email || "A user"
+          `Leaser ${req.user.name || req.user.email || "A user"
           } has created a new listing: ${listing.name}`,
           {
             listingId: (listing._id as mongoose.Types.ObjectId).toString(),
@@ -307,6 +306,7 @@ export const getAllMarketplaceListingsforLeaser = async (
         }
       } else {
         if (all === "true") {
+          filter.status = "approved";
           if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
             filter.zone = new mongoose.Types.ObjectId(String(zone));
           }
@@ -318,6 +318,7 @@ export const getAllMarketplaceListingsforLeaser = async (
         }
       }
     } else {
+      filter.status = "approved";
       if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
         filter.zone = new mongoose.Types.ObjectId(String(zone));
       }
@@ -527,6 +528,7 @@ export const getAllMarketplaceListings = async (
         }
       } else {
         if (all === "true") {
+          filter.status = "approved";
           if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
             filter.zone = new mongoose.Types.ObjectId(String(zone));
           }
@@ -538,6 +540,7 @@ export const getAllMarketplaceListings = async (
         }
       }
     } else {
+      filter.status = "approved";
       if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
         filter.zone = new mongoose.Types.ObjectId(String(zone));
       }
@@ -1199,8 +1202,8 @@ export const deleteMarketplaceListing = async (
       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
       return;
     }
-
-    if (String(existingListing.leaser) !== String(req.user?.id)) {
+    
+    if (String(existingListing.leaser) !== String(req.user?.id) && req.user?.role !== "admin") {
       sendResponse(
         res,
         null,
@@ -1284,6 +1287,8 @@ export const getPopularMarketplaceListings = async (
 
     const filter: any = {};
 
+    filter.status = "approved";
+
     if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
       filter.zone = new mongoose.Types.ObjectId(String(zone));
     }
@@ -1350,6 +1355,50 @@ export const getPopularMarketplaceListings = async (
           totalReviews: { $size: "$reviews" },
         },
       },
+
+      /* ---------------- FORM LOOKUP ---------------- */
+      {
+        $lookup: {
+          from: "forms",
+          let: { subCatId: "$subCategory._id", zoneId: "$zone._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$subCategory", "$$subCatId"] },
+                    { $eq: ["$zone", "$$zoneId"] },
+                  ],
+                },
+              },
+            },
+            {
+              $project: {
+                setting: 1,
+                userDocuments: 1,
+                leaserDocuments: 1,
+              },
+            },
+          ],
+          as: "form",
+        },
+      },
+
+      /* ---------------- ADD DOCUMENTS FIELDS ---------------- */
+      {
+        $addFields: {
+          userDocuments: {
+            $ifNull: [{ $arrayElemAt: ["$form.userDocuments", 0] }, []],
+          },
+          leaserDocuments: {
+            $ifNull: [{ $arrayElemAt: ["$form.leaserDocuments", 0] }, []],
+          },
+        },
+      },
+
+      /* ---------------- CLEANUP ---------------- */
+      { $project: { form: 0 } },
+
       { $sort: { averageRating: -1, totalReviews: -1 } },
       { $limit: 20 },
     ];

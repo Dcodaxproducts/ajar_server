@@ -144,7 +144,7 @@ export const getAllDamageReports = async (
     sendResponse(
       res,
       {
-        reports: paginated.data,
+        tickets: paginated.data,
         total: paginated.total,
         page: paginated.page,
         limit: paginated.limit,
