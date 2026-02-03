@@ -3,6 +3,7 @@ import { User } from "../models/user.model";
 import { FavouriteCheck } from "../models/favouriteChecks.model";
 import { Booking } from "../models/booking.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
+import mongoose from "mongoose";
 
 // Add to favorites
 export const addFavourite = async (req: AuthRequest, res: Response) => {
@@ -34,8 +35,8 @@ export const addFavourite = async (req: AuthRequest, res: Response) => {
       ...(listingId
         ? { listing: listingId }
         : bookingId
-        ? { booking: bookingId }
-        : {}),
+          ? { booking: bookingId }
+          : {}),
     });
 
     if (existingFavorite) {
@@ -91,8 +92,8 @@ export const removeFavourite = async (req: AuthRequest, res: Response) => {
       ...(listingId
         ? { listing: listingId }
         : bookingId
-        ? { booking: bookingId }
-        : {}),
+          ? { booking: bookingId }
+          : {}),
     });
 
     if (existingFavourite) {
@@ -131,26 +132,163 @@ export const getAllFavourites = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    let query: any = {};
+    let matchStage: any = {};
 
     if (role === "user") {
-      query.user = userId;
+      matchStage.user = new mongoose.Types.ObjectId(userId);
     }
-    // If role is admin, query remains empty (fetches all)
+    
+    // If role is admin, matchStage remains empty (fetches all)
 
-    const favourites = await FavouriteCheck.find(query)
-      .populate("user", "name email") // only admin will see this populated user info
-      .populate({
-        path: "listing",
-        // select:
-        //   "title price location images name description subCategory rentalImages",
-        populate: {
-          path: "subCategory",
-          select: "name description",
+    const pipeline: any[] = [
+      { $match: matchStage },
+      
+      // Lookup user
+      {
+        $lookup: {
+          from: "users",
+          localField: "user",
+          foreignField: "_id",
+          as: "user",
         },
-      })
-      .populate("booking", "bookingName startDate endDate status")
-      .lean();
+      },
+      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+      {
+        $addFields: {
+          user: {
+            name: "$user.name",
+            email: "$user.email",
+          },
+        },
+      },
+      
+      // Lookup listing
+      {
+        $lookup: {
+          from: "marketplacelistings",
+          localField: "listing",
+          foreignField: "_id",
+          as: "listing",
+        },
+      },
+      { $unwind: { path: "$listing", preserveNullAndEmptyArrays: true } },
+      
+      // Lookup subCategory
+      {
+        $lookup: {
+          from: "categories",
+          localField: "listing.subCategory",
+          foreignField: "_id",
+          as: "listing.subCategory",
+        },
+      },
+      {
+        $unwind: {
+          path: "$listing.subCategory",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      
+      // Lookup zone
+      {
+        $lookup: {
+          from: "zones",
+          localField: "listing.zone",
+          foreignField: "_id",
+          as: "listing.zone",
+        },
+      },
+      {
+        $unwind: {
+          path: "$listing.zone",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      
+      // Lookup booking
+      {
+        $lookup: {
+          from: "bookings",
+          localField: "booking",
+          foreignField: "_id",
+          as: "booking",
+        },
+      },
+      { $unwind: { path: "$booking", preserveNullAndEmptyArrays: true } },
+      {
+        $addFields: {
+          booking: {
+            bookingName: "$booking.bookingName",
+            startDate: "$booking.startDate",
+            endDate: "$booking.endDate",
+            status: "$booking.status",
+          },
+        },
+      },
+      
+      // Lookup form for userDocuments and leaserDocuments
+      {
+        $lookup: {
+          from: "forms",
+          let: {
+            subCatId: "$listing.subCategory._id",
+            zoneId: "$listing.zone._id",
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$subCategory", "$$subCatId"] },
+                    { $eq: ["$zone", "$$zoneId"] },
+                  ],
+                },
+              },
+            },
+            {
+              $project: {
+                setting: 1,
+                userDocuments: 1,
+                leaserDocuments: 1,
+              },
+            },
+          ],
+          as: "form",
+        },
+      },
+      
+      // Add userDocuments and leaserDocuments to listing
+      {
+        $addFields: {
+          "listing.userDocuments": {
+            $ifNull: [{ $arrayElemAt: ["$form.userDocuments", 0] }, []],
+          },
+          "listing.leaserDocuments": {
+            $ifNull: [{ $arrayElemAt: ["$form.leaserDocuments", 0] }, []],
+          },
+        },
+      },
+      
+      // Project only subCategory name and description
+      {
+        $addFields: {
+          "listing.subCategory": {
+            name: "$listing.subCategory.name",
+            description: "$listing.subCategory.description",
+            _id: "$listing.subCategory._id",
+          },
+          "listing.zone": {
+            name: "$listing.zone.name",
+            _id: "$listing.zone._id",
+          },
+        },
+      },
+      
+      // Cleanup - remove form field
+      { $project: { form: 0 } },
+    ];
+
+    const favourites = await FavouriteCheck.aggregate(pipeline);
 
     return res.status(200).json({
       message: "Favourites retrieved successfully",

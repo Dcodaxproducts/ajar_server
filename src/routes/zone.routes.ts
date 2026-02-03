@@ -18,7 +18,7 @@ const router = express.Router();
 
 const useAuth = authMiddleware as any;
 
-router.get("/", useAuth, getAllZones);
+router.get("/", getAllZones);
 router.get("/:id", getZoneDetails);
 router.post(
   "/",

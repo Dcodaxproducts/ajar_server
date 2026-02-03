@@ -670,7 +670,7 @@ export const updateForm = async (
         );
         return;
       }
-
+console.log(setting)
       userFieldIds = validUserFields.map(
         (f) => f._id as mongoose.Types.ObjectId
       );

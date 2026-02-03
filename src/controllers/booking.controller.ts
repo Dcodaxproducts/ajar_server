@@ -15,11 +15,12 @@ import { Types } from "mongoose";
 import { Form } from "../models/form.model";
 import { generatePIN } from "../utils/generatePin";
 import { Review } from "../models/review.model";
-import { isBookingDateAvailable } from "../utils/dateValidator";
+import { isBookingDateAvailable, isBookingExpiredForApproval } from "../utils/dateValidator";
 import { sendNotification } from "../utils/notifications";
 import { calculateBookingPrice } from "../utils/calculateBookingPrice";
 import { Payment } from "../models/payment.model";
 import { WalletTransaction } from "../models/walletTransaction.model";
+import { DamageReport } from "../models/damageReport.model";
 
 //NEW HELPER — detects date-only strings (YYYY-MM-DD)
 const isDateOnly = (value: string) => {
@@ -49,13 +50,10 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     const user = req.user as { id: string; role: string };
     if (!user) return res.status(401).json({ message: "Unauthorised" });
 
-    const { marketplaceListingId, dates, extensionDate, ...bookingData } =
-      req.body;
+    const { marketplaceListingId, dates, extensionDate, ...bookingData } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(marketplaceListingId)) {
-      return res
-        .status(400)
-        .json({ message: "Invalid Marketplace Listing ID" });
+      return res.status(400).json({ message: "Invalid Marketplace Listing ID" });
     }
 
     const listing = await MarketplaceListing.findById(marketplaceListingId);
@@ -64,11 +62,25 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     const listingId = listing._id as Types.ObjectId;
     const leaserId = listing.leaser as Types.ObjectId;
 
+    // 1. MOVED UP: Fetch Form first so we have Tax/Commission rates for both Extensions and New Bookings
+    const form = await Form.findOne({ subCategory: listing.subCategory, zone: listing.zone });
+    if (!form) return res.status(400).json({ message: "Form settings not found for this listing" });
+
+    // Prepare rates
+    const adminCommissionRate = (form.setting.renterCommission.value + form.setting.leaserCommission.value) / 100;
+    const taxRate = form.setting.tax / 100;
+
+    console.log("adminCommissionRate", adminCommissionRate)
+    console.log("taxRate", taxRate)
+
     const renter = await User.findById(user.id);
     if (!renter) {
       return res.status(404).json({ message: "Renter not found" });
     }
 
+    /* ---------------------------------------------------------
+       EXTENSION LOGIC
+    --------------------------------------------------------- */
     const existingActiveBooking = await Booking.findOne({
       renter: user.id,
       marketplaceListingId: listingId,
@@ -106,51 +118,26 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         });
       }
 
-      let duration = 0;
-      const priceUnit = listing.priceUnit;
-
-      switch (priceUnit) {
-        case "hour":
-          duration = Math.ceil(
-            (extensionEndDate.getTime() - extensionStartDate.getTime()) /
-            (1000 * 60 * 60)
-          );
-          break;
-
-        case "day":
-          duration = Math.ceil(
-            (extensionEndDate.getTime() - extensionStartDate.getTime()) /
-            (1000 * 60 * 60 * 24)
-          );
-          break;
-
-        case "month":
-          duration =
-            (extensionEndDate.getFullYear() -
-              extensionStartDate.getFullYear()) *
-            12 +
-            (extensionEndDate.getMonth() - extensionStartDate.getMonth());
-          break;
-
-        case "year":
-          duration =
-            extensionEndDate.getFullYear() - extensionStartDate.getFullYear();
-          break;
-      }
-
-      const basePrice = duration * listing.price;
+      // FIX: Use the shared utility for consistent calculation
+      const priceBreakdown = calculateBookingPrice({
+        basePrice: listing.price, // Unit price
+        unit: listing.priceUnit,
+        checkIn: extensionStartDate,
+        checkOut: extensionEndDate,
+        adminCommissionRate, // Now available
+        taxRate,             // Now available
+      });
 
       const priceDetails = {
-        price: basePrice,
-        adminFee: 0,
-        tax: 0,
-        totalPrice: basePrice,
+        price: priceBreakdown.basePrice,
+        adminFee: priceBreakdown.adminFee,
+        tax: priceBreakdown.tax,
+        totalPrice: priceBreakdown.totalPrice,
       };
 
       if (renter.wallet.balance < priceDetails.totalPrice) {
         return res.status(400).json({
-          message:
-            "Insufficient wallet balance to request extension. Please add funds.",
+          message: "Insufficient wallet balance to request extension. Please add funds.",
           requiredBalance: priceDetails.totalPrice,
           currentBalance: renter.wallet.balance,
         });
@@ -169,72 +156,56 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         priceDetails,
         pricingMeta: {
           priceFromListing: listing.price,
-          unit: priceUnit,
-          duration,
+          unit: listing.priceUnit,
+          duration: priceBreakdown.duration,
         },
         isExtend: false,
         previousBookingId: existingActiveBooking._id,
         extensionRequestedDate: extensionEndDate,
       });
 
+      // Notify Leaser logic (omitted for brevity, same as before)
       try {
         await sendNotification(
           leaserId.toString(),
           "New Extension Request",
           `Renter requested an extension for listing "${listing.name}".`,
-          {
-            bookingId: extendedBooking._id.toString(),
-            listingId: listing._id.toString(),
-            type: "extension",
-            status: "pending",
-          }
+          { bookingId: extendedBooking._id.toString(), listingId: listing._id.toString(), type: "extension", status: "pending" }
         );
-      } catch (err) {
-        console.error("Failed to notify leaser about extension request:", err);
-      }
+      } catch (err) { console.error(err); }
 
       return res.status(201).json({
         message: "Extension request created successfully",
         booking: extendedBooking,
-        priceFromListing: {
-          priceFromListing: listing.price,
-          unit: priceUnit,
-          duration,
-        },
+        priceBreakdown, // Return full breakdown
       });
     }
 
+    /* ---------------------------------------------------------
+       NEW BOOKING LOGIC
+    --------------------------------------------------------- */
     if (!dates?.checkIn || !dates?.checkOut) {
-      return res.status(400).json({
-        message: "Booking dates (checkIn & checkOut) are required",
-      });
+      return res.status(400).json({ message: "Booking dates (checkIn & checkOut) are required" });
     }
 
+    const { checkIn: checkInDate, checkOut: checkOutDate } = normalizeBookingDates(dates.checkIn, dates.checkOut);
 
-    //normalize date-only vs date-time input
-    const { checkIn: checkInDate, checkOut: checkOutDate } =
-      normalizeBookingDates(dates.checkIn, dates.checkOut);
-
-    // const checkInDate = new Date(dates.checkIn);
-    // const checkOutDate = new Date(dates.checkOut);
+    let availabilityCheckIn = checkInDate;
+    if (listing.priceUnit === "hour") {
+      availabilityCheckIn = new Date(checkInDate.getTime() + 1);
+    }
 
     const isAvailable = await isBookingDateAvailable(
       listingId,
-      checkInDate,
+      availabilityCheckIn,
       checkOutDate
     );
 
     if (!isAvailable) {
-      return res.status(400).json({
-        message: "Listing is already booked for the selected dates",
-      });
+      return res.status(400).json({ message: "Listing is already booked for the selected dates" });
     }
 
-    // Fetch form
-    const form = await Form.findOne({ subCategory: listing.subCategory, zone: listing.zone });
-    if (!form) return res.status(400).json({ message: "Form not found for this listing" });
-
-    // Check required documents (UNCHANGED)
+    // Check required documents
     const requiredUserDocs = form.userDocuments || [];
     if (requiredUserDocs.length > 0) {
       const renterProfile = await User.findById(user.id);
@@ -249,69 +220,20 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         else if (userDoc.status !== "approved") unapprovedDocs.push(requiredDoc);
       }
 
-      if (missingDocs.length > 0) {
-        return res.status(400).json({
-          message: `Booking requires the following document(s): ${missingDocs.join(", ")}`,
-        });
-      }
-      if (unapprovedDocs.length > 0) {
-        return res.status(400).json({
-          message: `The following document(s) are not approved yet: ${unapprovedDocs.join(", ")}.`,
-        });
-      }
+      if (missingDocs.length > 0) return res.status(400).json({ message: `Missing docs: ${missingDocs.join(", ")}` });
+      if (unapprovedDocs.length > 0) return res.status(400).json({ message: `Unapproved docs: ${unapprovedDocs.join(", ")}` });
     }
 
-    const checkInDay = checkInDate.toISOString().split("T")[0];
-    const checkOutDay = checkOutDate.toISOString().split("T")[0];
-
-    let priceBreakdown;
-
-   if (checkInDay === checkOutDay) {
-  let basePrice = 0;
-  let duration = 1;
-
-  if (listing.priceUnit === "hour") {
-    const hours = Math.ceil(
-      (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60)
-    );
-    basePrice = listing.price * hours;
-    duration = hours;
-  } else {
-    basePrice = listing.price;
-    duration = 1;
-  }
-
-  const adminFee =
-    basePrice *
-    ((form.setting.renterCommission.value +
-      form.setting.leaserCommission.value) /
-      100);
-
-  const tax = basePrice * (form.setting.tax / 100);
-
-  const totalPrice = basePrice + adminFee + tax;
-
-  priceBreakdown = {
-    basePrice,
-    adminFee,
-    tax,
-    totalPrice,
-    duration,
-  };
-}
-else {
-      priceBreakdown = calculateBookingPrice({
-        basePrice: listing.price,
-        unit: listing.priceUnit,
-        checkIn: checkInDate,
-        checkOut: checkOutDate,
-        adminCommissionRate:
-          (form.setting.renterCommission.value +
-            form.setting.leaserCommission.value) /
-          100,
-        taxRate: form.setting.tax / 100,
-      });
-    }
+    // 2. FIX: Unified Calculation Logic
+    // Removed the "if (sameDay)" block entirely. Use calculateBookingPrice for everything.
+    const priceBreakdown = calculateBookingPrice({
+      basePrice: listing.price,
+      unit: listing.priceUnit,
+      checkIn: checkInDate,
+      checkOut: checkOutDate,
+      adminCommissionRate,
+      taxRate,
+    });
 
     const priceDetails = {
       price: priceBreakdown.basePrice,
@@ -320,10 +242,11 @@ else {
       totalPrice: priceBreakdown.totalPrice,
     };
 
+    console.log(priceDetails)
+
     if (renter.wallet.balance < priceDetails.totalPrice) {
       return res.status(400).json({
-        message:
-          "Insufficient wallet balance to create booking. Please add funds.",
+        message: "Insufficient wallet balance to create booking. Please add funds.",
         requiredBalance: priceDetails.totalPrice,
         currentBalance: renter.wallet.balance,
       });
@@ -349,26 +272,16 @@ else {
         leaserId.toString(),
         "New Booking Request",
         `Renter booked your listing "${listing.name}".`,
-        {
-          bookingId: newBooking._id.toString(),
-          listingId: listing._id.toString(),
-          type: "booking",
-          status: "pending",
-        }
+        { bookingId: newBooking._id.toString(), listingId: listing._id.toString(), type: "booking", status: "pending" }
       );
-    } catch (err) {
-      console.error("Failed to notify leaser about new booking:", err);
-    }
+    } catch (err) { console.error(err); }
 
     return res.status(201).json({
       message: "Booking created successfully",
       booking: newBooking,
-      priceFromListing: {
-        priceFromListing: listing.price,
-        unit: listing.priceUnit,
-        duration: priceBreakdown.duration,
-      },
+      priceBreakdown,
     });
+
   } catch (error) {
     console.error("Error creating booking:", error);
     return res.status(500).json({ message: "Server error", error });
@@ -519,9 +432,14 @@ export const updateBookingStatus = async (
         { session }
       );
 
+      // Generate OTP PIN for extension
+      const pin = generatePIN(4);
+
+
       // Update child booking
       childBooking.isExtend = true;
       childBooking.status = "approved";
+      childBooking.otp = pin;
       childBooking.extendCharges = {
         extendCharges: extendChargeAmount,
         totalPrice: extensionTotal,
@@ -537,6 +455,18 @@ export const updateBookingStatus = async (
       session.endSession();
 
       try {
+        await sendEmail({
+          to: leaser.email,
+          name: leaser.name,
+          subject: "Extension Approved - PIN Code",
+          content: `
+    <h2>Extension Approved</h2>
+    <p>The extension request for "<strong>${listingName}</strong>" has been approved.</p>
+    <p><strong>PIN Code:</strong> ${pin}</p>
+    <p>Please use this PIN to verify the extension at handover.</p>
+  `,
+        });
+
         await sendNotification(
           renterId,
           "Extension Approved",
@@ -552,15 +482,30 @@ export const updateBookingStatus = async (
         // ADDED: LEASER NOTIFICATION (wallet credit)
         await sendNotification(
           leaserId,
-          "Extension Payment Received",
+          "Extension Approved - PIN Code",
+          `The extension for "${listingName}" is approved. PIN Code: ${pin}. Amount deducted from user's wallet: $${extensionTotal}.`,
+          {
+            bookingId: childBooking._id.toString(),
+            type: "extension",
+            status: "approved",
+            deductedAmount: extensionTotal,
+            otp: pin,
+          }
+        );
+
+        await sendNotification(
+          leaserId,
+          "Payment Received",
           `You received $${extensionTotal} in your wallet for the extension of "${listingName}".`,
           {
             bookingId: childBooking._id.toString(),
             type: "extension",
             status: "approved",
-            creditedAmount: extensionTotal, //ADDED
+            creditedAmount: extensionTotal,
           }
         );
+
+
 
       } catch (err) {
         console.error("Failed to notify renter about extension approval:", err);
@@ -618,6 +563,25 @@ export const updateBookingStatus = async (
 
     // ========== APPROVED STATUS LOGIC ==========
     if (finalStatus === "approved") {
+      const listing = parentBooking.marketplaceListingId as any;
+      const isExpired = isBookingExpiredForApproval(
+        parentBooking,
+        listing.priceUnit
+      );
+
+      if (isExpired) {
+        await session.abortTransaction();
+        session.endSession();
+
+        return sendResponse(
+          res,
+          null,
+          "Cannot approve booking. Checkout date has already passed.",
+          STATUS_CODES.BAD_REQUEST
+        );
+      }
+
+
       const renter = parentBooking.renter as any;
       const leaser = parentBooking.leaser as any;
 
@@ -1211,12 +1175,31 @@ export const getBookingsByUser = async (
       page * limit
     );
 
+    let finalBookings = paginatedBookings;
+
+    if (role === "leaser") {
+      const bookingIds = paginatedBookings.map((b: any) => b._id);
+
+      const damageReports = await DamageReport.find({
+        booking: { $in: bookingIds },
+      }).select("booking");
+
+      const damagedBookingIds = new Set(
+        damageReports.map((d) => String(d.booking))
+      );
+
+      finalBookings = paginatedBookings.map((booking: any) => ({
+        ...booking,
+        damagedReport: damagedBookingIds.has(String(booking._id)),
+      }));
+    }
+
     return sendResponse(res, {
       statusCode: STATUS_CODES.OK,
       success: true,
       message: "Bookings retrieved successfully",
       data: {
-        bookings: paginatedBookings,
+        bookings: finalBookings,
         total,
         page,
         limit,

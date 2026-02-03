@@ -235,11 +235,37 @@ export const createZone = async (
       return;
     }
 
-    let polygons;
+    // Transform polygons to GeoJSON format
+    let geoJsonPolygons;
     if (rawPolygons) {
-      polygons =
+      const parsedPolygons =
         typeof rawPolygons === "string" ? JSON.parse(rawPolygons) : rawPolygons;
-      console.log("Parsed polygons:", polygons);
+      
+      console.log("Parsed polygons:", parsedPolygons);
+
+      // Convert from [{lat, lng}] to GeoJSON coordinates [lng, lat]
+      geoJsonPolygons = {
+        type: "MultiPolygon",
+        coordinates: parsedPolygons.map((polygon: Array<{lat: number, lng: number}>) => {
+          // Convert to [lng, lat] format
+          const coords = polygon.map(coord => [coord.lng, coord.lat]);
+          
+          // **FIX: Close the polygon by adding first point at the end**
+          if (coords.length > 0) {
+            const firstPoint = coords[0];
+            const lastPoint = coords[coords.length - 1];
+            
+            // Check if polygon is already closed
+            if (firstPoint[0] !== lastPoint[0] || firstPoint[1] !== lastPoint[1]) {
+              coords.push([...firstPoint]); // Add first point at the end to close the loop
+            }
+          }
+          
+          return [coords];
+        })
+      };
+
+      console.log("Converted to GeoJSON:", JSON.stringify(geoJsonPolygons, null, 2));
     }
 
     let subCategories: string[] = [];
@@ -293,7 +319,7 @@ export const createZone = async (
       currency,
       timeZone,
       language,
-      polygons,
+      polygons: geoJsonPolygons,
       languages,
       subCategories,
     });
@@ -312,6 +338,115 @@ export const createZone = async (
     next(error);
   }
 };
+// export const createZone = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const {
+//       name,
+//       currency,
+//       timeZone,
+//       language,
+//       polygons: rawPolygons,
+//       languages,
+//       subCategories: rawSubCategoryIds,
+//     } = req.body;
+
+//     console.log("Creating zone with data:", req.body);
+
+//     const existingZone = await Zone.findOne({
+//       name: { $regex: `^${name.trim()}$`, $options: "i" },
+//     });
+
+//     if (existingZone) {
+//       sendResponse(
+//         res,
+//         null,
+//         "Zone with this name already exists",
+//         STATUS_CODES.CONFLICT
+//       );
+//       return;
+//     }
+
+//     let polygons;
+//     if (rawPolygons) {
+//       polygons =
+//         typeof rawPolygons === "string" ? JSON.parse(rawPolygons) : rawPolygons;
+//       console.log("Parsed polygons:", polygons);
+//     }
+
+//     let subCategories: string[] = [];
+//     if (rawSubCategoryIds) {
+//       const parsedIds =
+//         typeof rawSubCategoryIds === "string"
+//           ? JSON.parse(rawSubCategoryIds)
+//           : rawSubCategoryIds;
+
+//       console.log("Parsed subCategory IDs:", parsedIds);
+
+//       if (!Array.isArray(parsedIds)) {
+//         console.warn("subCategories is not an array:", parsedIds);
+//         sendResponse(
+//           res,
+//           null,
+//           "subCategories must be an array",
+//           STATUS_CODES.BAD_REQUEST
+//         );
+//         return;
+//       }
+
+//       const validSubCategories = await SubCategory.find({
+//         _id: { $in: parsedIds },
+//         type: "subCategory",
+//       }).select("_id");
+
+//       const validIds = validSubCategories.map((cat) => cat._id.toString());
+//       const invalidIds = parsedIds.filter(
+//         (id: string) => !validIds.includes(id)
+//       );
+
+//       console.log("Valid subCategory IDs:", validIds);
+//       console.warn("Invalid subCategory IDs:", invalidIds);
+
+//       if (invalidIds.length > 0) {
+//         sendResponse(
+//           res,
+//           null,
+//           `Invalid subCategories: ${invalidIds.join(", ")}`,
+//           STATUS_CODES.BAD_REQUEST
+//         );
+//         return;
+//       }
+
+//       subCategories = validIds;
+//     }
+
+//     const newZone = new Zone({
+//       name,
+//       currency,
+//       timeZone,
+//       language,
+//       polygons,
+//       languages,
+//       subCategories,
+//     });
+
+//     await newZone.save();
+//     console.log("Zone created:", newZone);
+
+//     sendResponse(
+//       res,
+//       newZone,
+//       "Zone created successfully",
+//       STATUS_CODES.CREATED
+//     );
+//   } catch (error) {
+//     console.error("Error creating zone:", error);
+//     next(error);
+//   }
+// };
 
 //update zone
 export const updateZone = async (

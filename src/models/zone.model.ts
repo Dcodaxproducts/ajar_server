@@ -40,11 +40,26 @@ export interface IZone extends Document {
   currency: string;
   language: string;
   languages?: IZoneLanguage[];
-  polygons: { lat: number; lng: number }[][];
+  polygons: {
+    type: "MultiPolygon";
+    coordinates: number[][][][];  // GeoJSON MultiPolygon format
+  };
   rentalPolicies: RentalPolicies;
   createdAt: Date;
   updatedAt: Date;
 }
+
+// export interface IZone extends Document {
+//   name: string;
+//   subCategories: mongoose.Types.ObjectId[];
+//   currency: string;
+//   language: string;
+//   languages?: IZoneLanguage[];
+//   polygons: { lat: number; lng: number }[][];
+//   rentalPolicies: RentalPolicies;
+//   createdAt: Date;
+//   updatedAt: Date;
+// }
 
 // Rental Policies
 const SecurityDepositRulesSchema = new Schema<ISecurityDepositRules>(
@@ -101,7 +116,6 @@ const ZoneLanguageSchema = new Schema<IZoneLanguage>(
 );
 
 //Zone Schema
-
 const ZoneSchema = new Schema<IZone>(
   {
     name: { type: String, required: true, trim: true },
@@ -110,16 +124,17 @@ const ZoneSchema = new Schema<IZone>(
     ],
     currency: { type: String, required: true, trim: true },
     language: { type: String, default: "en" },
+    // Change to GeoJSON format
     polygons: {
-      type: [
-        [
-          {
-            lat: { type: Number, required: true },
-            lng: { type: Number, required: true },
-          },
-        ],
-      ],
-      default: [],
+      type: {
+        type: String,
+        enum: ["MultiPolygon"],
+        default: "MultiPolygon"
+      },
+      coordinates: {
+        type: [[[[Number]]]],  // MultiPolygon: array of polygons, each polygon is array of linear rings
+        default: []
+      }
     },
     languages: { type: [ZoneLanguageSchema], default: [] },
     rentalPolicies: { type: RentalPoliciesSchema, default: {} },
@@ -127,7 +142,32 @@ const ZoneSchema = new Schema<IZone>(
   { timestamps: true }
 );
 
-ZoneSchema.index({ polygons: "2dsphere" });
+// const ZoneSchema = new Schema<IZone>(
+//   {
+//     name: { type: String, required: true, trim: true },
+//     subCategories: [
+//       { type: mongoose.Schema.Types.ObjectId, ref: "subCategory" },
+//     ],
+//     currency: { type: String, required: true, trim: true },
+//     language: { type: String, default: "en" },
+//     polygons: {
+//       type: [
+//         [
+//           {
+//             lat: { type: Number, required: true },
+//             lng: { type: Number, required: true },
+//           },
+//         ],
+//       ],
+//       default: [],
+//     },
+//     languages: { type: [ZoneLanguageSchema], default: [] },
+//     rentalPolicies: { type: RentalPoliciesSchema, default: {} },
+//   },
+//   { timestamps: true }
+// );
+
+// ZoneSchema.index({ polygons: "2dsphere" });
 
 ZoneSchema.index({ name: 1 });
 

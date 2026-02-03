@@ -37,25 +37,56 @@ export const calculateBookingPrice = ({
       calculatedBasePrice = duration * basePrice;
       break;
 
-    case "month":
-      duration =
-        (checkOut.getFullYear() - checkIn.getFullYear()) * 12 +
-        (checkOut.getMonth() - checkIn.getMonth()) +
-        1;
-      calculatedBasePrice = duration * basePrice;
-      break;
+case "month": {
+  // Step 1: rough month difference
+  duration =
+    (checkOut.getFullYear() - checkIn.getFullYear()) * 12 +
+    (checkOut.getMonth() - checkIn.getMonth());
 
-    case "year":
-      duration = checkOut.getFullYear() - checkIn.getFullYear() + 1;
+  // Step 2: handle days
+  if (checkOut.getDate() < checkIn.getDate()) {
+    // Last month not complete → subtract 1
+    duration -= 1;
+  } else if (checkOut.getDate() > checkIn.getDate()) {
+    // Extra days after a full month → count as an extra month
+    duration += 1;
+  }
+
+  // Step 3: minimum 1 month
+  duration = Math.max(duration, 1);
+
+  calculatedBasePrice = duration * basePrice;
+  break;
+}
+
+
+
+    case "year": {
+      duration = checkOut.getFullYear() - checkIn.getFullYear();
+
+      // Check if full year has completed
+      if (
+        checkOut.getMonth() < checkIn.getMonth() ||
+        (checkOut.getMonth() === checkIn.getMonth() &&
+          checkOut.getDate() < checkIn.getDate())
+      ) {
+        duration -= 1;
+      }
+
+      // Minimum 1 year
+      duration = Math.max(duration, 1);
+
       calculatedBasePrice = duration * basePrice;
       break;
+    }
+
 
     default:
       throw new Error("Invalid price unit");
   }
 
-  const adminFee = calculatedBasePrice * adminCommissionRate;
-  const tax = (calculatedBasePrice + adminFee) * taxRate;
+  const adminFee = basePrice * adminCommissionRate;
+  const tax = (basePrice + adminFee) * taxRate;
   const totalPrice = calculatedBasePrice + adminFee + tax;
 
   return {

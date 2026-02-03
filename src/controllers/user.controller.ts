@@ -135,6 +135,17 @@ export const loginUser = async (
       return;
     }
 
+    if (user.status !== "active" && user.status !== "unblocked") {
+      sendResponse(
+        res,
+        null,
+        `Account is ${user.status}. Please contact support.`,
+        STATUS_CODES.FORBIDDEN
+      );
+      return;
+    }
+
+
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       sendResponse(
@@ -748,7 +759,7 @@ export const updateUserProfile = async (
       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
     }
-
+    console.log(req.files)
     if (req.files && Array.isArray(req.files)) {
       for (const file of req.files as Express.Multer.File[]) {
         const fieldName = file.fieldname;
@@ -762,6 +773,7 @@ export const updateUserProfile = async (
         const existingDocIndex = user.documents.findIndex(
           (d) => d.name === fieldName
         );
+        console.log("existingDocIndex", existingDocIndex)
 
         if (existingDocIndex >= 0) {
           user.documents[existingDocIndex].filesUrl.push(fileUrl);
@@ -828,256 +840,433 @@ export const getDashboardStats = async (
 ): Promise<void> => {
   try {
     const now = new Date();
+    // Standardize end of day to UTC
+    const todayUTC = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      23, 59, 59, 999
+    ));
 
     const filter = req.query.filter as string;
     let filterDate: Date | null = null;
 
     if (filter === "week") {
-      filterDate = new Date();
-      filterDate.setDate(now.getDate() - 7);
+      filterDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 7, 0, 0, 0, 0));
     } else if (filter === "month") {
-      filterDate = new Date();
-      filterDate.setDate(now.getDate() - 28);
+      filterDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 28, 0, 0, 0, 0));
     } else if (filter === "year") {
-      filterDate = new Date();
-      filterDate.setFullYear(now.getFullYear() - 1);
+      filterDate = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
     } else if (filter) {
-      sendResponse(
-        res,
-        null,
-        "Invalid filter. Use 'week', 'month', or 'year'.",
-        STATUS_CODES.BAD_REQUEST
-      );
+      sendResponse(res, null, "Invalid filter. Use 'week', 'month', or 'year'.", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    const [totalUsers, totalAdmins, totalNormalUsers] = await Promise.all([
+    // --- Global Stats (Lifetime Totals) ---
+    const [
+      totalUsers, 
+      totalAdmins, 
+      totalNormalUsers, 
+      bookingCount // Fetches all bookings regardless of status
+    ] = await Promise.all([
       User.countDocuments(),
       User.countDocuments({ role: "admin" }),
       User.countDocuments({ role: "user" }),
+      Booking.countDocuments(), // Lifetime total count
     ]);
 
     const [totalMarketplaceListings, uniqueUserIds] = await Promise.all([
       MarketplaceListing.countDocuments(),
-      MarketplaceListing.distinct("user"),
+      MarketplaceListing.distinct("leaser"),
     ]);
-    const totalLeasers = uniqueUserIds.length;
 
+    const totalLeasers = uniqueUserIds.length;
     const totalCategories = await Category.countDocuments({ type: "category" });
     const totalZones = await Zone.countDocuments();
 
-    let bookingFilter = {};
+    // --- Period Filtered Stats (Status: Completed Only) ---
+    let bookingFilter: any = { status: "completed" };
     if (filterDate) {
-      bookingFilter = { createdAt: { $gte: filterDate, $lte: now } };
+      bookingFilter.createdAt = { $gte: filterDate, $lte: todayUTC };
     }
 
     const filteredBookings = await Booking.find(bookingFilter).lean();
-    const bookingCount = filteredBookings.length;
 
     const totalEarning = filteredBookings.reduce((acc, booking) => {
       const price = booking.priceDetails?.totalPrice || 0;
-      const extension = booking.extraRequestCharges?.totalPrice || 0;
+      // Added additionalCharges as requested to prevent doubling
+      const extension = booking.extraRequestCharges?.additionalCharges || 0; 
       return acc + price + extension;
     }, 0);
 
     const userRecords: any[] = [];
     const earningRecords: any[] = [];
 
+    // --- Chart Data Logic (Week) ---
     if (filter === "week") {
-      for (let i = 6; i >= 0; i--) {
-        const start = new Date(now);
-        start.setDate(now.getDate() - i);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(start);
-        end.setHours(23, 59, 59, 999);
+      for (let i = 0; i < 7; i++) {
+        const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6 + i, 0, 0, 0, 0));
+        const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6 + i, 23, 59, 59, 999));
 
         const [users, bookings] = await Promise.all([
           User.countDocuments({ createdAt: { $gte: start, $lte: end } }),
-          Booking.find({ createdAt: { $gte: start, $lte: end } }).lean(),
+          Booking.find({ status: "completed", createdAt: { $gte: start, $lte: end } }).lean(),
         ]);
 
-        const dailyEarning = bookings.reduce((acc, booking) => {
-          const price = booking.priceDetails?.totalPrice || 0;
-          const extension = booking.extraRequestCharges?.totalPrice || 0;
-          return acc + price + extension;
-        }, 0);
+        const dailyEarning = bookings.reduce((acc, b) => 
+          acc + (b.priceDetails?.totalPrice || 0) + (b.extraRequestCharges?.additionalCharges || 0), 0);
 
-        userRecords.push({ value: `${7 - i}`, totalUsers: users });
-        earningRecords.push({ value: `${7 - i}`, totalEarning: dailyEarning });
+        const dateString = start.toISOString().split('T')[0];
+        userRecords.push({ value: dateString, totalUsers: users });
+        earningRecords.push({ value: dateString, totalEarning: dailyEarning });
       }
     }
 
+    // --- Chart Data Logic (Month) ---
     if (filter === "month") {
-      for (let i = 3; i >= 0; i--) {
-        const start = new Date(now);
-        start.setDate(now.getDate() - i * 7);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(start);
-        end.setDate(end.getDate() + 6);
-        end.setHours(23, 59, 59, 999);
+      for (let i = 0; i < 4; i++) {
+        const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 27 + i * 7, 0, 0, 0, 0));
+        const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 27 + i * 7 + 6, 23, 59, 59, 999));
 
         const [users, bookings] = await Promise.all([
           User.countDocuments({ createdAt: { $gte: start, $lte: end } }),
-          Booking.find({ createdAt: { $gte: start, $lte: end } }).lean(),
+          Booking.find({ status: "completed", createdAt: { $gte: start, $lte: end } }).lean(),
         ]);
 
-        const weeklyEarning = bookings.reduce((acc, booking) => {
-          const price = booking.priceDetails?.totalPrice || 0;
-          const extension = booking.extraRequestCharges?.totalPrice || 0;
-          return acc + price + extension;
-        }, 0);
+        const weeklyEarning = bookings.reduce((acc, b) => 
+          acc + (b.priceDetails?.totalPrice || 0) + (b.extraRequestCharges?.additionalCharges || 0), 0);
 
-        userRecords.push({ value: `${4 - i}`, totalUsers: users });
-        earningRecords.push({ value: `${4 - i}`, totalEarning: weeklyEarning });
+        const dateString = start.toISOString().split('T')[0];
+        userRecords.push({ value: dateString, totalUsers: users });
+        earningRecords.push({ value: dateString, totalEarning: weeklyEarning });
       }
     }
 
-    let userTrend: { value: string; trend: string };
-    let earningTrend: { value: string; trend: string };
-
+    // --- Chart Data Logic (Year) ---
     if (filter === "year") {
-      for (let i = 11; i >= 0; i--) {
-        const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const end = new Date(
-          start.getFullYear(),
-          start.getMonth() + 1,
-          0,
-          23,
-          59,
-          59,
-          999
-        );
+      for (let i = 0; i < 12; i++) {
+        const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11 + i, 1, 0, 0, 0, 0));
+        const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
         const [users, bookings] = await Promise.all([
           User.countDocuments({ createdAt: { $gte: start, $lte: end } }),
-          Booking.find({ createdAt: { $gte: start, $lte: end } }).lean(),
+          Booking.find({ status: "completed", createdAt: { $gte: start, $lte: end } }).lean(),
         ]);
 
-        const monthlyEarning = bookings.reduce((acc, booking) => {
-          const price = booking.priceDetails?.totalPrice || 0;
-          const extension = booking.extraRequestCharges?.totalPrice || 0;
-          return acc + price + extension;
-        }, 0);
+        const monthlyEarning = bookings.reduce((acc, b) => 
+          acc + (b.priceDetails?.totalPrice || 0) + (b.extraRequestCharges?.additionalCharges || 0), 0);
 
-        userRecords.push({ value: `${12 - i}`, totalUsers: users });
-        earningRecords.push({
-          value: `${12 - i}`,
-          totalEarning: monthlyEarning,
-        });
+        const dateString = start.toISOString().substring(0, 7); 
+        userRecords.push({ value: dateString, totalUsers: users });
+        earningRecords.push({ value: dateString, totalEarning: monthlyEarning });
       }
-
-      // Calculate current vs previous year total
-      const currentYear = now.getFullYear();
-      const previousYear = currentYear - 1;
-
-      const [prevUserDocs, prevBookings] = await Promise.all([
-        User.countDocuments({
-          createdAt: {
-            $gte: new Date(previousYear, 0, 1),
-            $lte: new Date(previousYear, 11, 31, 23, 59, 59, 999),
-          },
-        }),
-        Booking.find({
-          createdAt: {
-            $gte: new Date(previousYear, 0, 1),
-            $lte: new Date(previousYear, 11, 31, 23, 59, 59, 999),
-          },
-        }).lean(),
-      ]);
-
-      const prevTotalUsers = prevUserDocs;
-      const prevTotalEarning = prevBookings.reduce((acc, booking) => {
-        const price = booking.priceDetails?.totalPrice || 0;
-        const extension = booking.extraRequestCharges?.totalPrice || 0;
-        return acc + price + extension;
-      }, 0);
-
-      const currTotalUsers = userRecords.reduce(
-        (acc, cur) => acc + cur.totalUsers,
-        0
-      );
-      const currTotalEarning = earningRecords.reduce(
-        (acc, cur) => acc + cur.totalEarning,
-        0
-      );
-
-      const calcTrend = (current: number, previous: number) => {
-        const diff = current - previous;
-        const trend = diff >= 0 ? "up" : "down";
-        const percentage =
-          previous === 0
-            ? current > 0
-              ? 100
-              : 0
-            : Math.abs(Math.round((diff / previous) * 100));
-        return { value: `${percentage}`, trend };
-      };
-
-      userTrend = calcTrend(currTotalUsers, prevTotalUsers);
-      earningTrend = calcTrend(currTotalEarning, prevTotalEarning);
-    } else {
-      const calcTrend = (current: number, previous: number) => {
-        const diff = current - previous;
-        const trend = diff >= 0 ? "up" : "down";
-        const percentage =
-          previous === 0
-            ? current > 0
-              ? 100
-              : 0
-            : Math.abs(Math.round((diff / previous) * 100));
-        return { value: `${percentage}`, trend };
-      };
-
-      userTrend =
-        userRecords.length >= 2
-          ? calcTrend(
-            userRecords[userRecords.length - 1].totalUsers,
-            userRecords[userRecords.length - 2].totalUsers
-          )
-          : { value: "0", trend: "up" };
-
-      earningTrend =
-        earningRecords.length >= 2
-          ? calcTrend(
-            earningRecords[earningRecords.length - 1].totalEarning,
-            earningRecords[earningRecords.length - 2].totalEarning
-          )
-          : { value: "0", trend: "up" };
     }
 
-    sendResponse(
-      res,
-      {
-        filter,
-        stats: {
-          totalUsers,
-          totalAdmins,
-          totalNormalUsers,
-          totalLeasers,
-          totalMarketplaceListings,
-          totalCategories,
-          totalZones,
-          bookingCount,
-          totalEarning,
-        },
-        charts: {
-          users: {
-            change: userTrend,
-            record: userRecords,
-          },
-          earnings: {
-            change: earningTrend,
-            record: earningRecords,
-          },
-        },
+    // --- Trend Calculation ---
+    const calcTrend = (current: number, previous: number) => {
+      const diff = current - previous;
+      const trend = diff >= 0 ? "up" : "down";
+      const percentage = previous === 0 ? (current > 0 ? 100 : 0) : Math.abs(Math.round((diff / previous) * 100));
+      return { value: `${percentage}`, trend };
+    };
+
+    let userTrend, earningTrend;
+    if (filter === "year") {
+      const prevYearStart = new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1));
+      const prevYearEnd = new Date(Date.UTC(now.getUTCFullYear() - 1, 11, 31, 23, 59, 59, 999));
+      const [prevUsers, prevBookings] = await Promise.all([
+        User.countDocuments({ createdAt: { $gte: prevYearStart, $lte: prevYearEnd } }),
+        Booking.find({ status: "completed", createdAt: { $gte: prevYearStart, $lte: prevYearEnd } }).lean(),
+      ]);
+      const prevEarning = prevBookings.reduce((acc, b) => acc + (b.priceDetails?.totalPrice || 0) + (b.extraRequestCharges?.additionalCharges || 0), 0);
+      userTrend = calcTrend(userRecords.reduce((a, c) => a + c.totalUsers, 0), prevUsers);
+      earningTrend = calcTrend(earningRecords.reduce((a, c) => a + c.totalEarning, 0), prevEarning);
+    } else {
+      userTrend = userRecords.length >= 2 ? calcTrend(userRecords[userRecords.length - 1].totalUsers, userRecords[userRecords.length - 2].totalUsers) : { value: "0", trend: "up" };
+      earningTrend = earningRecords.length >= 2 ? calcTrend(earningRecords[earningRecords.length - 1].totalEarning, earningRecords[earningRecords.length - 2].totalEarning) : { value: "0", trend: "up" };
+    }
+
+    sendResponse(res, {
+      filter,
+      stats: { 
+        totalUsers, 
+        totalAdmins, 
+        totalNormalUsers, 
+        totalLeasers, 
+        totalMarketplaceListings, 
+        totalCategories, 
+        totalZones,
+        bookingCount,
+        totalEarning 
       },
-      "Dashboard statistics fetched successfully",
-      STATUS_CODES.OK
-    );
+      charts: {
+        users: { change: userTrend, record: userRecords },
+        earnings: { change: earningTrend, record: earningRecords }
+      }
+    }, "Stats fetched successfully", STATUS_CODES.OK);
+
   } catch (error) {
     next(error);
   }
 };
+// export const getDashboardStats = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ): Promise<void> => {
+//   try {
+//     const now = new Date();
+
+//     const filter = req.query.filter as string;
+//     let filterDate: Date | null = null;
+
+//     if (filter === "week") {
+//       filterDate = new Date();
+//       filterDate.setDate(now.getDate() - 7);
+//     } else if (filter === "month") {
+//       filterDate = new Date();
+//       filterDate.setDate(now.getDate() - 28);
+//     } else if (filter === "year") {
+//       filterDate = new Date();
+//       filterDate.setFullYear(now.getFullYear() - 1);
+//     } else if (filter) {
+//       sendResponse(
+//         res,
+//         null,
+//         "Invalid filter. Use 'week', 'month', or 'year'.",
+//         STATUS_CODES.BAD_REQUEST
+//       );
+//       return;
+//     }
+
+//     const [totalUsers, totalAdmins, totalNormalUsers] = await Promise.all([
+//       User.countDocuments(),
+//       User.countDocuments({ role: "admin" }),
+//       User.countDocuments({ role: "user" }),
+//     ]);
+
+//     const [totalMarketplaceListings, uniqueUserIds] = await Promise.all([
+//       MarketplaceListing.countDocuments(),
+//       MarketplaceListing.distinct("leaser"),
+//     ]);
+
+//     const totalLeasers = uniqueUserIds.length;
+
+//     const totalCategories = await Category.countDocuments({ type: "category" });
+//     const totalZones = await Zone.countDocuments();
+
+//     let bookingFilter = {};
+//     if (filterDate) {
+//       bookingFilter = { createdAt: { $gte: filterDate, $lte: now } };
+//     }
+
+//     const filteredBookings = await Booking.find(bookingFilter).lean();
+//     const bookingCount = filteredBookings.length;
+
+//     const totalEarning = filteredBookings.reduce((acc, booking) => {
+//       const price = booking.priceDetails?.totalPrice || 0;
+//       const extension = booking.extraRequestCharges?.totalPrice || 0;
+//       return acc + price + extension;
+//     }, 0);
+
+//     const userRecords: any[] = [];
+//     const earningRecords: any[] = [];
+
+//     if (filter === "week") {
+//       for (let i = 6; i >= 0; i--) {
+//         const start = new Date(now);
+//         start.setDate(now.getDate() - i);
+//         start.setHours(0, 0, 0, 0);
+//         const end = new Date(start);
+//         end.setHours(23, 59, 59, 999);
+
+//         const [users, bookings] = await Promise.all([
+//           User.countDocuments({ createdAt: { $gte: start, $lte: end } }),
+//           Booking.find({ createdAt: { $gte: start, $lte: end } }).lean(),
+//         ]);
+
+//         const dailyEarning = bookings.reduce((acc, booking) => {
+//           const price = booking.priceDetails?.totalPrice || 0;
+//           const extension = booking.extraRequestCharges?.totalPrice || 0;
+//           return acc + price + extension;
+//         }, 0);
+
+//         userRecords.push({ value: `${7 - i}`, totalUsers: users });
+//         earningRecords.push({ value: `${7 - i}`, totalEarning: dailyEarning });
+//       }
+//     }
+
+//     if (filter === "month") {
+//       for (let i = 3; i >= 0; i--) {
+//         const start = new Date(now);
+//         start.setDate(now.getDate() - i * 7);
+//         start.setHours(0, 0, 0, 0);
+//         const end = new Date(start);
+//         end.setDate(end.getDate() + 6);
+//         end.setHours(23, 59, 59, 999);
+
+//         const [users, bookings] = await Promise.all([
+//           User.countDocuments({ createdAt: { $gte: start, $lte: end } }),
+//           Booking.find({ createdAt: { $gte: start, $lte: end } }).lean(),
+//         ]);
+
+//         const weeklyEarning = bookings.reduce((acc, booking) => {
+//           const price = booking.priceDetails?.totalPrice || 0;
+//           const extension = booking.extraRequestCharges?.totalPrice || 0;
+//           return acc + price + extension;
+//         }, 0);
+
+//         userRecords.push({ value: `${4 - i}`, totalUsers: users });
+//         earningRecords.push({ value: `${4 - i}`, totalEarning: weeklyEarning });
+//       }
+//     }
+
+//     let userTrend: { value: string; trend: string };
+//     let earningTrend: { value: string; trend: string };
+
+//     if (filter === "year") {
+//       for (let i = 11; i >= 0; i--) {
+//         const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+//         const end = new Date(
+//           start.getFullYear(),
+//           start.getMonth() + 1,
+//           0,
+//           23,
+//           59,
+//           59,
+//           999
+//         );
+
+//         const [users, bookings] = await Promise.all([
+//           User.countDocuments({ createdAt: { $gte: start, $lte: end } }),
+//           Booking.find({ createdAt: { $gte: start, $lte: end } }).lean(),
+//         ]);
+
+//         const monthlyEarning = bookings.reduce((acc, booking) => {
+//           const price = booking.priceDetails?.totalPrice || 0;
+//           const extension = booking.extraRequestCharges?.totalPrice || 0;
+//           return acc + price + extension;
+//         }, 0);
+
+//         userRecords.push({ value: `${12 - i}`, totalUsers: users });
+//         earningRecords.push({
+//           value: `${12 - i}`,
+//           totalEarning: monthlyEarning,
+//         });
+//       }
+
+//       // Calculate current vs previous year total
+//       const currentYear = now.getFullYear();
+//       const previousYear = currentYear - 1;
+
+//       const [prevUserDocs, prevBookings] = await Promise.all([
+//         User.countDocuments({
+//           createdAt: {
+//             $gte: new Date(previousYear, 0, 1),
+//             $lte: new Date(previousYear, 11, 31, 23, 59, 59, 999),
+//           },
+//         }),
+//         Booking.find({
+//           createdAt: {
+//             $gte: new Date(previousYear, 0, 1),
+//             $lte: new Date(previousYear, 11, 31, 23, 59, 59, 999),
+//           },
+//         }).lean(),
+//       ]);
+
+//       const prevTotalUsers = prevUserDocs;
+//       const prevTotalEarning = prevBookings.reduce((acc, booking) => {
+//         const price = booking.priceDetails?.totalPrice || 0;
+//         const extension = booking.extraRequestCharges?.totalPrice || 0;
+//         return acc + price + extension;
+//       }, 0);
+
+//       const currTotalUsers = userRecords.reduce(
+//         (acc, cur) => acc + cur.totalUsers,
+//         0
+//       );
+//       const currTotalEarning = earningRecords.reduce(
+//         (acc, cur) => acc + cur.totalEarning,
+//         0
+//       );
+
+//       const calcTrend = (current: number, previous: number) => {
+//         const diff = current - previous;
+//         const trend = diff >= 0 ? "up" : "down";
+//         const percentage =
+//           previous === 0
+//             ? current > 0
+//               ? 100
+//               : 0
+//             : Math.abs(Math.round((diff / previous) * 100));
+//         return { value: `${percentage}`, trend };
+//       };
+
+//       userTrend = calcTrend(currTotalUsers, prevTotalUsers);
+//       earningTrend = calcTrend(currTotalEarning, prevTotalEarning);
+//     } else {
+//       const calcTrend = (current: number, previous: number) => {
+//         const diff = current - previous;
+//         const trend = diff >= 0 ? "up" : "down";
+//         const percentage =
+//           previous === 0
+//             ? current > 0
+//               ? 100
+//               : 0
+//             : Math.abs(Math.round((diff / previous) * 100));
+//         return { value: `${percentage}`, trend };
+//       };
+
+//       userTrend =
+//         userRecords.length >= 2
+//           ? calcTrend(
+//             userRecords[userRecords.length - 1].totalUsers,
+//             userRecords[userRecords.length - 2].totalUsers
+//           )
+//           : { value: "0", trend: "up" };
+
+//       earningTrend =
+//         earningRecords.length >= 2
+//           ? calcTrend(
+//             earningRecords[earningRecords.length - 1].totalEarning,
+//             earningRecords[earningRecords.length - 2].totalEarning
+//           )
+//           : { value: "0", trend: "up" };
+//     }
+
+//     sendResponse(
+//       res,
+//       {
+//         filter,
+//         stats: {
+//           totalUsers,
+//           totalAdmins,
+//           totalNormalUsers,
+//           totalLeasers,
+//           totalMarketplaceListings,
+//           totalCategories,
+//           totalZones,
+//           bookingCount,
+//           totalEarning,
+//         },
+//         charts: {
+//           users: {
+//             change: userTrend,
+//             record: userRecords,
+//           },
+//           earnings: {
+//             change: earningTrend,
+//             record: earningRecords,
+//           },
+//         },
+//       },
+//       "Dashboard statistics fetched successfully",
+//       STATUS_CODES.OK
+//     );
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 // In user.controller.ts
 export const updateUserStatus = async (
