@@ -6,7 +6,6 @@ export interface IRefundRequest extends Document {
   user: mongoose.Types.ObjectId;
   deduction: number;
   totalRefundAmount: number;
-  selectTime: string;
   policy: mongoose.Types.ObjectId;
   status: "pending" | "accept" | "reject";
   note: string;
@@ -29,7 +28,6 @@ const refundRequestSchema = new Schema<IRefundRequest>(
       default: 0,
     },
     totalRefundAmount: Number,
-    selectTime: String,
     policy: {
       type: Schema.Types.ObjectId,
       ref: "RefundPolicy",

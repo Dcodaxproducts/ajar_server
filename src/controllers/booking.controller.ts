@@ -303,6 +303,19 @@ export const updateBookingStatus = async (
     const user = (req as any).user;
     const userId = user.id || user._id;
 
+    const admin = await User.findOne({ role: "admin" });
+
+    if (!admin) {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(
+        res,
+        null,
+        "Admin not found",
+        STATUS_CODES.NOT_FOUND
+      );
+    }
+
     let parentBooking = await Booking.findById(id)
       .populate("renter", "email name fcmToken wallet")
       .populate("leaser", "email name fcmToken wallet")
@@ -362,12 +375,15 @@ export const updateBookingStatus = async (
       const renter = parentBooking.renter as any;
       const leaser = parentBooking.leaser as any;
 
+      const { price, adminFee, tax } = childBooking.priceDetails;
       const extendChargeAmount = Number(additionalCharges) || 0;
-      const extensionTotal =
-        childBooking.priceDetails.totalPrice + extendChargeAmount;
+
+      const renterPay = price + adminFee + tax + extendChargeAmount;
+      const leaserReceive = price + extendChargeAmount;
+      const adminReceive = adminFee + tax;
 
       // Wallet check
-      if (!renter?.wallet || renter.wallet.balance < extensionTotal) {
+      if (!renter?.wallet || renter.wallet.balance < renterPay) {
         await session.abortTransaction();
         session.endSession();
 
@@ -380,7 +396,7 @@ export const updateBookingStatus = async (
               bookingId: childBooking._id.toString(),
               type: "extension",
               status: "payment_required",
-              requiredBalance: extensionTotal,
+              requiredBalance: renterPay,
               currentBalance: renter.wallet?.balance || 0,
             }
           );
@@ -391,7 +407,7 @@ export const updateBookingStatus = async (
         return sendResponse(
           res,
           {
-            requiredBalance: extensionTotal,
+            requiredBalance: renterPay,
             currentBalance: renter.wallet?.balance || 0,
           },
           "Insufficient wallet balance for extension approval",
@@ -400,12 +416,17 @@ export const updateBookingStatus = async (
       }
 
       // Deduct renter wallet & credit leaser
-      renter.wallet.balance -= extensionTotal;
+      renter.wallet.balance -= renterPay;
       await renter.save({ session });
 
       if (leaser?.wallet) {
-        leaser.wallet.balance += extensionTotal;
+        leaser.wallet.balance += leaserReceive;
         await leaser.save({ session });
+      }
+
+      if (admin?.wallet) {
+        admin.wallet.balance += adminReceive;
+        await admin.save({ session });
       }
 
       await WalletTransaction.insertMany(
@@ -413,7 +434,7 @@ export const updateBookingStatus = async (
           {
             userId: renter._id,
             type: "debit",
-            amount: extensionTotal,
+            amount: renterPay,
             source: "booking",
             status: "succeeded",
             createdAt: new Date(),
@@ -422,7 +443,7 @@ export const updateBookingStatus = async (
           {
             userId: leaser._id,
             type: "credit",
-            amount: extensionTotal,
+            amount: leaserReceive,
             source: "booking",
             status: "succeeded",
             createdAt: new Date(),
@@ -442,7 +463,7 @@ export const updateBookingStatus = async (
       childBooking.otp = pin;
       childBooking.extendCharges = {
         extendCharges: extendChargeAmount,
-        totalPrice: extensionTotal,
+        totalPrice: renterPay,
       };
       (childBooking as any).extensionRequestedDate = undefined;
       await childBooking.save({ session });
@@ -470,12 +491,12 @@ export const updateBookingStatus = async (
         await sendNotification(
           renterId,
           "Extension Approved",
-          `Your extension request for "${listingName}" has been approved. Amount deducted from your wallet: $${extensionTotal}.`,
+          `Your extension request for "${listingName}" has been approved. Amount deducted from your wallet: $${renterPay}.`,
           {
             bookingId: childBooking._id.toString(),
             type: "extension",
             status: "approved",
-            deductedAmount: extensionTotal, // ADDED
+            deductedAmount: renterPay, // ADDED
           }
         );
 
@@ -483,12 +504,12 @@ export const updateBookingStatus = async (
         await sendNotification(
           leaserId,
           "Extension Approved - PIN Code",
-          `The extension for "${listingName}" is approved. PIN Code: ${pin}. Amount deducted from user's wallet: $${extensionTotal}.`,
+          `The extension for "${listingName}" is approved. PIN Code: ${pin}. Amount deducted from user's wallet: $${renterPay}.`,
           {
             bookingId: childBooking._id.toString(),
             type: "extension",
             status: "approved",
-            deductedAmount: extensionTotal,
+            deductedAmount: renterPay,
             otp: pin,
           }
         );
@@ -496,17 +517,14 @@ export const updateBookingStatus = async (
         await sendNotification(
           leaserId,
           "Payment Received",
-          `You received $${extensionTotal} in your wallet for the extension of "${listingName}".`,
+          `You received $${leaserReceive} in your wallet for the extension of "${listingName}".`,
           {
             bookingId: childBooking._id.toString(),
             type: "extension",
             status: "approved",
-            creditedAmount: extensionTotal,
+            creditedAmount: leaserReceive,
           }
         );
-
-
-
       } catch (err) {
         console.error("Failed to notify renter about extension approval:", err);
       }
@@ -599,8 +617,11 @@ export const updateBookingStatus = async (
         );
       }
 
-      const totalAmount =
-        parentBooking.priceDetails.totalPrice + specialCharges;
+      const { price, adminFee, tax } = parentBooking.priceDetails;
+
+      const renterPay = price + adminFee + tax + specialCharges;
+      const leaserReceive = price + specialCharges;
+      const adminReceive = adminFee + tax;
 
       // Wallet existence check
       if (!renter?.wallet) {
@@ -615,7 +636,7 @@ export const updateBookingStatus = async (
       }
 
       // Balance validation
-      if (renter.wallet.balance < totalAmount) {
+      if (renter.wallet.balance < renterPay) {
         await session.abortTransaction();
         session.endSession();
 
@@ -628,7 +649,7 @@ export const updateBookingStatus = async (
               bookingId: parentBooking._id.toString(),
               type: "booking",
               status: "payment_required",
-              requiredBalance: totalAmount,
+              requiredBalance: renterPay,
               currentBalance: renter.wallet.balance,
             }
           );
@@ -639,7 +660,7 @@ export const updateBookingStatus = async (
         return sendResponse(
           res,
           {
-            requiredBalance: totalAmount,
+            requiredBalance: renterPay,
             currentBalance: renter.wallet.balance,
           },
           "Insufficient wallet balance. Booking cannot be approved.",
@@ -647,21 +668,29 @@ export const updateBookingStatus = async (
         );
       }
 
-      // Deduct renter wallet & credit leaser
-      renter.wallet.balance -= totalAmount;
+      // Deduct from renter
+      renter.wallet.balance -= renterPay;
       await renter.save({ session });
 
+      // Credit leaser
       if (leaser?.wallet) {
-        leaser.wallet.balance += totalAmount;
+        leaser.wallet.balance += leaserReceive;
         await leaser.save({ session });
       }
+
+      // Credit admin
+      if (admin?.wallet) {
+        admin.wallet.balance += adminReceive;
+        await admin.save({ session });
+      }
+
 
       await WalletTransaction.insertMany(
         [
           {
             userId: renter._id,
             type: "debit",
-            amount: totalAmount,
+            amount: renterPay,
             source: "booking",
             status: "succeeded",
             createdAt: new Date(),
@@ -670,7 +699,7 @@ export const updateBookingStatus = async (
           {
             userId: leaser._id,
             type: "credit",
-            amount: totalAmount,
+            amount: leaserReceive,
             source: "booking",
             status: "succeeded",
             createdAt: new Date(),
@@ -687,12 +716,12 @@ export const updateBookingStatus = async (
       // Update price details and extra charges
       updateFields.priceDetails = {
         ...parentBooking.priceDetails,
-        totalPrice: totalAmount,
+        totalPrice: renterPay,
       };
 
       updateFields.extraRequestCharges = {
         additionalCharges: specialCharges,
-        totalPrice: totalAmount,
+        totalPrice: renterPay,
       };
     }
 
@@ -762,8 +791,12 @@ export const updateBookingStatus = async (
           : leaser?.toString();
       const listingId = listing?._id?.toString() || "";
 
+      const specialCharges = finalBooking.extraRequestCharges?.additionalCharges || 0;
+
+      const totalPaid = finalBooking.priceDetails.totalPrice;
+      const leaserReceive = finalBooking.priceDetails.price + specialCharges;
+
       if (finalStatus === "approved") {
-        const totalPaid = finalBooking.priceDetails.totalPrice;
         await sendEmail({
           to: leaser.email,
           name: leaser.name,
@@ -791,12 +824,12 @@ export const updateBookingStatus = async (
         await sendNotification(
           leaser._id.toString(),
           "Payment Received",
-          `You received $${totalPaid} in your wallet for the booking of "${listingName}".`,
+          `You received $${leaserReceive} in your wallet for the booking of "${listingName}".`,
           {
             bookingId: finalBooking._id.toString(),
             type: "booking",
             status: "approved",
-            creditedAmount: totalPaid,
+            creditedAmount: leaserReceive,
           }
         );
       }
@@ -804,7 +837,6 @@ export const updateBookingStatus = async (
       let renterMsg = `Your booking ${finalBooking._id?.toString()} status changed to ${finalStatus}.`;
 
       if (finalStatus === "approved") {
-        const totalPaid = finalBooking.priceDetails.totalPrice;
         renterMsg = `Your booking for "${listingName}" has been approved. 
         Amount deducted from your wallet: $${totalPaid}. 
         The PIN has been sent to the leaser. Please provide the PIN at check-in.`;

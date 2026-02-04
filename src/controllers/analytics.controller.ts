@@ -15,10 +15,10 @@ const toObjectId = (v?: string) =>
 
 const parseDate = (v?: string) => (v ? new Date(v) : undefined);
 const addMonths = (d: Date, n: number) =>
-  new Date(d.setMonth(d.getMonth() + n));
-const addDays = (d: Date, n: number) => new Date(d.setDate(d.getDate() + n));
-const startOfDay = (d: Date) => new Date(d.setHours(0, 0, 0, 0));
-const endOfDay = (d: Date) => new Date(d.setHours(23, 59, 59, 999));
+  new Date(d.getFullYear(), d.getMonth() + n, d.getDate());
+const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
 
 export const getAdminAnalytics = async (
   req: Request,
@@ -45,27 +45,25 @@ export const getAdminAnalytics = async (
     const prevFrom = new Date(prevTo.getTime() - msRange);
 
     // listing filter
-    let listingIds: mongoose.Types.ObjectId[] = [];
+    let listingIds: mongoose.Types.ObjectId[] | undefined = undefined;
     if (zoneId || subCategoryId) {
       const match: any = {};
       if (zoneId) match.zone = zoneId;
       if (subCategoryId) match.subCategory = subCategoryId;
-      listingIds = await MarketplaceListing.find(match)
+      const foundListings = await MarketplaceListing.find(match)
         .select("_id")
-        .lean()
-        .then((docs) => docs.map((d) => d._id as mongoose.Types.ObjectId));
+        .lean();
+      if (foundListings.length) listingIds = foundListings.map((d) => d._id as mongoose.Types.ObjectId);
     }
 
-    let filterBookingIds: mongoose.Types.ObjectId[] | undefined;
-    if (zoneId || subCategoryId) {
-      filterBookingIds = await Booking.find({
-        marketplaceListingId: {
-          $in: listingIds.length ? listingIds : [null],
-        },
+    let filterBookingIds: mongoose.Types.ObjectId[] | undefined = undefined;
+    if (listingIds?.length) {
+      const foundBookings = await Booking.find({
+        marketplaceListingId: { $in: listingIds },
       })
         .select("_id")
-        .lean()
-        .then((docs) => docs.map((d) => d._id as mongoose.Types.ObjectId));
+        .lean();
+      if (foundBookings.length) filterBookingIds = foundBookings.map((d) => d._id as mongoose.Types.ObjectId);
     }
 
     // expressions
@@ -88,22 +86,14 @@ export const getAdminAnalytics = async (
         createdAt: { $gte: from, $lte: to },
         status: { $in: ["accepted", "completed"] },
       };
-      if (zoneId || subCategoryId) {
-        m.marketplaceListingId = {
-          $in: listingIds.length ? listingIds : [null],
-        };
-      }
+      if (listingIds?.length) m.marketplaceListingId = { $in: listingIds };
       return m;
     };
 
     const refundMatch = (from: Date, to: Date) => {
       const m: any = { createdAt: { $gte: from, $lte: to }, status: "accept" };
-      if (zoneId || subCategoryId) {
-        m.booking = {
-          $in: (filterBookingIds && filterBookingIds.length
-            ? filterBookingIds
-            : [null]) as any,
-        };
+      if (filterBookingIds?.length) {
+        m.booking = { $in: filterBookingIds as any };
       }
       return m;
     };
@@ -111,7 +101,7 @@ export const getAdminAnalytics = async (
     // aggregate helpers
     const aggBookings = async (from: Date, to: Date) => {
       const [agg] = await Booking.aggregate([
-        { $match: bookingMatch(from, to) },
+        { $match: { ...bookingMatch(from, to), status: "completed" } },
         { $addFields: { revenue: revenueExpr, commission: commissionExpr } },
         {
           $group: {
@@ -176,18 +166,21 @@ export const getAdminAnalytics = async (
       return { value: `${perc}`, trend };
     };
 
-    // chart records
+    // ===================== CHART RECORDS =====================
     const revenueRecords: { value: string; amount: number }[] = [];
     const commissionRecords: { value: string; amount: number }[] = [];
     const refundRecords: { value: string; amount: number }[] = [];
     const payoutRecords: { value: string; amount: number }[] = [];
 
-    const base = new Date(dateTo);
+    const base = new Date(dateTo); // today
+    const todayStart = startOfDay(base);
+    const todayEnd = endOfDay(base);
 
     if (filter === "week") {
       for (let i = 6; i >= 0; i--) {
-        const start = startOfDay(addDays(base, -i));
-        const end = endOfDay(start);
+        const day = addDays(todayStart, -i); // always from start of day
+        const start = startOfDay(day);
+        const end = endOfDay(day); // ensures all records till 23:59:59.999 are included
         const b = await aggBookings(start, end);
         const r = await aggRefunds(start, end);
         const p = Math.max(b.totalRevenue - b.platformCommission - r, 0);
@@ -200,7 +193,8 @@ export const getAdminAnalytics = async (
       }
     } else if (filter === "month") {
       for (let i = 3; i >= 0; i--) {
-        const start = startOfDay(addDays(base, -i * 7));
+        const startWeek = addDays(new Date(base), -i * 7);
+        const start = startOfDay(startWeek);
         const end = endOfDay(addDays(start, 6));
         const b = await aggBookings(start, end);
         const r = await aggRefunds(start, end);
@@ -215,15 +209,7 @@ export const getAdminAnalytics = async (
     } else if (filter === "year") {
       for (let i = 11; i >= 0; i--) {
         const start = new Date(base.getFullYear(), base.getMonth() - i, 1);
-        const end = new Date(
-          start.getFullYear(),
-          start.getMonth() + 1,
-          0,
-          23,
-          59,
-          59,
-          999
-        );
+        const end = endOfDay(new Date(start.getFullYear(), start.getMonth() + 1, 0));
         const b = await aggBookings(start, end);
         const r = await aggRefunds(start, end);
         const p = Math.max(b.totalRevenue - b.platformCommission - r, 0);
@@ -240,25 +226,21 @@ export const getAdminAnalytics = async (
     const performanceIndicators = [
       {
         label: "Total Revenue",
-        // value: Math.round(pct(currentRevenue, prevRevenue)),
         value: currentRevenue,
         change: calcTrend(currentRevenue, prevRevenue),
       },
       {
         label: "Platform Commission",
-        // value: Math.round(pct(currentCommission, prevCommission)),
         value: currentCommission,
         change: calcTrend(currentCommission, prevCommission),
       },
       {
         label: "Owners Payouts",
-        // value: Math.round(pct(currentOwnerPayout, prevOwnerPayout)),
         value: currentOwnerPayout,
         change: calcTrend(currentOwnerPayout, prevOwnerPayout),
       },
       {
         label: "Refund Issued",
-        // value: Math.round(pct(currentRefund, prevRefund)),
         value: currentRefund,
         change: calcTrend(currentRefund, prevRefund),
       },

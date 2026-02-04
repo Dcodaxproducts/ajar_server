@@ -7,6 +7,9 @@ import asyncHandler from "express-async-handler";
 import { Booking } from "../models/booking.model";
 import { paginateQuery } from "../utils/paginate";
 import { RefundPolicy } from "../models/refundPolicy.model";
+import { RefundRequest } from "../models/refundRequest.model";
+import { sendResponse } from "../utils/response";
+import { STATUS_CODES } from "../config/constants";
 
 interface AuthRequest extends Request {
   user?: {
@@ -99,7 +102,7 @@ export const getAllRefundSettings = asyncHandler(
 
 //Update Refund Settings (Admin)
 export const updateRefundSettings = asyncHandler(
-  async (req: Request  & { user?: any }, res: Response) => {
+  async (req: Request & { user?: any }, res: Response) => {
     const { id } = req.params;
     const {
       zone,
@@ -168,13 +171,12 @@ export const deleteRefundSettings = asyncHandler(
   }
 );
 
-//for leaser
 // Create Refund Request (User)
 export const createRefundRequest = asyncHandler(
   async (req: Request & { user?: any }, res: Response): Promise<void> => {
     const { user } = req as any;
 
-    // sirf allowed fields pick karo
+    // Allow only safe fields
     const allowedUserFields = ["booking", "reason", "selectTime"];
     const sanitizedBody: any = {};
 
@@ -184,15 +186,31 @@ export const createRefundRequest = asyncHandler(
       }
     });
 
-    const { booking } = sanitizedBody;
+    const { booking, reason, selectTime, note } = sanitizedBody;
 
-    // booking id validate
+    // Validate booking
     if (!(await isValidObjectIdAndExists(booking, Booking))) {
       res.status(400).json({ message: "Invalid booking ID" });
       return;
     }
 
-    // booking + listing lao
+    // Check if refund request already exists for this booking and user
+    const existingRefund = await RefundRequest.findOne({
+      booking,
+      user: req.user?.id,
+    });
+
+
+    if (existingRefund) {
+      sendResponse(
+        res,
+        null,
+        "Refund request For this booking already exists",
+        STATUS_CODES.NOT_FOUND
+      );
+    }
+
+    // Get booking + listing
     const bookingData = await Booking.findById(booking).populate(
       "marketplaceListingId"
     );
@@ -206,41 +224,36 @@ export const createRefundRequest = asyncHandler(
     const zone = listing.zone;
     const subCategory = listing.subCategory;
 
-    // Refund policy lao (naya model)
+    // Find refund policy
     const policy = await RefundPolicy.findOne({ zone, subCategory });
 
     if (!policy || !policy.allowFund) {
-      res.status(400).json({
-        message: "Refund not allowed for this booking",
-      });
+      res.status(400).json({ message: "Refund not allowed for this booking" });
       return;
     }
 
-    // check-in tak kitne hours baqi hain
+    // Calculate time difference
     const checkInDate = new Date(bookingData.dates.checkIn);
     const now = new Date();
-    const msUntilCheckIn = checkInDate.getTime() - now.getTime();
-    const hoursUntilCheckIn = msUntilCheckIn / (1000 * 60 * 60);
 
-    // cutoff time (days + hours => total hours)
-    const cutoffDays =
-      (policy as any).cancellationCutoffTime?.days ?? 0;
-    const cutoffHoursOnly =
-      (policy as any).cancellationCutoffTime?.hours ?? 0;
+    const hoursUntilCheckIn =
+      (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    const cutoffHours = cutoffDays * 24 + cutoffHoursOnly;
+    // Use cancellationCutoffTime
+    const cutoffHours =
+      (policy.cancellationCutoffTime?.days || 0) * 24 +
+      (policy.cancellationCutoffTime?.hours || 0);
+    console.log("hoursUntilCheckIn", hoursUntilCheckIn)
+    console.log("cutoffHours", cutoffHours)
 
-    // flat fee sirf number me nikalo (object nahi)
+    // Flat fee amount
     const flatFee = Number((policy as any).flatFee?.amount ?? 0);
 
-    const totalPrice = Number(
-      bookingData.priceDetails?.totalPrice ?? 0
-    );
+    const totalPrice = bookingData.priceDetails.totalPrice || 0;
 
-    let deduction: number = 0;
-    let totalRefundAmount: number = 0;
+    let deduction = 0;
+    let totalRefundAmount = 0;
 
-    // ORIGINAL LOGIC (unchanged)
     if (hoursUntilCheckIn > cutoffHours) {
       deduction = flatFee;
       totalRefundAmount = totalPrice - deduction;
@@ -249,45 +262,35 @@ export const createRefundRequest = asyncHandler(
       totalRefundAmount = 0;
     }
 
-    // refund request create karo
-    const refund = await RefundManagement.create({
-      ...sanitizedBody,
+    // ✅ Create refund request (schema-safe)
+    const refundRequest = await RefundRequest.create({
+      booking,
+      reason,
+      selectTime,
+      user: user?.id,
       deduction,
       totalRefundAmount,
-      zone,
-      subCategory,
-
-      // policy snapshot fields
-      allowFund: policy.allowFund,
-      cancellationCutoffTime: (policy as any).cancellationCutoffTime,
-
-      // IMPORTANT: yahan sirf number save ho raha hai
-      flatFee: flatFee,
-
-      noteText: (policy as any).noteText,
-      refundWindow: (policy as any).refundWindow,
-
-      user: user?.id,
+      policy: policy._id,
+      note,
+      status: "pending",
     });
 
     res.status(201).json({
       success: true,
       message: "Refund request submitted successfully",
-      data: refund,
+      data: refundRequest,
     });
   }
 );
 
-
-
 // export const createRefundRequest = asyncHandler(
 //   async (req: Request & { user?: any }, res: Response): Promise<void> => {
-//     // FIX: Cast req to AuthRequest to safely access req.user
 //     const { user } = req as any;
 
+//     // sirf allowed fields pick karo
 //     const allowedUserFields = ["booking", "reason", "selectTime"];
-
 //     const sanitizedBody: any = {};
+
 //     allowedUserFields.forEach((field) => {
 //       if (req.body[field] !== undefined) {
 //         sanitizedBody[field] = req.body[field];
@@ -296,11 +299,13 @@ export const createRefundRequest = asyncHandler(
 
 //     const { booking } = sanitizedBody;
 
+//     // booking id validate
 //     if (!(await isValidObjectIdAndExists(booking, Booking))) {
 //       res.status(400).json({ message: "Invalid booking ID" });
 //       return;
 //     }
 
+//     // booking + listing lao
 //     const bookingData = await Booking.findById(booking).populate(
 //       "marketplaceListingId"
 //     );
@@ -314,26 +319,41 @@ export const createRefundRequest = asyncHandler(
 //     const zone = listing.zone;
 //     const subCategory = listing.subCategory;
 
-//     const policy = await RefundManagement.findOne({ zone, subCategory });
+//     // Refund policy lao (naya model)
+//     const policy = await RefundPolicy.findOne({ zone, subCategory });
 
 //     if (!policy || !policy.allowFund) {
-//       res.status(400).json({ message: "Refund not allowed for this booking" });
+//       res.status(400).json({
+//         message: "Refund not allowed for this booking",
+//       });
 //       return;
 //     }
 
+//     // check-in tak kitne hours baqi hain
 //     const checkInDate = new Date(bookingData.dates.checkIn);
 //     const now = new Date();
 //     const msUntilCheckIn = checkInDate.getTime() - now.getTime();
 //     const hoursUntilCheckIn = msUntilCheckIn / (1000 * 60 * 60);
 
-//     const cutoffHours =
-//       (policy.cutoffTime.days || 0) * 24 + (policy.cutoffTime.hours || 0);
-//     const flatFee = policy.flatFee || 0;
-//     const totalPrice = bookingData.priceDetails.totalPrice || 0;
+//     // cutoff time (days + hours => total hours)
+//     const cutoffDays =
+//       (policy as any).cancellationCutoffTime?.days ?? 0;
+//     const cutoffHoursOnly =
+//       (policy as any).cancellationCutoffTime?.hours ?? 0;
 
-//     let deduction = 0;
-//     let totalRefundAmount = 0;
+//     const cutoffHours = cutoffDays * 24 + cutoffHoursOnly;
 
+//     // flat fee sirf number me nikalo (object nahi)
+//     const flatFee = Number((policy as any).flatFee?.amount ?? 0);
+
+//     const totalPrice = Number(
+//       bookingData.priceDetails?.totalPrice ?? 0
+//     );
+
+//     let deduction: number = 0;
+//     let totalRefundAmount: number = 0;
+
+//     // ORIGINAL LOGIC (unchanged)
 //     if (hoursUntilCheckIn > cutoffHours) {
 //       deduction = flatFee;
 //       totalRefundAmount = totalPrice - deduction;
@@ -342,18 +362,25 @@ export const createRefundRequest = asyncHandler(
 //       totalRefundAmount = 0;
 //     }
 
+//     // refund request create karo
 //     const refund = await RefundManagement.create({
 //       ...sanitizedBody,
 //       deduction,
 //       totalRefundAmount,
 //       zone,
 //       subCategory,
+
+//       // policy snapshot fields
 //       allowFund: policy.allowFund,
-//       cutoffTime: policy.cutoffTime,
-//       flatFee: policy.flatFee,
-//       time: policy.time,
-//       note: policy.note,
-//       user: user?.id, 
+//       cancellationCutoffTime: (policy as any).cancellationCutoffTime,
+
+//       // IMPORTANT: yahan sirf number save ho raha hai
+//       flatFee: flatFee,
+
+//       noteText: (policy as any).noteText,
+//       refundWindow: (policy as any).refundWindow,
+
+//       user: user?.id,
 //     });
 
 //     res.status(201).json({
