@@ -1,17 +1,21 @@
-import { Request, Response } from "express";
+import { Request, Response, NextFunction } from "express";
 import { RefundRequest } from "../models/refundRequest.model";
 import { RefundPolicy } from "../models/refundPolicy.model";
 import { Booking } from "../models/booking.model";
 import asyncHandler from "express-async-handler";
 import mongoose from "mongoose";
 import { paginateQuery } from "../utils/paginate";
-import { AuthRequest } from "../middlewares/auth.middleware";
-import { RefundManagement } from "../models/refundManagement.model";
+import { sendResponse } from "../utils/response";
+import { STATUS_CODES } from "../config/constants";
+import { sendNotification } from "../utils/notifications";
+import { WalletTransaction } from "../models/walletTransaction.model";
+import { capitalizeName } from "../utils/capitalizeName";
+import { User } from "../models/user.model";
 
 // Create Refund Request
 export const createRefundRequest = asyncHandler(
   async (req: Request & { user?: any }, res: Response) => {
-    const { booking, reason, selectTime } = req.body;
+    const { booking, reason, note } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(booking)) {
       res.status(400).json({ message: "Invalid booking ID" });
@@ -63,11 +67,11 @@ export const createRefundRequest = asyncHandler(
     const refund = await RefundRequest.create({
       booking,
       reason,
-      selectTime,
       deduction,
       totalRefundAmount,
       policy: policy._id,
       user: req.user?.id,
+      note
     });
 
     res.status(201).json({
@@ -79,15 +83,57 @@ export const createRefundRequest = asyncHandler(
 );
 
 // Get My Refund Requests
+export const getMyRefundRequests = asyncHandler(
+  async (req: Request & { user?: any }, res: Response) => {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+
+    const filter: any = {};
+
+    const baseQuery = RefundRequest.find(filter)
+      .populate("policy")
+      .populate({
+        path: "booking",
+        populate: {
+          path: "marketplaceListingId"
+        },
+      })
+      .populate("user")
+      ;
+
+    // Paginated results
+    const { data, total } = await paginateQuery(baseQuery, { page, limit });
+
+    // Status breakdown + total requests
+    const [pending, rejected, accepted, totalRequests] = await Promise.all([
+      RefundRequest.countDocuments({ ...filter, status: "pending" }),
+      RefundRequest.countDocuments({ ...filter, status: "reject" }),
+      RefundRequest.countDocuments({ ...filter, status: "accept" }),
+      RefundRequest.countDocuments(filter),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data,
+      totalRequests,
+      pending,
+      rejected,
+      accepted,
+      total,
+      page,
+      limit,
+    });
+  }
+);
 // export const getMyRefundRequests = asyncHandler(
 //   async (req: Request & { user?: any }, res: Response) => {
 //     const page = Number(req.query.page) || 1;
 //     const limit = Number(req.query.limit) || 10;
 
-//     const filter: any = {  };
+//     const filter: any = { user: req.user?.id };
 
-//     const baseQuery = RefundManagement.find(filter)
-//       // .populate("policy")
+//     const baseQuery = RefundRequest.find(filter)
+//       .populate("policy")
 //       .populate("booking");
 
 //     // Paginated results
@@ -114,46 +160,11 @@ export const createRefundRequest = asyncHandler(
 //     });
 //   }
 // );
-export const getMyRefundRequests = asyncHandler(
-  async (req: Request & { user?: any }, res: Response) => {
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
-
-    const filter: any = { user: req.user?.id };
-
-    const baseQuery = RefundRequest.find(filter)
-      .populate("policy")
-      .populate("booking");
-
-    // Paginated results
-    const { data, total } = await paginateQuery(baseQuery, { page, limit });
-
-    // Status breakdown + total requests
-    const [pending, rejected, accepted, totalRequests] = await Promise.all([
-      RefundRequest.countDocuments({ ...filter, status: "pending" }),
-      RefundRequest.countDocuments({ ...filter, status: "reject" }),
-      RefundRequest.countDocuments({ ...filter, status: "accept" }),
-      RefundRequest.countDocuments(filter),
-    ]);
-
-    res.status(200).json({
-      success: true,
-      data,
-      totalRequests,
-      pending,
-      rejected,
-      accepted,
-      total,
-      page,
-      limit,
-    });
-  }
-);
 
 // Get Refund Request by ID
 
 export const getRefundRequestById = asyncHandler(
-  async (req: Request & { user?: any }, res: Response)=> {
+  async (req: Request & { user?: any }, res: Response) => {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -225,29 +236,222 @@ export const deleteRefundRequest = asyncHandler(
 );
 
 // Update Refund Request Status (Admin only)
-export const updateRefundStatus = asyncHandler(
-  async (req: Request, res: Response) => {
+export const updateRefundStatus = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
     const { id } = req.params;
     const { status } = req.body;
 
     if (!["pending", "accept", "reject"].includes(status)) {
-      res.status(400).json({ message: "Invalid status value" });
-      return;
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(
+        res,
+        null,
+        "Invalid status value",
+        STATUS_CODES.BAD_REQUEST
+      );
     }
 
-    const refund = await RefundRequest.findById(id);
+    const refund = await RefundRequest.findById(id)
+      .populate("booking")
+      .populate("user")
+      .session(session);
+
     if (!refund) {
-      res.status(404).json({ message: "Refund request not found" });
-      return;
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(
+        res,
+        null,
+        "Refund request not found",
+        STATUS_CODES.NOT_FOUND
+      );
     }
 
-    refund.status = status;
-    await refund.save();
+    if (refund.status !== "pending") {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(
+        res,
+        null,
+        "Refund request already processed",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
 
-    res.status(200).json({
-      success: true,
-      message: `Refund request status updated to '${status}'`,
-      data: refund,
-    });
+    const admin = await User.findOne({ role: "admin" });
+
+    if (!admin) {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(
+        res,
+        null,
+        "Admin not found",
+        STATUS_CODES.NOT_FOUND
+      );
+    }
+
+    const booking = await Booking.findById(refund.booking)
+      .populate("renter", "wallet email name fcmToken")
+      .populate("leaser", "wallet email name fcmToken")
+      .populate("marketplaceListingId", "name")
+      .session(session);
+
+    if (!booking) {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(
+        res,
+        null,
+        "Booking not found",
+        STATUS_CODES.NOT_FOUND
+      );
+    }
+
+    const renter = booking.renter as any;
+    const leaser = booking.leaser as any;
+
+    const adminFee = booking.priceDetails.adminFee;
+    const tax = booking.priceDetails.tax;
+
+    const listingName =
+      (booking.marketplaceListingId as any)?.name || "listing";
+
+    // ================= REJECT =================
+    if (status === "reject") {
+      refund.status = "reject";
+      await refund.save({ session });
+
+      await session.commitTransaction();
+      session.endSession();
+
+      await sendNotification(
+        renter._id.toString(),
+        "Refund Rejected",
+        `Your refund request for "${capitalizeName(listingName)}" has been rejected.`,
+        {
+          refundId: (refund._id as any).toString(),
+          bookingId: booking._id.toString(),
+          type: "refund",
+          status: "rejected",
+        }
+      );
+
+      return sendResponse(
+        res,
+        refund,
+        "Refund request rejected",
+        STATUS_CODES.OK
+      );
+    }
+
+    // ================= ACCEPT =================
+    const refundAmount = refund.totalRefundAmount || 0;
+    const leaserAmount = refund.totalRefundAmount - (adminFee + tax) || 0;
+
+    if (!leaser?.wallet || leaser.wallet.balance < refundAmount) {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(
+        res,
+        {
+          requiredAmount: refundAmount.toFixed(2),
+          currentBalance: leaser.wallet?.balance?.toFixed(2) || 0,
+        },
+        "Leaser has insufficient wallet balance for refund",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
+
+    // Wallet movement
+    leaser.wallet.balance -= leaserAmount;
+    renter.wallet.balance += refundAmount;
+    admin.wallet.balance -= adminFee + tax;
+
+    await leaser.save({ session });
+    await renter.save({ session });
+    await admin.save({ session });
+
+    await WalletTransaction.insertMany(
+      [
+        {
+          userId: leaser._id,
+          type: "debit",
+          amount: refundAmount.toFixed(2),
+          source: "refund",
+          status: "succeeded",
+          createdAt: new Date(),
+          requestedAt: new Date(),
+        },
+        {
+          userId: renter._id,
+          type: "credit",
+          amount: leaserAmount.toFixed(2),
+          source: "refund",
+          status: "succeeded",
+          createdAt: new Date(),
+          requestedAt: new Date(),
+        },
+      ],
+      { session }
+    );
+
+    refund.status = "accept";
+    await refund.save({ session });
+
+    booking.status = "cancelled";
+    await booking.save({ session })
+
+    await session.commitTransaction();
+    session.endSession();
+
+    // ================= NOTIFICATIONS =================
+    await sendNotification(
+      renter._id.toString(),
+      "Refund Approved",
+      `You received a refund of $${refundAmount.toFixed(2)} for "${capitalizeName(listingName)}".`,
+      {
+        refundId: (refund._id as any).toString(),
+        bookingId: booking._id.toString(),
+        type: "refund",
+        status: "approved",
+        creditedAmount: refundAmount.toFixed(2),
+      }
+    );
+
+    await sendNotification(
+      leaser._id.toString(),
+      "Refund Processed",
+      `A refund of $${leaserAmount.toFixed(2)} has been deducted from your wallet for "${capitalizeName(listingName)}".`,
+      {
+        refundId: (refund._id as any).toString(),
+        bookingId: booking._id.toString(),
+        type: "refund",
+        status: "approved",
+        deductedAmount: leaserAmount.toFixed(2),
+      }
+    );
+
+    booking.status = "cancelled"
+
+    return sendResponse(
+      res,
+      refund,
+      "Refund processed successfully",
+      STATUS_CODES.OK
+    );
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    next(err);
   }
-);
+};
+
