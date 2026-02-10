@@ -464,13 +464,13 @@ export const updateBookingStatus = async (
       );
 
       // Generate OTP PIN for extension
-      const pin = generatePIN(4);
+      // const pin = generatePIN(4);
 
 
       // Update child booking
       childBooking.isExtend = true;
       childBooking.status = "approved";
-      childBooking.otp = pin;
+      // childBooking.otp = pin;
       childBooking.extendCharges = {
         extendCharges: extendChargeAmount,
         totalPrice: renterPay,
@@ -486,22 +486,22 @@ export const updateBookingStatus = async (
       session.endSession();
 
       try {
-        await sendEmail({
-          to: leaser.email,
-          name: leaser.name,
-          subject: "Extension Approved - PIN Code",
-          content: `
-    <h2>Extension Approved</h2>
-    <p>The extension request for "<strong>${listingName}</strong>" has been approved.</p>
-    <p><strong>PIN Code:</strong> ${pin}</p>
-    <p>Please use this PIN to verify the extension at handover.</p>
-  `,
-        });
+  //       await sendEmail({
+  //         to: leaser.email,
+  //         name: leaser.name,
+  //         subject: "Extension Approved - PIN Code",
+  //         content: `
+  //   <h2>Extension Approved</h2>
+  //   <p>The extension request for "<strong>${listingName}</strong>" has been approved.</p>
+  //   <p><strong>PIN Code:</strong> ${pin}</p>
+  //   <p>Please use this PIN to verify the extension at handover.</p>
+  // `,
+  //       });
 
         await sendNotification(
           renterId,
           "Extension Approved",
-          `Your extension request for "${listingName}" has been approved. Amount deducted from your wallet: $${renterPay}.`,
+          `Your extension request for "${listingName}" has been approved. Amount deducted from your wallet: $${renterPay.toFixed(2)}.`,
           {
             bookingId: childBooking._id.toString(),
             type: "extension",
@@ -513,21 +513,20 @@ export const updateBookingStatus = async (
         // ADDED: LEASER NOTIFICATION (wallet credit)
         await sendNotification(
           leaserId,
-          "Extension Approved - PIN Code",
-          `The extension for "${listingName}" is approved. PIN Code: ${pin}. Amount deducted from user's wallet: $${renterPay}.`,
+          "Extension Approved",
+          `The extension for "${listingName}" is approved. Amount deducted from user's wallet: $${renterPay.toFixed(2)}.`,
           {
             bookingId: childBooking._id.toString(),
             type: "extension",
             status: "approved",
-            deductedAmount: renterPay,
-            otp: pin,
+            deductedAmount: renterPay
           }
         );
 
         await sendNotification(
           leaserId,
           "Payment Received",
-          `You received $${leaserReceive} in your wallet for the extension of "${listingName}".`,
+          `You received $${leaserReceive.toFixed(2)} in your wallet for the extension of "${listingName}".`,
           {
             bookingId: childBooking._id.toString(),
             type: "extension",
@@ -539,7 +538,7 @@ export const updateBookingStatus = async (
         await sendNotification(
           admin._id as string,
           "Extension Fee Received",
-          `You received $${adminReceive} (admin fee + tax) for the extension of "${listingName}".`,
+          `You received $${adminReceive.toFixed(2)} (admin fee + tax) for the extension of "${listingName}".`,
           {
             bookingId: childBooking._id.toString(),
             type: "extension",
@@ -884,7 +883,7 @@ export const updateBookingStatus = async (
 
       if (finalStatus === "approved") {
         renterMsg = `Your booking for "${listingName}" has been approved. 
-        Amount deducted from your wallet: $${totalPaid}. 
+        Amount deducted from your wallet: $${totalPaid.toFixed(2)}. 
         The PIN has been sent to the leaser. Please provide the PIN at check-in.`;
       } else if (finalStatus === "rejected") {
         renterMsg = `Your booking for "${listingName}" has been rejected.`;
@@ -1175,6 +1174,9 @@ export const getBookingsByUser = async (
 
     const filter: any = {};
 
+    // Exclude child bookings (extensions) from the main query
+    filter.previousBookingId = null;
+
     if (role === "renter") {
       filter.renter = user.id;
     } else if (role === "leaser") {
@@ -1218,29 +1220,34 @@ export const getBookingsByUser = async (
       })
     );
 
+    // Fetch all extensions for the parent bookings
+    const parentIds = Object.keys(bookingsMap);
+    const extensions = await Booking.find({
+      previousBookingId: { $in: parentIds },
+    }).lean();
+
     await Promise.all(
-      filteredBookings.map(async (booking) => {
-        if (booking.previousBookingId) {
-          const parentIdStr = booking.previousBookingId.toString();
-          const parent = bookingsMap[parentIdStr];
-          if (parent) {
-            const extensionCount = parent.extensions.length + 1;
-            const childWithPayment = await attachPaymentStatus(booking);
+      extensions.map(async (booking) => {
+        // Add null/undefined check
+        if (!booking.previousBookingId) return;
+        
+        const parentIdStr = booking.previousBookingId.toString();
+        const parent = bookingsMap[parentIdStr];
+        if (parent) {
+          const extensionCount = parent.extensions.length + 1;
+          const childWithPayment = await attachPaymentStatus(booking);
 
-            parent.extensions.push({
-              _id: childWithPayment._id?.toString?.() ?? childWithPayment._id,
-              name: `Extension ${extensionCount}`,
-              extensionDate: childWithPayment.dates?.checkOut ?? null,
-              handover: childWithPayment.bookingDates?.handover ?? null,
-              returnDate: childWithPayment.bookingDates?.returnDate ?? null,
-              priceDetails: childWithPayment.priceDetails ?? null,
-              pricingMeta: childWithPayment.pricingMeta ?? null,
-              extraRequestCharges: childWithPayment.extraRequestCharges ?? null,
-              paymentStatus: childWithPayment.paymentStatus ?? null,
-            });
-
-            delete bookingsMap[booking._id.toString()];
-          }
+          parent.extensions.push({
+            _id: childWithPayment._id?.toString?.() ?? childWithPayment._id,
+            name: `Extension ${extensionCount}`,
+            extensionDate: childWithPayment.dates?.checkOut ?? null,
+            handover: childWithPayment.bookingDates?.handover ?? null,
+            returnDate: childWithPayment.bookingDates?.returnDate ?? null,
+            priceDetails: childWithPayment.priceDetails ?? null,
+            pricingMeta: childWithPayment.pricingMeta ?? null,
+            extraRequestCharges: childWithPayment.extraRequestCharges ?? null,
+            paymentStatus: childWithPayment.paymentStatus ?? null,
+          });
         }
       })
     );
@@ -1287,6 +1294,134 @@ export const getBookingsByUser = async (
     next(error);
   }
 };
+// export const getBookingsByUser = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     const user = (req as any).user;
+//     const page = Number(req.query.page) || 1;
+//     const limit = Number(req.query.limit) || 10;
+
+//     const status = req.query.status as string | undefined;
+//     const role = req.query.role as string | undefined;
+//     const zone = req.query.zone as string | undefined;
+
+//     const filter: any = {};
+
+//     if (role === "renter") {
+//       filter.renter = user.id;
+//     } else if (role === "leaser") {
+//       filter.leaser = user.id;
+//     } else {
+//       filter.$or = [{ renter: user.id }, { leaser: user.id }];
+//     }
+
+//     if (status) filter.status = status;
+
+//     let baseQuery = Booking.find(filter)
+//       .populate({
+//         path: "marketplaceListingId",
+//         match: zone ? { zone } : {},
+//         populate: {
+//           path: "zone",
+//           select: "name",
+//         },
+//       })
+//       .populate("renter", "firstName lastName email")
+//       .populate("leaser", "firstName lastName email")
+//       .sort({ createdAt: -1 })
+//       .lean();
+
+//     const allBookings = await baseQuery;
+
+//     const filteredBookings = zone
+//       ? allBookings.filter((b) => b.marketplaceListingId !== null)
+//       : allBookings;
+
+//     const bookingsMap: Record<string, any> = {};
+
+//     filteredBookings.forEach((booking) => {
+//       bookingsMap[booking._id.toString()] = { ...booking, extensions: [] };
+//     });
+
+//     await Promise.all(
+//       Object.values(bookingsMap).map(async (parent: any) => {
+//         const parentWithPayment = await attachPaymentStatus(parent);
+//         Object.assign(parent, parentWithPayment);
+//       })
+//     );
+
+//     await Promise.all(
+//       filteredBookings.map(async (booking) => {
+//         if (booking.previousBookingId) {
+//           const parentIdStr = booking.previousBookingId.toString();
+//           const parent = bookingsMap[parentIdStr];
+//           if (parent) {
+//             const extensionCount = parent.extensions.length + 1;
+//             const childWithPayment = await attachPaymentStatus(booking);
+
+//             parent.extensions.push({
+//               _id: childWithPayment._id?.toString?.() ?? childWithPayment._id,
+//               name: `Extension ${extensionCount}`,
+//               extensionDate: childWithPayment.dates?.checkOut ?? null,
+//               handover: childWithPayment.bookingDates?.handover ?? null,
+//               returnDate: childWithPayment.bookingDates?.returnDate ?? null,
+//               priceDetails: childWithPayment.priceDetails ?? null,
+//               pricingMeta: childWithPayment.pricingMeta ?? null,
+//               extraRequestCharges: childWithPayment.extraRequestCharges ?? null,
+//               paymentStatus: childWithPayment.paymentStatus ?? null,
+//             });
+
+//             delete bookingsMap[booking._id.toString()];
+//           }
+//         }
+//       })
+//     );
+
+//     const mergedBookings = Object.values(bookingsMap);
+
+//     const total = mergedBookings.length;
+//     const paginatedBookings = mergedBookings.slice(
+//       (page - 1) * limit,
+//       page * limit
+//     );
+
+//     let finalBookings = paginatedBookings;
+
+//     if (role === "leaser") {
+//       const bookingIds = paginatedBookings.map((b: any) => b._id);
+
+//       const damageReports = await DamageReport.find({
+//         booking: { $in: bookingIds },
+//       }).select("booking");
+
+//       const damagedBookingIds = new Set(
+//         damageReports.map((d) => String(d.booking))
+//       );
+
+//       finalBookings = paginatedBookings.map((booking: any) => ({
+//         ...booking,
+//         damagedReport: damagedBookingIds.has(String(booking._id)),
+//       }));
+//     }
+
+//     return sendResponse(res, {
+//       statusCode: STATUS_CODES.OK,
+//       success: true,
+//       message: "Bookings retrieved successfully",
+//       data: {
+//         bookings: finalBookings,
+//         total,
+//         page,
+//         limit,
+//       },
+//     });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 // UPDATE
 export const updateBooking = async (

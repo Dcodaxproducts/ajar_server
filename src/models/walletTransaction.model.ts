@@ -31,7 +31,7 @@ const WalletTransactionSchema = new Schema<IWalletTransaction>({
     required: false,
   },
 
-  amount: { type: Number, required: true, min: 1 },
+  amount: { type: Number, required: true, min: 0 },
 
   source: {
     type: String,
