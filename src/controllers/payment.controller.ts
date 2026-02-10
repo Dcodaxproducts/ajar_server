@@ -209,12 +209,10 @@ export const stripeWebhook = async (req: Request, res: Response) => {
     else {
       if (!userRenterId) return res.status(400).send("Missing User ID");
 
-      const walletData = await WalletTransaction.findOne(
-        {
-          userId: userRenterId,
-          paymentIntentId: paymentIntent.id
-        }
-      )
+      const walletData = await WalletTransaction.findOne({
+        userId: userRenterId,
+        paymentIntentId: paymentIntent.id
+      });
 
       if (!walletData) return res.status(404).send("Wallet data not found");
 
@@ -224,38 +222,48 @@ export const stripeWebhook = async (req: Request, res: Response) => {
 
         const amountInDollars = paymentIntent.amount / 100;
 
-        await WalletTransaction.findOneAndUpdate(
-          {
-            userId: userRenterId,
-            paymentIntentId: paymentIntent.id,
-          },
-          {
-            status: "succeeded",
-            type: "credit"
-          },
-          { new: true }
-        );
-
+        // ✅ CRITICAL: First update user wallet, THEN update transaction
         const user = await User.findById(userRenterId);
         if (!user) return res.status(404).json({ message: "User not found" });
 
-        user.wallet.balance += amountInDollars;
-        await user.save();
+        try {
+          user.wallet.balance += amountInDollars;
+          await user.save();
 
-        // Notifications
-        if (userRenterId) {
+          // ✅ Only update transaction after successful wallet update
+          await WalletTransaction.findOneAndUpdate(
+            {
+              userId: userRenterId,
+              paymentIntentId: paymentIntent.id,
+            },
+            {
+              status: "succeeded",
+              type: "credit"
+            },
+            { new: true }
+          );
+
+          // Send notification
           await sendNotification(
             userRenterId,
             "Wallet Credited Successfully",
             `Your wallet has been credited with $${amountInDollars}. The amount is now available for use.`,
             { userId: userRenterId, type: "wallet_credit" }
           );
+        } catch (error) {
+          console.error("Failed to update wallet:", error);
+          // ✅ Mark transaction as failed if wallet update fails
+          await WalletTransaction.findOneAndUpdate(
+            { userId: userRenterId, paymentIntentId: paymentIntent.id },
+            { status: "failed" }
+          );
+          return res.status(500).send("Failed to process wallet credit");
         }
       }
 
-      //  PAYMENT FAILED
+      // PAYMENT FAILED
       else if (event.type === "payment_intent.payment_failed") {
-        console.log(" Payment failed");
+        const amountInDollars = paymentIntent.amount / 100;
 
         await WalletTransaction.findOneAndUpdate(
           {
@@ -263,8 +271,15 @@ export const stripeWebhook = async (req: Request, res: Response) => {
             paymentIntentId: paymentIntent.id
           },
           {
-            status: "failed"
+            status: "failed",
           }
+        );
+
+        await sendNotification(
+          userRenterId,
+          "Wallet Payment Failed",
+          `Your wallet payment of $${amountInDollars} has failed. Please try again or contact support.`,
+          { userId: userRenterId, type: "wallet_payment_failed" }
         );
       }
 
@@ -276,7 +291,7 @@ export const stripeWebhook = async (req: Request, res: Response) => {
   }
 };
 
-export const verifyPayment = async (req: Request, res: Response) => {
+export const verifyPayment = async (req: AuthRequest, res: Response) => {
   try {
     const { paymentIntentId } = req.body;
 
@@ -284,40 +299,123 @@ export const verifyPayment = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Missing paymentIntentId" });
     }
 
-    // 🔹 Always verify from Stripe
     const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
-    // Optional: ensure wallet transaction exists
-    const walletTx = await WalletTransaction.findOne({ paymentIntentId });
+    const userRenterId = intent.metadata?.userRenterId;
+    if (!userRenterId) {
+      return res.status(400).json({ message: "Missing User ID" });
+    }
+
+    // ✅ Authorization check: Only the payment owner can verify
+    if (req.user?.id?.toString() !== userRenterId) {
+      return res.status(403).json({ message: "Unauthorized to verify this payment" });
+    }
+
+
+    const walletTx = await WalletTransaction.findOne({
+      userId: userRenterId,
+      paymentIntentId: intent.id,
+    });
+
     if (!walletTx) {
       return res.status(404).json({ message: "Wallet transaction not found" });
     }
 
-    // ===== SUCCESS =====
-    if (intent.status === "succeeded") {
+    // ===== CHECK IF ALREADY PROCESSED =====
+    if (walletTx.status === "succeeded") {
       return res.json({
         status: "succeeded",
         message: "Wallet payment successful",
       });
     }
 
-    // ===== CANCELED =====
-    if (intent.status === "canceled") {
-      return res.json({
-        status: "canceled",
-        message: "Wallet payment was canceled by user",
-      });
-    }
-
-    // ===== FAILED =====
-    if (intent.status === "requires_payment_method") {
+    if (walletTx.status === "failed") {
       return res.json({
         status: "failed",
         message: "Wallet payment failed",
       });
     }
 
-    // ===== STILL PENDING =====
+    // ===== SUCCESS =====
+    if (intent.status === "succeeded") {
+      console.log("Payment confirmed - Updating from API");
+
+      const amountInDollars = intent.amount / 100;
+
+      // ✅ CRITICAL: First update user wallet, THEN update transaction
+      const user = await User.findById(userRenterId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      try {
+        user.wallet.balance += amountInDollars;
+        await user.save();
+
+        // ✅ Only update transaction after successful wallet update
+        await WalletTransaction.findOneAndUpdate(
+          {
+            userId: userRenterId,
+            paymentIntentId: intent.id,
+          },
+          {
+            status: "succeeded",
+            type: "credit"
+          },
+          { new: true }
+        );
+
+        await sendNotification(
+          userRenterId,
+          "Wallet Credited Successfully",
+          `Your wallet has been credited with $${amountInDollars}. The amount is now available for use.`,
+          { userId: userRenterId, type: "wallet_credit" }
+        );
+
+        return res.json({
+          status: "succeeded",
+          message: "Wallet payment successful",
+        });
+      } catch (error) {
+        console.error("Failed to update wallet:", error);
+        await WalletTransaction.findOneAndUpdate(
+          { userId: userRenterId, paymentIntentId: intent.id },
+          { status: "failed" }
+        );
+        return res.status(500).json({ message: "Failed to process wallet credit" });
+      }
+    }
+
+    // ===== FAILED/CANCELED =====
+    if (intent.status === "canceled" || intent.status === "requires_payment_method") {
+      const amountInDollars = intent.amount / 100;
+
+      await WalletTransaction.findOneAndUpdate(
+        {
+          userId: userRenterId,
+          paymentIntentId: intent.id,
+        },
+        {
+          status: "failed",
+        }
+      );
+
+      await sendNotification(
+        userRenterId,
+        "Wallet Payment Failed",
+        `Your wallet payment of $${amountInDollars} has failed. Please try again or contact support.`,
+        { userId: userRenterId, type: "wallet_payment_failed" }
+      );
+
+      return res.json({
+        status: "failed",
+        message: intent.status === "canceled"
+          ? "Wallet payment was canceled by user"
+          : "Wallet payment failed",
+      });
+    }
+
+    // ===== PENDING =====
     return res.json({
       status: "pending",
       message: "Wallet payment is still processing",
@@ -328,4 +426,3 @@ export const verifyPayment = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Wallet payment verification failed" });
   }
 };
-

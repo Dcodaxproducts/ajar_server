@@ -449,6 +449,16 @@ export const updateBookingStatus = async (
             createdAt: new Date(),
             requestedAt: new Date(),
           },
+          {
+            userId: admin._id,
+            type: "credit",
+            amount: adminReceive,
+            source: "booking",
+            status: "succeeded",
+            createdAt: new Date(),
+            requestedAt: new Date(),
+            processedAt: new Date(),
+          }
         ],
         { session }
       );
@@ -523,6 +533,18 @@ export const updateBookingStatus = async (
             type: "extension",
             status: "approved",
             creditedAmount: leaserReceive,
+          }
+        );
+
+        await sendNotification(
+          admin._id as string,
+          "Extension Fee Received",
+          `You received $${adminReceive} (admin fee + tax) for the extension of "${listingName}".`,
+          {
+            bookingId: childBooking._id.toString(),
+            type: "extension",
+            status: "approved",
+            creditedAmount: adminReceive,
           }
         );
       } catch (err) {
@@ -705,6 +727,16 @@ export const updateBookingStatus = async (
             createdAt: new Date(),
             requestedAt: new Date(),
           },
+          {
+            userId: admin._id,
+            type: "credit",
+            amount: adminReceive,
+            source: "booking",
+            status: "succeeded",
+            createdAt: new Date(),
+            requestedAt: new Date(),
+            processedAt: new Date(),
+          }
         ],
         { session }
       );
@@ -795,6 +827,7 @@ export const updateBookingStatus = async (
 
       const totalPaid = finalBooking.priceDetails.totalPrice;
       const leaserReceive = finalBooking.priceDetails.price + specialCharges;
+      const adminReceive = finalBooking.priceDetails.adminFee + finalBooking.priceDetails.tax;
 
       if (finalStatus === "approved") {
         await sendEmail({
@@ -821,6 +854,7 @@ export const updateBookingStatus = async (
             deductedAmount: totalPaid,
           }
         );
+
         await sendNotification(
           leaser._id.toString(),
           "Payment Received",
@@ -830,6 +864,18 @@ export const updateBookingStatus = async (
             type: "booking",
             status: "approved",
             creditedAmount: leaserReceive,
+          }
+        );
+
+        await sendNotification(
+          admin._id as string,
+          "Booking Fee Received",
+          `You received $${adminReceive} (admin fee + tax) for the booking of "${listingName}".`,
+          {
+            bookingId: finalBooking._id.toString(),
+            type: "booking",
+            status: "approved",
+            creditedAmount: adminReceive,
           }
         );
       }
