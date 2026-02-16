@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { getUserNotifications } from "../controllers/notification.controller";
-import {authMiddleware }  from "../middlewares/auth.middleware";
+import { getNotifications, getUnreadNotificationCount, markAllNotificationsAsRead } from "../controllers/notification.controller";
+import { authMiddleware } from "../middlewares/auth.middleware";
 
 
 const router = Router();
@@ -11,6 +11,10 @@ function asyncHandler(fn: any) {
   };
 }
 
-router.get("/", authMiddleware as any, asyncHandler(getUserNotifications));
+router.get("/", authMiddleware as any, asyncHandler(getNotifications));
+
+router.get("/unread-count", authMiddleware as any, asyncHandler(getUnreadNotificationCount));
+
+router.patch("/mark-all-read", authMiddleware as any, asyncHandler(markAllNotificationsAsRead));
 
 export default router;

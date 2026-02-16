@@ -10,6 +10,8 @@ import "./config/passport";
 import compression from "compression";
 import passport from "passport";
 import { stripeWebhook } from "./controllers/payment.controller";
+import {optionalAuth} from "./middlewares/optionalAuthMiddleware";
+import { verifyActiveUser } from "./middlewares/verifyActiveUser";
 
 export const app = express();
 export const server = http.createServer(app);
@@ -54,6 +56,8 @@ app.get("/uploads/:filename", (req: Request, res: Response) => {
 
 app.use(passport.initialize());
 
+app.use(optionalAuth);
+app.use(verifyActiveUser);
 // API routes
 app.use("/api", routes);
 
