@@ -132,12 +132,12 @@ export const getAllDamageReports = async (
       .populate({
         path: "booking",
         populate: [
-          { path: "renter", select: "firstName lastName email" },
-          { path: "leaser", select: "firstName lastName email" },
+          { path: "renter", select: "name email" },
+          { path: "leaser", select: "name email" },
           { path: "marketplaceListingId", select: "title zone" },
         ],
       })
-      .populate("user", "firstName lastName email role");
+      .populate("user", "name email role");
 
     const paginated = await paginateQuery(query, { page, limit });
 
