@@ -7,6 +7,7 @@ import { Request, Response } from "express";
 import { sendNotification } from "../utils/notifications";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { WalletTransaction } from "../models/walletTransaction.model";
+import { saveStripeAccountIdToUser } from "../utils/saveStripeAccountIdToUser";
 
 // CREATE PAYMENT INTENT
 export const createBookingPayment = async (req: AuthRequest, res: Response) => {
@@ -426,3 +427,148 @@ export const verifyPayment = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ message: "Wallet payment verification failed" });
   }
 };
+
+export const createConnectedAccount = async (req: AuthRequest, res: Response) => {
+  try {
+    const { userId, email, country } = req.body;
+
+    // 1️⃣ Create connected account
+    const account = await stripe.accounts.create({
+      type: "express",
+      country: country || "US",
+      email,
+    });
+
+    // 2️⃣ Save account id in DB
+    await saveStripeAccountIdToUser(userId, account.id);
+
+    // 3️⃣ Create account link for onboarding
+    const accountLink = await stripe.accountLinks.create({
+      account: account.id,
+      refresh_url: `${process.env.CLIENT_URL}/connect-bank-account`,
+      return_url: `${process.env.CLIENT_URL}/connect-bank-account`,
+      type: "account_onboarding",
+    });
+
+    res.json({ url: accountLink.url });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export const getConnectedAccount = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const connectedAccountId = user.stripe.connectedAccountId;
+    if (!connectedAccountId)
+      return res.status(404).json({ error: "No Stripe connected account" });
+
+    const account = await stripe.accounts.retrieve(connectedAccountId);
+
+    // ✅ Correct check
+    const bankAttached = !!account.payouts_enabled;
+
+    res.json({
+      bankAttached,
+      payoutsEnabled: account.payouts_enabled,
+      chargesEnabled: account.charges_enabled,
+      detailsSubmitted: account.details_submitted,
+    });
+
+  } catch (err: any) {
+    console.error("Error fetching connected account:", err);
+    res.status(500).json({ error: err.message || "Server error" });
+  }
+};
+
+export const withdraw = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { amount } = req.body;
+
+    if (!amount || amount <= 0)
+      return res.status(400).json({ error: "Invalid amount" });
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    if (!user.stripe.connectedAccountId)
+      return res.status(400).json({ error: "Bank account not connected" });
+
+    if (user.wallet.balance < amount)
+      return res.status(400).json({ error: "Insufficient wallet balance" });
+
+    // 🔹 Retrieve Stripe account
+    const account = await stripe.accounts.retrieve(
+      user.stripe.connectedAccountId
+    );
+
+    if (!account.payouts_enabled)
+      return res
+        .status(400)
+        .json({ error: "Stripe account not eligible for payouts yet" });
+
+    // 🔹 Convert to cents
+    const amountInCents = Math.round(amount * 100);
+
+    // 🔹 1️⃣ Transfer from platform → connected account
+    await stripe.transfers.create({
+      amount: amountInCents,
+      currency: "usd",
+      destination: user.stripe.connectedAccountId,
+    });
+
+    // 🔹 2️⃣ Create payout to bank
+    const payout = await stripe.payouts.create(
+      {
+        amount: amountInCents,
+        currency: "usd",
+      },
+      {
+        stripeAccount: user.stripe.connectedAccountId,
+      }
+    );
+
+    // 🔹 3️⃣ Deduct wallet balance
+    user.wallet.balance -= amount;
+    await user.save();
+
+    // 🔹 4️⃣ Record WalletTransaction
+    await WalletTransaction.create({
+      userId: user._id,
+      amount,
+      type: "debit",
+      status: "succeeded",
+      source: "withdraw",
+      payoutId: payout.id,
+      description: `Withdrawal to connected bank account`,
+    });
+
+    // 🔹 5️⃣ Send Notification
+    await sendNotification(
+      user._id as string,
+      "Withdrawal Initiated",
+      `Your withdrawal of $${amount.toFixed(2)} has been initiated. Funds will arrive in 2–7 business days.`,
+      { userId: user._id, type: "wallet_withdrawal", payoutId: payout.id }
+    );
+
+    res.json({
+      success: true,
+      message: "Withdrawal initiated. Funds will arrive in 2–7 business days.",
+      payoutId: payout.id,
+      status: payout.status,
+    });
+  } catch (err: any) {
+    console.error("Withdraw error:", err);
+    res.status(500).json({ error: err.message || "Server error" });
+  }
+};
+
+
+

@@ -25,7 +25,7 @@ export const createUser = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { email, password, name, dob, nationality, user_type } = req.body;
+    const { email, password, name, dob, phone, nationality, user_type } = req.body;
     const user = await User.findOne({ email }).select("email").lean();
     if (user) {
       sendResponse(
@@ -45,6 +45,7 @@ export const createUser = async (
       password: hashedPassword,
       name,
       dob,
+      phone,
       nationality,
       role: user_type,
     });
@@ -322,6 +323,7 @@ interface AuthRequest extends Request {
     role: string | string[];
   };
 }
+
 export const getUserDetails = async (
   req: AuthRequest,
   res: Response,
@@ -864,9 +866,9 @@ export const getDashboardStats = async (
 
     // --- Global Stats (Lifetime Totals) ---
     const [
-      totalUsers, 
-      totalAdmins, 
-      totalNormalUsers, 
+      totalUsers,
+      totalAdmins,
+      totalNormalUsers,
       bookingCount // Fetches all bookings regardless of status
     ] = await Promise.all([
       User.countDocuments(),
@@ -895,7 +897,7 @@ export const getDashboardStats = async (
     const totalEarning = filteredBookings.reduce((acc, booking) => {
       const price = booking.priceDetails?.totalPrice || 0;
       // Added additionalCharges as requested to prevent doubling
-      const extension = booking.extraRequestCharges?.additionalCharges || 0; 
+      const extension = booking.extraRequestCharges?.additionalCharges || 0;
       return acc + price + extension;
     }, 0);
 
@@ -913,7 +915,7 @@ export const getDashboardStats = async (
           Booking.find({ status: "completed", createdAt: { $gte: start, $lte: end } }).lean(),
         ]);
 
-        const dailyEarning = bookings.reduce((acc, b) => 
+        const dailyEarning = bookings.reduce((acc, b) =>
           acc + (b.priceDetails?.totalPrice || 0) + (b.extraRequestCharges?.additionalCharges || 0), 0);
 
         const dateString = start.toISOString().split('T')[0];
@@ -933,7 +935,7 @@ export const getDashboardStats = async (
           Booking.find({ status: "completed", createdAt: { $gte: start, $lte: end } }).lean(),
         ]);
 
-        const weeklyEarning = bookings.reduce((acc, b) => 
+        const weeklyEarning = bookings.reduce((acc, b) =>
           acc + (b.priceDetails?.totalPrice || 0) + (b.extraRequestCharges?.additionalCharges || 0), 0);
 
         const dateString = start.toISOString().split('T')[0];
@@ -953,10 +955,10 @@ export const getDashboardStats = async (
           Booking.find({ status: "completed", createdAt: { $gte: start, $lte: end } }).lean(),
         ]);
 
-        const monthlyEarning = bookings.reduce((acc, b) => 
+        const monthlyEarning = bookings.reduce((acc, b) =>
           acc + (b.priceDetails?.totalPrice || 0) + (b.extraRequestCharges?.additionalCharges || 0), 0);
 
-        const dateString = start.toISOString().substring(0, 7); 
+        const dateString = start.toISOString().substring(0, 7);
         userRecords.push({ value: dateString, totalUsers: users });
         earningRecords.push({ value: dateString, totalEarning: monthlyEarning });
       }
@@ -988,16 +990,16 @@ export const getDashboardStats = async (
 
     sendResponse(res, {
       filter,
-      stats: { 
-        totalUsers, 
-        totalAdmins, 
-        totalNormalUsers, 
-        totalLeasers, 
-        totalMarketplaceListings, 
-        totalCategories, 
+      stats: {
+        totalUsers,
+        totalAdmins,
+        totalNormalUsers,
+        totalLeasers,
+        totalMarketplaceListings,
+        totalCategories,
         totalZones,
         bookingCount,
-        totalEarning 
+        totalEarning
       },
       charts: {
         users: { change: userTrend, record: userRecords },

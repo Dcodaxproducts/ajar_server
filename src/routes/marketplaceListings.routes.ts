@@ -1,7 +1,5 @@
 import express from "express";
-import { validateRequest } from "../middlewares/validateRequest";
 import { authMiddleware } from "../middlewares/auth.middleware";
-import { marketplaceListingSchema } from "../schemas/marketplaceListings.Schema";
 import {
   createMarketplaceListing,
   getAllMarketplaceListings,
@@ -17,9 +15,8 @@ import {
 } from "../controllers/marketplaceListings.controller";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
-import upload, { uploadAny, uploadFiles } from "../utils/multer";
+import { uploadAny, uploadFiles } from "../utils/multer";
 import { optionalAuth } from "../middlewares/optionalAuthMiddleware";
-import { validateDocuments } from "../middlewares/validateDocuments.middleware";
 
 const router = express.Router();
 
