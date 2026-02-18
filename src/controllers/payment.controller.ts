@@ -432,25 +432,53 @@ export const createConnectedAccount = async (req: AuthRequest, res: Response) =>
   try {
     const { userId, email, country } = req.body;
 
-    // 1️⃣ Create connected account
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // If already has a complete connected account, skip
+    if (user.stripe?.connectedAccountId) {
+      const existing = await stripe.accounts.retrieve(user.stripe.connectedAccountId);
+      if (existing.details_submitted) {
+        return res.json({ alreadyConnected: true });
+      }
+    }
+
     const account = await stripe.accounts.create({
       type: "express",
       country: country || "US",
       email,
     });
 
-    // 2️⃣ Save account id in DB
-    await saveStripeAccountIdToUser(userId, account.id);
-
-    // 3️⃣ Create account link for onboarding
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
-      refresh_url: `${process.env.CLIENT_URL}/connect-bank-account`,
-      return_url: `${process.env.CLIENT_URL}/connect-bank-account`,
+      refresh_url: `${process.env.CLIENT_URL}/connect-bank-account/reauth`,
+      return_url: `${process.env.CLIENT_URL}/connect-bank-account/success?accountId=${account.id}&userId=${userId}`,
       type: "account_onboarding",
     });
 
     res.json({ url: accountLink.url });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export const confirmConnectedAccount = async (req: AuthRequest, res: Response) => {
+  try {
+    const { accountId, userId } = req.body;
+
+    if (!accountId || !userId) {
+      return res.status(400).json({ error: "accountId and userId are required" });
+    }
+
+    const account = await stripe.accounts.retrieve(accountId);
+    if (!account.details_submitted) {
+      return res.status(400).json({ error: "Stripe onboarding not completed" });
+    }
+
+    await saveStripeAccountIdToUser(userId, accountId);
+
+    res.json({ success: true });
   } catch (err: any) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -493,7 +521,7 @@ export const withdraw = async (req: AuthRequest, res: Response) => {
     const { amount } = req.body;
 
     const MIN_WITHDRAWAL = 100;
-    
+
     if (!amount || amount < MIN_WITHDRAWAL) {
       return res.status(400).json({
         error: `Invalid amount. Minimum withdrawal is $${MIN_WITHDRAWAL}.`
