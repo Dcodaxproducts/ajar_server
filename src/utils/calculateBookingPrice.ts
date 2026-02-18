@@ -42,18 +42,19 @@ export const calculateBookingPrice = ({
         (checkOut.getFullYear() - checkIn.getFullYear()) * 12 +
         (checkOut.getMonth() - checkIn.getMonth());
 
-      if (checkOut.getDate() < checkIn.getDate()) {
+      const inDay = checkIn.getUTCDate();
+      const outDay = checkOut.getUTCDate();
+
+      if (outDay < inDay) {
         duration -= 1;
-      } else if (checkOut.getDate() > checkIn.getDate()) {
+      } else if (outDay > inDay) {
         duration += 1;
       }
 
       duration = Math.max(duration, 1);
-
       calculatedBasePrice = duration * basePrice;
       break;
     }
-
 
     case "year": {
       let years = checkOut.getFullYear() - checkIn.getFullYear();
@@ -61,13 +62,12 @@ export const calculateBookingPrice = ({
       const anniversaryDate = new Date(checkIn);
       anniversaryDate.setFullYear(checkIn.getFullYear() + years);
 
-      const cleanCheckOut = new Date(checkOut);
-      cleanCheckOut.setHours(0, 0, 0, 0);
+      const outMonth = checkOut.getUTCMonth();
+      const outDay = checkOut.getUTCDate();
+      const annMonth = anniversaryDate.getUTCMonth();
+      const annDay = anniversaryDate.getUTCDate();
 
-      const cleanAnniversary = new Date(anniversaryDate);
-      cleanAnniversary.setHours(0, 0, 0, 0);
-
-      if (cleanCheckOut.getTime() > cleanAnniversary.getTime()) {
+      if (outMonth > annMonth || (outMonth === annMonth && outDay > annDay)) {
         years += 1;
       }
 

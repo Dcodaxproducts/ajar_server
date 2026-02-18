@@ -246,6 +246,7 @@ export const updateRefundStatus = async (
 
   try {
     const { id } = req.params;
+
     const { status } = req.body;
 
     if (!["pending", "accept", "reject"].includes(status)) {
@@ -355,7 +356,8 @@ export const updateRefundStatus = async (
 
     // ================= ACCEPT =================
     const refundAmount = refund.totalRefundAmount || 0;
-    const leaserAmount = refund.totalRefundAmount - (adminFee + tax) || 0;
+    const leaserAmount = refund.totalRefundAmount - (adminFee + tax) + (refund?.deduction || 0);
+    const adminCollection = refund?.deduction || 0;
 
     if (!leaser?.wallet || leaser.wallet.balance < refundAmount) {
       await session.abortTransaction();
@@ -374,7 +376,8 @@ export const updateRefundStatus = async (
     // Wallet movement
     leaser.wallet.balance -= leaserAmount;
     renter.wallet.balance += refundAmount;
-    admin.wallet.balance -= adminFee + tax;
+    admin.wallet.balance += refund?.deduction || 0;
+    // admin.wallet.balance -= adminFee + tax;
 
     await leaser.save({ session });
     await renter.save({ session });
@@ -383,23 +386,26 @@ export const updateRefundStatus = async (
     await WalletTransaction.insertMany(
       [
         {
-          userId: leaser._id,
-          type: "debit",
-          amount: refundAmount.toFixed(2),
-          source: "refund",
-          status: "succeeded",
-          createdAt: new Date(),
-          requestedAt: new Date(),
-        },
-        {
           userId: renter._id,
           type: "credit",
+          amount: refundAmount.toFixed(2),
+          source: "refund",
+          status: "succeeded"
+        },
+        {
+          userId: leaser._id,
+          type: "debit",
           amount: leaserAmount.toFixed(2),
           source: "refund",
           status: "succeeded",
-          createdAt: new Date(),
-          requestedAt: new Date(),
         },
+        {
+          userId: admin._id,
+          type: "credit",
+          amount: adminCollection.toFixed(2),
+          source: "refund",
+          status: "succeeded",
+        }
       ],
       { session }
     );
@@ -437,6 +443,21 @@ export const updateRefundStatus = async (
         type: "refund",
         status: "approved",
         deductedAmount: leaserAmount.toFixed(2),
+      }
+    );
+
+    // ================= ADMIN NOTIFICATION =================
+    await sendNotification(
+      admin._id as string,
+      "Refund Settlement Processed",
+      `The refund for "${capitalizeName(listingName)}" has been finalized. A service deduction of $${adminCollection.toFixed(2)} has been successfully collected and added to your balance.`,
+      {
+        refundId: (refund._id as any).toString(),
+        bookingId: booking._id.toString(),
+        type: "refund",
+        status: "approved",
+        collectedDeduction: adminCollection.toFixed(2),
+        totalRenterRefund: refundAmount.toFixed(2),
       }
     );
 

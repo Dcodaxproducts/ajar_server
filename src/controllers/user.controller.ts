@@ -90,7 +90,7 @@ export const loginUser = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const { email, password, role } = req.body;
+  const { email, password, role, isWeb } = req.body;
 
   try {
     if (role === "staff") {
@@ -156,6 +156,23 @@ export const loginUser = async (
         STATUS_CODES.UNAUTHORIZED
       );
       return;
+    }
+
+    // If logging in from Web, check if they have active "Leaser" bookings
+    if (isWeb) {
+      const hasActiveLeaserBookings = await Booking.exists({
+        leaser: user._id,
+      });
+
+      if (hasActiveLeaserBookings) {
+        sendResponse(
+          res,
+          null,
+          "The Leaser experience is only available in our mobile app. Please use the app to manage your account.",
+          STATUS_CODES.FORBIDDEN
+        );
+        return
+      }
     }
 
     // --- ONLY FOR USERS WITH 2FA ENABLED ---

@@ -492,9 +492,26 @@ export const withdraw = async (req: AuthRequest, res: Response) => {
     const userId = req.user?.id;
     const { amount } = req.body;
 
-    if (!amount || amount <= 0)
-      return res.status(400).json({ error: "Invalid amount" });
+    const MIN_WITHDRAWAL = 100;
+    
+    if (!amount || amount < MIN_WITHDRAWAL) {
+      return res.status(400).json({
+        error: `Invalid amount. Minimum withdrawal is $${MIN_WITHDRAWAL}.`
+      });
+    }
 
+    const hasActiveBookings = await Booking.exists({
+      leaser: userId,
+      status: { $in: ["approved", "in_progress"] }
+    });
+
+    if (hasActiveBookings) {
+      return res.status(400).json({
+        error: "Cannot withdraw while you have active bookings."
+      });
+    }
+
+    // 3️⃣ Fetch User & Stripe Account Eligibility
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -504,42 +521,30 @@ export const withdraw = async (req: AuthRequest, res: Response) => {
     if (user.wallet.balance < amount)
       return res.status(400).json({ error: "Insufficient wallet balance" });
 
-    // 🔹 Retrieve Stripe account
-    const account = await stripe.accounts.retrieve(
-      user.stripe.connectedAccountId
-    );
-
+    const account = await stripe.accounts.retrieve(user.stripe.connectedAccountId);
     if (!account.payouts_enabled)
-      return res
-        .status(400)
-        .json({ error: "Stripe account not eligible for payouts yet" });
+      return res.status(400).json({ error: "Stripe account not eligible for payouts" });
 
-    // 🔹 Convert to cents
+    // 4️⃣ Execute Transfer and Payout
     const amountInCents = Math.round(amount * 100);
 
-    // 🔹 1️⃣ Transfer from platform → connected account
+    // Platform -> Connected Account
     await stripe.transfers.create({
       amount: amountInCents,
       currency: "usd",
       destination: user.stripe.connectedAccountId,
     });
 
-    // 🔹 2️⃣ Create payout to bank
+    // Connected Account -> Bank
     const payout = await stripe.payouts.create(
-      {
-        amount: amountInCents,
-        currency: "usd",
-      },
-      {
-        stripeAccount: user.stripe.connectedAccountId,
-      }
+      { amount: amountInCents, currency: "usd" },
+      { stripeAccount: user.stripe.connectedAccountId }
     );
 
-    // 🔹 3️⃣ Deduct wallet balance
+    // 5️⃣ Update Database & Record Transaction
     user.wallet.balance -= amount;
     await user.save();
 
-    // 🔹 4️⃣ Record WalletTransaction
     await WalletTransaction.create({
       userId: user._id,
       amount,
@@ -550,25 +555,23 @@ export const withdraw = async (req: AuthRequest, res: Response) => {
       description: `Withdrawal to connected bank account`,
     });
 
-    // 🔹 5️⃣ Send Notification
+    // 6️⃣ Notify User
     await sendNotification(
       user._id as string,
       "Withdrawal Initiated",
-      `Your withdrawal of $${amount.toFixed(2)} has been initiated. Funds will arrive in 2–7 business days.`,
+      `Your withdrawal of $${amount.toFixed(2)} has been initiated.`,
       { userId: user._id, type: "wallet_withdrawal", payoutId: payout.id }
     );
 
-    res.json({
+    return res.json({
       success: true,
-      message: "Withdrawal initiated. Funds will arrive in 2–7 business days.",
       payoutId: payout.id,
       status: payout.status,
     });
+
   } catch (err: any) {
     console.error("Withdraw error:", err);
     res.status(500).json({ error: err.message || "Server error" });
   }
 };
-
-
 
