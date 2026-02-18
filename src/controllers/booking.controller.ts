@@ -70,9 +70,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     const adminCommissionRate = (form.setting.renterCommission.value + form.setting.leaserCommission.value) / 100;
     const taxRate = form.setting.tax / 100;
 
-    console.log("adminCommissionRate", adminCommissionRate)
-    console.log("taxRate", taxRate)
-
     const renter = await User.findById(user.id);
     if (!renter) {
       return res.status(404).json({ message: "Renter not found" });
@@ -241,8 +238,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       tax: priceBreakdown.tax,
       totalPrice: priceBreakdown.totalPrice,
     };
-
-    console.log(priceDetails)
 
     if (renter.wallet.balance < priceDetails.totalPrice) {
       return res.status(400).json({
@@ -486,17 +481,17 @@ export const updateBookingStatus = async (
       session.endSession();
 
       try {
-  //       await sendEmail({
-  //         to: leaser.email,
-  //         name: leaser.name,
-  //         subject: "Extension Approved - PIN Code",
-  //         content: `
-  //   <h2>Extension Approved</h2>
-  //   <p>The extension request for "<strong>${listingName}</strong>" has been approved.</p>
-  //   <p><strong>PIN Code:</strong> ${pin}</p>
-  //   <p>Please use this PIN to verify the extension at handover.</p>
-  // `,
-  //       });
+        //       await sendEmail({
+        //         to: leaser.email,
+        //         name: leaser.name,
+        //         subject: "Extension Approved - PIN Code",
+        //         content: `
+        //   <h2>Extension Approved</h2>
+        //   <p>The extension request for "<strong>${listingName}</strong>" has been approved.</p>
+        //   <p><strong>PIN Code:</strong> ${pin}</p>
+        //   <p>Please use this PIN to verify the extension at handover.</p>
+        // `,
+        //       });
 
         await sendNotification(
           renterId,
@@ -1196,8 +1191,8 @@ export const getBookingsByUser = async (
           select: "name",
         },
       })
-      .populate("renter", "firstName lastName email")
-      .populate("leaser", "firstName lastName email")
+      .populate("renter", "name email")
+      .populate("leaser", "name email")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -1230,7 +1225,7 @@ export const getBookingsByUser = async (
       extensions.map(async (booking) => {
         // Add null/undefined check
         if (!booking.previousBookingId) return;
-        
+
         const parentIdStr = booking.previousBookingId.toString();
         const parent = bookingsMap[parentIdStr];
         if (parent) {
