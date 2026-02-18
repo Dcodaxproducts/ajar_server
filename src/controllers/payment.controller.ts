@@ -430,7 +430,8 @@ export const verifyPayment = async (req: AuthRequest, res: Response) => {
 
 export const createConnectedAccount = async (req: AuthRequest, res: Response) => {
   try {
-    const { userId, email, country } = req.body;
+    const { country } = req.body;
+    const userId = req.user?.id;
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
@@ -446,7 +447,7 @@ export const createConnectedAccount = async (req: AuthRequest, res: Response) =>
     const account = await stripe.accounts.create({
       type: "express",
       country: country || "US",
-      email,
+      email : user.email,
     });
 
     const accountLink = await stripe.accountLinks.create({
@@ -465,7 +466,8 @@ export const createConnectedAccount = async (req: AuthRequest, res: Response) =>
 
 export const confirmConnectedAccount = async (req: AuthRequest, res: Response) => {
   try {
-    const { accountId, userId } = req.body;
+    const userId = req.user?.id; 
+    const { accountId } = req.body;
 
     if (!accountId || !userId) {
       return res.status(400).json({ error: "accountId and userId are required" });
