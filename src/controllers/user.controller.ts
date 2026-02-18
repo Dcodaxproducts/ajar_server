@@ -591,11 +591,11 @@ export const resetPassword = async (
     user.password = hashedPassword;
 
     // Clear OTP fields
-    user.otp = {
-      code: "",
-      expiry: new Date(0),
-      isVerified: false,
-    };
+    // user.otp = {
+    //   code: "",
+    //   expiry: new Date(0),
+    //   isVerified: false,
+    // };
 
     await user.save();
 
