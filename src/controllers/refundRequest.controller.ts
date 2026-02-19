@@ -359,13 +359,13 @@ export const updateRefundStatus = async (
     const leaserAmount = refund.totalRefundAmount - (adminFee + tax) + (refund?.deduction || 0);
     const adminCollection = refund?.deduction || 0;
 
-    if (!leaser?.wallet || leaser.wallet.balance < refundAmount) {
+    if (!leaser?.wallet || leaser.wallet.balance < leaserAmount) {
       await session.abortTransaction();
       session.endSession();
       return sendResponse(
         res,
         {
-          requiredAmount: refundAmount.toFixed(2),
+          requiredAmount: leaserAmount.toFixed(2),
           currentBalance: leaser.wallet?.balance?.toFixed(2) || 0,
         },
         "Leaser has insufficient wallet balance for refund",
@@ -376,8 +376,7 @@ export const updateRefundStatus = async (
     // Wallet movement
     leaser.wallet.balance -= leaserAmount;
     renter.wallet.balance += refundAmount;
-    admin.wallet.balance += refund?.deduction || 0;
-    // admin.wallet.balance -= adminFee + tax;
+    admin.wallet.balance += (refund?.deduction || 0) - (adminFee + tax);
 
     await leaser.save({ session });
     await renter.save({ session });
@@ -403,6 +402,13 @@ export const updateRefundStatus = async (
           userId: admin._id,
           type: "credit",
           amount: adminCollection.toFixed(2),
+          source: "refund",
+          status: "succeeded",
+        },
+        {
+          userId: admin._id,
+          type: "debit",
+          amount: (adminFee + tax).toFixed(2),
           source: "refund",
           status: "succeeded",
         }
@@ -447,6 +453,20 @@ export const updateRefundStatus = async (
     );
 
     // ================= ADMIN NOTIFICATION =================
+    await sendNotification(
+      admin._id as string,
+      "Admin Balance Deducted",
+      `An amount of $${(adminFee + tax).toFixed(2)} has been debited from your wallet and transferred to the renter's account as part of the refund settlement for "${capitalizeName(listingName)}".`,
+      {
+        refundId: (refund._id as any).toString(),
+        bookingId: booking._id.toString(),
+        type: "refund",
+        status: "approved",
+        debitedAmount: (adminFee + tax).toFixed(2),
+        transferredTo: "renter"
+      }
+    );
+
     await sendNotification(
       admin._id as string,
       "Refund Settlement Processed",
