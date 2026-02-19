@@ -160,11 +160,11 @@ export const loginUser = async (
 
     // If logging in from Web, check if they have active "Leaser" bookings
     if (isWeb) {
-      const hasActiveLeaserBookings = await Booking.exists({
+      const hasActiveLeaserListings = await MarketplaceListing.exists({
         leaser: user._id,
       });
 
-      if (hasActiveLeaserBookings) {
+      if (hasActiveLeaserListings) {
         sendResponse(
           res,
           null,
