@@ -240,27 +240,27 @@ export const createZone = async (
     if (rawPolygons) {
       const parsedPolygons =
         typeof rawPolygons === "string" ? JSON.parse(rawPolygons) : rawPolygons;
-      
+
       console.log("Parsed polygons:", parsedPolygons);
 
       // Convert from [{lat, lng}] to GeoJSON coordinates [lng, lat]
       geoJsonPolygons = {
         type: "MultiPolygon",
-        coordinates: parsedPolygons.map((polygon: Array<{lat: number, lng: number}>) => {
+        coordinates: parsedPolygons.map((polygon: Array<{ lat: number, lng: number }>) => {
           // Convert to [lng, lat] format
           const coords = polygon.map(coord => [coord.lng, coord.lat]);
-          
+
           // **FIX: Close the polygon by adding first point at the end**
           if (coords.length > 0) {
             const firstPoint = coords[0];
             const lastPoint = coords[coords.length - 1];
-            
+
             // Check if polygon is already closed
             if (firstPoint[0] !== lastPoint[0] || firstPoint[1] !== lastPoint[1]) {
               coords.push([...firstPoint]); // Add first point at the end to close the loop
             }
           }
-          
+
           return [coords];
         })
       };
@@ -690,12 +690,16 @@ export const addSubCategoriesToZone = async (
     }
 
     // Save ObjectIds
-    zone.subCategories = existingIds.map((id) => new Types.ObjectId(id));
-    await zone.save();
+    await Zone.updateOne(
+      { _id: zoneId },
+      { $set: { subCategories: existingIds.map((id) => new Types.ObjectId(id)) } }
+    );
+
+    const updatedZone = await Zone.findById(zoneId);
 
     sendResponse(
       res,
-      zone,
+      updatedZone,
       "Subcategories updated successfully",
       STATUS_CODES.OK
     );
