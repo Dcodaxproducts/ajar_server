@@ -1,6 +1,9 @@
 import mongoose from "mongoose";
 import { config } from "./env";
 
+// import { setServers } from "dns";
+// setServers(["8.8.8.8", "8.8.4.4"]);
+
 export const connectDB = async () => {
   try {
     const connection = await mongoose.connect(config.MONGO_URI!);
