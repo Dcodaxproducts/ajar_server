@@ -1090,7 +1090,7 @@ export const getBookingById = async (
           },
         ],
       })
-      .populate("renter")
+      .populate("renter", "name email profilePicture")
       .lean();
 
     if (!booking) {
@@ -1127,7 +1127,7 @@ export const getBookingById = async (
       .populate("userId", "name email")
       .lean();
 
-    const formattedReviews = reviews.map((r) => ({
+    const formattedReviews = reviews?.map((r) => ({
       user: r.userId,
       review: {
         stars: r.stars,
@@ -1274,6 +1274,36 @@ export const getBookingsByUser = async (
       }));
     }
 
+    finalBookings = await Promise.all(
+      finalBookings.map(async (booking: any) => {
+        const review = await Review.findOne({
+          bookingId: booking._id,
+          userId: user.id,
+        }).lean();
+
+        const listingId = booking.marketplaceListingId?._id ?? booking.marketplaceListingId;
+        const listingBookings = await Booking.find({ marketplaceListingId: listingId })
+          .select("_id")
+          .lean();
+        const listingBookingIds = listingBookings.map((b: any) => b._id);
+        const listingReviews = await Review.find({ bookingId: { $in: listingBookingIds } })
+          .select("stars")
+          .lean();
+        const totalReviews = listingReviews.length;
+        const averageRating =
+          totalReviews > 0
+            ? listingReviews.reduce((sum: number, r: any) => sum + (r.stars || 0), 0) / totalReviews
+            : 0;
+
+        return {
+          ...booking,
+          isReviewSubmitted: review ? true : false,
+          averageRating,
+          totalReviews
+        };
+      })
+    );
+
     return sendResponse(res, {
       statusCode: STATUS_CODES.OK,
       success: true,
@@ -1289,6 +1319,114 @@ export const getBookingsByUser = async (
     next(error);
   }
 };
+
+export const getRenterBookingById = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const userId = req?.user?.id;
+    const languageHeader = req.headers["language"];
+    const locale =
+      typeof languageHeader === "string"
+        ? languageHeader.toLowerCase()
+        : Array.isArray(languageHeader) && languageHeader.length > 0
+          ? languageHeader[0].toLowerCase()
+          : "en";
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    let booking = await Booking.findById(id)
+      .populate({
+        path: "marketplaceListingId",
+        populate: [
+          {
+            path: "leaser",
+            select: "name email profilePicture",
+          },
+          {
+            path: "zone",
+            select: "name",
+          },
+        ],
+      })
+      .populate("renter", "name email profilePicture")
+      .lean();
+
+    if (!booking) {
+      sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    booking = await attachPaymentStatus(booking);
+
+    const childBookings = await Booking.find({ previousBookingId: id }).lean();
+
+    const extensions = await Promise.all(
+      childBookings.map(async (child: any, idx: number) => {
+        const childWithPayment = await attachPaymentStatus(child);
+        return {
+          _id: childWithPayment._id?.toString?.() ?? childWithPayment._id,
+          name: `Extension ${idx + 1}`,
+          extensionDate: childWithPayment.dates?.checkOut ?? null,
+          handover: childWithPayment.bookingDates?.handover ?? null,
+          returnDate: childWithPayment.bookingDates?.returnDate ?? null,
+          priceDetails: childWithPayment.priceDetails ?? null,
+          pricingMeta: childWithPayment.pricingMeta ?? null,
+          extraRequestCharges: childWithPayment.extraRequestCharges ?? null,
+          paymentStatus: childWithPayment.paymentStatus ?? null,
+        };
+      })
+    );
+
+    const result = {
+      ...booking,
+      extensions,
+    };
+
+    const review = await Review.findOne({ bookingId: id, userId: userId })
+      .lean();
+
+    const isReviewSubmitted = review ? true : false;
+
+    const listingId = (booking?.marketplaceListingId as any)?._id ?? booking?.marketplaceListingId;
+    const listingBookings = await Booking.find({ marketplaceListingId: listingId })
+      .select("_id")
+      .lean();
+    const listingBookingIds = listingBookings.map((b: any) => b._id);
+    const listingReviews = await Review.find({ bookingId: { $in: listingBookingIds } })
+      .select("stars")
+      .lean();
+
+    const totalReviews = listingReviews.length;
+    const averageRating =
+      totalReviews > 0
+        ? listingReviews.reduce((sum: number, r: any) => sum + (r.stars || 0), 0) / totalReviews
+        : 0;
+
+    const finalResult = {
+      ...result,
+      isReviewSubmitted,
+      totalReviews,
+      averageRating
+    };
+
+    sendResponse(
+      res,
+      finalResult,
+      `Booking found (locale: ${locale})`,
+      STATUS_CODES.OK
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
 // export const getBookingsByUser = async (
 //   req: Request,
 //   res: Response,

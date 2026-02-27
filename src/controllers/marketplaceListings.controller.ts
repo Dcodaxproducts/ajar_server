@@ -832,8 +832,8 @@ export const getMarketplaceListingByIdforLeaser = async (
       const adminFee = doc.price * totalCommissionRate;
       const tax = (doc.price + adminFee) * taxRate;
 
-      doc.adminFee = Number(adminFee.toFixed(2));
-      doc.tax = Number(tax.toFixed(2));
+      doc.adminFee = adminFee;
+      doc.tax = tax;
     } else {
       doc.adminFee = 0;
       doc.tax = 0;
@@ -980,6 +980,27 @@ export const getMarketplaceListingById = async (
       }
       delete subCategoryObj.languages;
     }
+
+    const bookings = await Booking.find({ marketplaceListingId: id })
+      .select("_id")
+      .session(session)
+      .lean();
+
+    const bookingIds = bookings.map((b) => b._id);
+
+    const reviews = await Review.find({ bookingId: { $in: bookingIds } })
+      .select("stars")
+      .session(session)
+      .lean();
+
+    const totalReviews = reviews.length;
+    const averageRating =
+      totalReviews > 0
+        ? reviews.reduce((sum, r) => sum + (r.stars || 0), 0) / totalReviews
+        : 0;
+
+    (doc as any).averageRating = averageRating;
+    (doc as any).totalReviews = totalReviews;
 
     await session.commitTransaction();
     session.endSession();
@@ -1202,7 +1223,7 @@ export const deleteMarketplaceListing = async (
       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
       return;
     }
-    
+
     if (String(existingListing.leaser) !== String(req.user?.id) && req.user?.role !== "admin") {
       sendResponse(
         res,

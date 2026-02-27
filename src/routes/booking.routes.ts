@@ -9,6 +9,7 @@ import {
   getBookingsByUserIdForAdmin,
   updateBookingStatus,
   submitBookingPin,
+  getRenterBookingById,
 } from "../controllers/booking.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { Booking } from "../models/booking.model";
@@ -37,6 +38,8 @@ router.get(
   asyncHandler(getBookingsByUserIdForAdmin)
 );
 router.get("/user/bookings", useAuth, userOnly, asyncHandler(getBookingsByUser));
+router.get("/user/booking/:id", useAuth, userOnly, asyncHandler(getRenterBookingById));
+
 router.patch(
   "/:id",
   useAuth,
