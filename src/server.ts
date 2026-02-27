@@ -4,7 +4,6 @@ import { connectDB } from "./config/db";
 import { config } from "./config/env";
 import { initSocket } from "./socket";
 
-
 const PORT = config.PORT || 5001;
 
 connectDB().then(() => {
