@@ -30,7 +30,7 @@ const userOnly = allowRoles(["user"]) as unknown as express.RequestHandler;
 
 router.post("/", useAuth, asyncHandler(createBooking));
 router.get("/", useAuth, adminOnly, asyncHandler(getAllBookings));
-router.get("/:id", useAuth, userOnly, asyncHandler(getBookingById));
+router.get("/:id", useAuth, asyncHandler(getBookingById));
 router.get(
   "/admin/user/:userId",
   useAuth,

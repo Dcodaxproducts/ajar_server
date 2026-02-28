@@ -922,6 +922,7 @@ export const getAllBookings = async (
   try {
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
+    const zone = req.query.zone as string | undefined;
 
     const status = req.query.status as
       | "pending"
@@ -939,6 +940,14 @@ export const getAllBookings = async (
       )
     ) {
       filter.status = status;
+    }
+
+    // If zone filter provided, find all listing IDs in that zone first
+    if (zone && mongoose.Types.ObjectId.isValid(zone)) {
+      const listingIds = await MarketplaceListing.find({
+        zone: new mongoose.Types.ObjectId(zone),
+      }).distinct("_id");
+      filter.marketplaceListingId = { $in: listingIds };
     }
 
     const baseQuery = Booking.find(filter)
