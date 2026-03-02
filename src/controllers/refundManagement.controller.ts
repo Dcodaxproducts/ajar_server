@@ -208,6 +208,7 @@ export const createRefundRequest = asyncHandler(
         "Refund request For this booking already exists",
         STATUS_CODES.NOT_FOUND
       );
+      return
     }
 
     // Get booking + listing
@@ -217,6 +218,13 @@ export const createRefundRequest = asyncHandler(
 
     if (!bookingData || !bookingData.marketplaceListingId) {
       res.status(404).json({ message: "Booking or listing not found" });
+      return;
+    }
+
+    if (bookingData.status === "pending") {
+      res.status(400).json({
+        message: "Refund is not applicable for pending bookings."
+      });
       return;
     }
 
