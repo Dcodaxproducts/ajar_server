@@ -19,7 +19,7 @@ import {
   getUserDocuments,
   getUserWithdrawals,
   getWallet,
-  getWithdrawalHistoryByRange,
+  getWalletHistoryByRange,
   googleLogin,
   instantWithdrawal,
   loginUser,
@@ -158,7 +158,7 @@ router.get("/all", useAuth, asyncHandler(getAllUsers));
 // Get wallet balance
 router.get("/wallet", useAuth, asyncHandler(getWallet));
 
-router.get("/my-withdrawals/range", useAuth, asyncHandler(getWithdrawalHistoryByRange));
+router.get("/my-withdrawals/range", useAuth, asyncHandler(getWalletHistoryByRange));
 
 router.get(
   "/my-withdrawals",
