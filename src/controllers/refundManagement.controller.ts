@@ -270,6 +270,13 @@ export const createRefundRequest = asyncHandler(
       totalRefundAmount = 0;
     }
 
+    if (totalRefundAmount <= 0) {
+      res.status(400).json({
+        message: "Refund not allowed. Cancellation cutoff period has passed."
+      });
+      return;
+    }
+
     // ✅ Create refund request (schema-safe)
     const refundRequest = await RefundRequest.create({
       booking,
