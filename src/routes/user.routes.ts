@@ -13,7 +13,6 @@ import {
   getAllUsersWithStats,
   getAllWithdrawals,
   getBankAccounts,
-  getDashboardStats,
   getListingDocuments,
   getUserDetails,
   getUserDocuments,
@@ -25,6 +24,7 @@ import {
   loginUser,
   processWithdrawal,
   refreshToken,
+  removeUserDocument,
   resendOtp,
   resetPassword,
   saveFcmToken,
@@ -136,6 +136,7 @@ router.put(
 );
 
 router.delete("/:userId", useAuth, asyncHandler(deleteUser));
+router.delete("/documents/file", useAuth, asyncHandler(removeUserDocument));
 
 // documents routes
 router.get("/userdocs", getUserDocuments);

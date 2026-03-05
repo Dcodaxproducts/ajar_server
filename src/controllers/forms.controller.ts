@@ -541,6 +541,12 @@ export const getFormByZoneAndSubCategory = async (
         label: fieldTranslation?.translations?.label || field.label,
         placeholder:
           fieldTranslation?.translations?.placeholder || field.placeholder,
+        conditional: field.conditional
+          ? {
+            dependsOn: field.conditional.dependsOn,
+            value: field.conditional.value,
+          }
+          : undefined,
       };
     });
 
@@ -670,7 +676,7 @@ export const updateForm = async (
         );
         return;
       }
-console.log(setting)
+      console.log(setting)
       userFieldIds = validUserFields.map(
         (f) => f._id as mongoose.Types.ObjectId
       );

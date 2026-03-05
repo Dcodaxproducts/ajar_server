@@ -39,6 +39,7 @@ export interface IField extends Document {
   isFixed?: boolean;
   validation?: {
     required: boolean;
+    error?: string;
     pattern?: string;
     min?: number;
     max?: number;
@@ -74,6 +75,7 @@ const FieldSchema = new Schema<IField>(
     isFixed: { type: Boolean, default: false },
     validation: {
       required: { type: Boolean, default: false },
+      error: { type: String },
       pattern: { type: String },
       min: { type: Number },
       max: { type: Number },

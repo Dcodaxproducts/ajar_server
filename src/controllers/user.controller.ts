@@ -1210,6 +1210,52 @@ export const deleteUser = async (
   }
 };
 
+export const removeUserDocument = async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.id;
+  const { fileUrl } = req.body;
+
+  if (!fileUrl) {
+    res.status(400).json({ success: false, message: "fileUrl is required" });
+    return;
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    res.status(404).json({ success: false, message: "User not found" });
+    return;
+  }
+
+  // Check if the fileUrl exists in any document
+  const documentWithFile = user.documents.find((doc) =>
+    doc.filesUrl.includes(fileUrl)
+  );
+
+  if (!documentWithFile) {
+    res.status(404).json({ success: false, message: "File not found" });
+    return;
+  }
+
+  if (documentWithFile.status === "approved") {
+    res.status(403).json({
+      success: false,
+      message: "Approved documents cannot be removed",
+    });
+    return;
+  }
+
+  // Remove only the specific URL from filesUrl array
+  await User.findByIdAndUpdate(
+    userId,
+    { $pull: { "documents.$[].filesUrl": fileUrl } },
+    { new: true }
+  );
+
+  res.status(200).json({
+    success: true,
+    message: "File removed successfully",
+  });
+};
+
 // for documents get dropdown
 import { Dropdown } from "../models/dropdown.model";
 
@@ -1909,32 +1955,32 @@ export const getWalletHistoryByRange = async (req: any, res: Response) => {
 
     // 2. Aggregate for Graph
     const graphData: GraphItem[] = await WalletTransaction.aggregate([
-  {
-    $match: {
-      userId: new mongoose.Types.ObjectId(userId),
-      status: "succeeded",
-      createdAt: { $gte: startDate, $lte: endDate },
-    },
-  },
-  {
-    $group: {
-      ...getGroupStage(range as RangeType),
-      // Sums ANY debit (money leaving the wallet)
-      totalWithdraw: {
-        $sum: {
-          $cond: [{ $eq: ["$type", "debit"] }, "$amount", 0],
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          status: "succeeded",
+          createdAt: { $gte: startDate, $lte: endDate },
         },
       },
-      // Sums ANY credit (money entering the wallet)
-      totalTopup: {
-        $sum: {
-          $cond: [{ $eq: ["$type", "credit"] }, "$amount", 0],
+      {
+        $group: {
+          ...getGroupStage(range as RangeType),
+          // Sums ANY debit (money leaving the wallet)
+          totalWithdraw: {
+            $sum: {
+              $cond: [{ $eq: ["$type", "debit"] }, "$amount", 0],
+            },
+          },
+          // Sums ANY credit (money entering the wallet)
+          totalTopup: {
+            $sum: {
+              $cond: [{ $eq: ["$type", "credit"] }, "$amount", 0],
+            },
+          },
         },
       },
-    },
-  },
-  { $sort: getSortStage(range as RangeType) },
-]);
+      { $sort: getSortStage(range as RangeType) },
+    ]);
 
     const periods = getPeriods(range as RangeType, new Date());
     const graph = fillMissingPeriods(periods, graphData, range as RangeType);
