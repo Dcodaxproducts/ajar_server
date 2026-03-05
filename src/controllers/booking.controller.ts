@@ -1285,6 +1285,26 @@ export const getBookingsByUser = async (
 
     finalBookings = await Promise.all(
       finalBookings.map(async (booking: any) => {
+        const listing = booking.marketplaceListingId as any;
+        if (listing) {
+          const isExpired = isBookingExpiredForApproval(booking, listing.priceUnit);
+          if (isExpired && booking.status !== "expired") {
+            await Booking.findByIdAndUpdate(booking._id, { status: "expired" });
+            booking.status = "expired";
+
+            await sendNotification(
+              booking.renter?._id?.toString() ?? booking.renter?.toString(),
+              "Booking Expired",
+              `Your booking for "${listing.name}" has expired as the checkout date has already passed.`,
+              {
+                bookingId: booking._id.toString(),
+                listingId: listing._id.toString(),
+                type: "booking_expired",
+              }
+            );
+          }
+        }
+
         const review = await Review.findOne({
           bookingId: booking._id,
           userId: user.id,

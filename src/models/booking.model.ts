@@ -33,7 +33,7 @@ interface IDamagesCharges {
 export interface IBooking extends Document {
 
     _id: mongoose.Types.ObjectId; 
-  status: "pending" | "approved" | "in_progress" | "rejected" | "completed" | "cancelled";
+  status: "pending" | "approved" | "in_progress" | "rejected" | "completed" | "cancelled" | "expired";
   renter: mongoose.Types.ObjectId | IUser;
   leaser?: mongoose.Types.ObjectId | IUser;
   marketplaceListingId: mongoose.Types.ObjectId | IMarketplaceListing;
@@ -63,7 +63,7 @@ const BookingSchema = new Schema<IBooking>(
   {
     status: {
       type: String,
-      enum: ["pending", "approved", "in_progress", "rejected", "completed", "cancelled"],
+      enum: ["pending", "approved", "in_progress", "rejected", "completed", "cancelled","expired"],
       default: "pending",
     },
     renter: {
