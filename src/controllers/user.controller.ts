@@ -923,7 +923,7 @@ export const getDashboardStats = async (
       return acc + price + extension;
     }, 0);
 
-    // --- Chart Data (via shared rangeUtils) ---
+    // --- Charts Data (via shared rangeUtils) ---
     const chartData = filter
       ? await buildDashboardChartData(filter as RangeType, now, User, Booking)
       : null;
