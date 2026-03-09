@@ -121,15 +121,10 @@ export const createBookingPayment = async (req: AuthRequest, res: Response) => {
 
 // STRIPE WEBHOOK
 export const stripeWebhook = async (req: Request, res: Response) => {
-  console.log("WEBHOOK HIT");
-  console.log("Headers:", req.headers);
-  console.log("Body type:", typeof req.body);
-  console.log("STRIPE WEBHOOK RECEIVED");
-
   const sig = req.headers["stripe-signature"];
   if (!sig) return res.status(400).send("Missing Stripe signature");
-  console.log("Webhook Signature:", sig);
   let event;
+
   try {
     event = stripe.webhooks.constructEvent(
       req.body,
@@ -141,6 +136,18 @@ export const stripeWebhook = async (req: Request, res: Response) => {
   }
 
   try {
+    if (event.type === "account.updated") {
+      const account = event.data.object as any;
+      const userId = account.metadata?.userId;
+
+      if (userId && account.details_submitted) {
+        console.log("Onboarding Complete for User:", userId);
+        await User.findByIdAndUpdate(userId, {
+          "stripe.connectedAccountId": account.id,
+        });
+      }
+      return res.json({ received: true });
+    }
     const paymentIntent = event.data.object as any;
 
     const userRenterId = paymentIntent.metadata?.userRenterId;
@@ -433,6 +440,8 @@ export const createConnectedAccount = async (req: AuthRequest, res: Response) =>
     const { country } = req.body;
     const userId = req.user?.id;
 
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -447,7 +456,8 @@ export const createConnectedAccount = async (req: AuthRequest, res: Response) =>
     const account = await stripe.accounts.create({
       type: "express",
       country: country || "US",
-      email : user.email,
+      email: user.email || undefined,
+      metadata: { userId: userId?.toString() }
     });
 
     const accountLink = await stripe.accountLinks.create({
@@ -466,7 +476,7 @@ export const createConnectedAccount = async (req: AuthRequest, res: Response) =>
 
 export const confirmConnectedAccount = async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.user?.id; 
+    const userId = req.user?.id;
     const { accountId } = req.body;
 
     if (!accountId || !userId) {
@@ -604,4 +614,3 @@ export const withdraw = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: err.message || "Server error" });
   }
 };
-

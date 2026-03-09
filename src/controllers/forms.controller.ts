@@ -649,6 +649,7 @@ export const updateForm = async (
     const fixedFields = await Field.find({ isFixed: true });
 
     let userFieldIds: mongoose.Types.ObjectId[] = [];
+    let conditionalFields: any[] = [];
 
     if (Array.isArray(fields) && fields.length > 0) {
       const invalidField = fields.some(
@@ -676,7 +677,19 @@ export const updateForm = async (
         );
         return;
       }
-      console.log(setting)
+
+      const conditionalFieldIds = Array.from(
+        new Set(
+          validUserFields
+            .map((field) => field.conditional?.dependsOn?.toString())
+            .filter(Boolean)
+        )
+      ).map((id) => new mongoose.Types.ObjectId(id));
+
+      if (conditionalFieldIds.length > 0) {
+        conditionalFields = await Field.find({ _id: { $in: conditionalFieldIds } });
+      }
+
       userFieldIds = validUserFields.map(
         (f) => f._id as mongoose.Types.ObjectId
       );
@@ -686,6 +699,7 @@ export const updateForm = async (
       ...requiredFields.map((f) => f._id as mongoose.Types.ObjectId),
       ...fixedFields.map((f) => f._id as mongoose.Types.ObjectId),
       ...userFieldIds,
+      ...conditionalFields.map((f) => f._id as mongoose.Types.ObjectId)
     ];
 
     const uniqueFieldIds = Array.from(
@@ -726,10 +740,3 @@ export const deleteForm = async (
     next(error);
   }
 };
-
-function capitalize(modelName: string): string {
-  if (!modelName || typeof modelName !== "string") {
-    throw new Error("Invalid model name");
-  }
-  return modelName.charAt(0).toUpperCase() + modelName.slice(1);
-}

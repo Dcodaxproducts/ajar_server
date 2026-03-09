@@ -5,7 +5,7 @@ export interface IUserDocument {
   filesUrl: string[];
   expiryDate?: Date;
   status?: "pending" | "approved" | "rejected";
-  reason?: string; 
+  reason?: string;
 }
 
 export interface IUser extends Document {
@@ -28,7 +28,7 @@ export interface IUser extends Document {
     code: string;
     expiry: Date;
   };
-   twoFactor: {
+  twoFactor: {
     enabled: boolean;
     secret?: string;
     tempSecret?: string;
@@ -37,8 +37,8 @@ export interface IUser extends Document {
       expiresAt: Date;
     } | null;
     backupCodes?: { codeHash: string }[];
-      loginCode?: string | null;
-  loginExpiry?: Date | null;
+    loginCode?: string | null;
+    loginExpiry?: Date | null;
   };
   twoFactorVerified: boolean;
   status: "active" | "inactive" | "blocked" | "unblocked";
@@ -48,7 +48,7 @@ export interface IUser extends Document {
   wallet: {
     balance: number;
   };
-    bankAccounts: [
+  bankAccounts: [
     {
       bankName: string;
       accountName: string;
@@ -64,7 +64,9 @@ const UserDocumentSchema = new Schema<IUserDocument>({
   expiryDate: { type: Date },
   status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
   reason: { type: String },
-});
+},
+  { timestamps: true }
+);
 
 const UserSchema: Schema<IUser> = new Schema(
   {
@@ -110,15 +112,15 @@ const UserSchema: Schema<IUser> = new Schema(
       balance: { type: Number, default: 0 },
     },
 
-        bankAccounts: [
+    bankAccounts: [
       {
         bankName: { type: String },
         accountName: { type: String },
-        accountNumber: { type: String},
+        accountNumber: { type: String },
         ibanNumber: { type: String },
       }
     ],
-     twoFactor: {
+    twoFactor: {
       enabled: { type: Boolean, default: false },
       secret: { type: String, default: "" },
       tempSecret: { type: String, default: "" },
@@ -134,9 +136,9 @@ const UserSchema: Schema<IUser> = new Schema(
       // Login-specific 2FA fields
       loginCode: { type: String, default: "" },
       loginExpiry: { type: Date, default: null },
-      },
+    },
 
-      twoFactorVerified: { type: Boolean, default: false },
+    twoFactorVerified: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

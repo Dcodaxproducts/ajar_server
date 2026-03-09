@@ -2,11 +2,10 @@ import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
-import { IUserDocument, User } from "../models/user.model";
+import { User } from "../models/user.model";
 import { Form } from "../models/form.model";
 import {
   generateAccessToken,
-  generateResetToken,
   verifyRefreshToken,
 } from "../utils/jwt.utils";
 import { sendEmail } from "../helpers/node-mailer";
@@ -707,6 +706,11 @@ export const getAllUsersWithStats = async (
 ): Promise<void> => {
   try {
     const role = req.query.role;
+    const documentStatus = req.query.documentStatus as string; // "pending" | "approved" | "rejected"
+    const userStatus = req.query.status as string;             // "active" | "inactive" | "blocked"
+    const search = req.query.search as string;
+    const fromDate = req.query.fromDate as string;
+    const toDate = req.query.toDate as string;
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -717,7 +721,31 @@ export const getAllUsersWithStats = async (
     }
 
     // Exclude admin from the user list (but not from global stats)
-    const userFilter = { ...filter, role: { $ne: "admin" } };
+    const userFilter: any = { ...filter, role: { $ne: "admin" } };
+
+    if (userStatus) {
+      userFilter.status = userStatus;
+    }
+
+    // ✅ Filter by document status (pending/approved/rejected)
+    if (documentStatus) {
+      userFilter["documents.status"] = documentStatus;
+    }
+
+    // ✅ Search by name
+    if (search) {
+      userFilter.name = { $regex: search, $options: "i" };
+    }
+
+    if (fromDate || toDate) {
+      const dateFilter: any = {};
+      if (fromDate) dateFilter.$gte = new Date(fromDate);
+      if (toDate) dateFilter.$lte = new Date(toDate);
+
+      userFilter["documents"] = {
+        $elemMatch: { createdAt: dateFilter }
+      };
+    }
 
     const userQuery = User.find(userFilter)
       .lean()
@@ -893,11 +921,13 @@ export const getDashboardStats = async (
       totalAdmins,
       totalNormalUsers,
       bookingCount,
+      pendingDocumentUsers
     ] = await Promise.all([
       User.countDocuments(),
       User.countDocuments({ role: "admin" }),
       User.countDocuments({ role: "user" }),
       Booking.countDocuments(),
+      User.countDocuments({ "documents.status": "pending" })
     ]);
 
     const [totalMarketplaceListings, uniqueUserIds] = await Promise.all([
@@ -923,7 +953,7 @@ export const getDashboardStats = async (
       return acc + price + extension;
     }, 0);
 
-    // --- Charts Data (via shared rangeUtils) ---
+    // --- Chart Data (via shared rangeUtils) ---
     const chartData = filter
       ? await buildDashboardChartData(filter as RangeType, now, User, Booking)
       : null;
@@ -942,6 +972,7 @@ export const getDashboardStats = async (
           totalZones,
           bookingCount,
           totalEarning,
+          pendingDocumentUsers
         },
         charts: chartData
           ? {
@@ -1945,7 +1976,7 @@ export const getWalletHistoryByRange = async (req: any, res: Response) => {
   try {
     const userId = req.user.id;
     const { range } = req.query;
-    const validRanges: RangeType[] = ["week", "month", "year"];
+    const validRanges: RangeType[] = ["week", "month", "year"]; //Ranges
 
     if (!range || !validRanges.includes(range as RangeType)) {
       return sendResponse(res, null, "Invalid range", 400);

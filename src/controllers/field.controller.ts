@@ -198,6 +198,17 @@ export const createNewField = async (
 
     removeEmptyConditional(fieldData);
 
+    const existingField = await Field.findOne({ name: fieldData.name });
+    if (existingField) {
+      sendResponse(
+        res,
+        null,
+        `A field with the name "${fieldData.name}" already exists`,
+        STATUS_CODES.BAD_REQUEST
+      );
+      return;
+    }
+
     // ✅ Existing logic
     if (fieldData.type === "document" && !fieldData.documentConfig) {
       fieldData.documentConfig = [];

@@ -787,10 +787,13 @@ export const getMarketplaceListingByIdforLeaser = async (
       return;
     }
 
-    const bookings = await Booking.find({ marketplaceListingId: id }).select(
-      "_id"
-    );
+    const bookings = await Booking.find({ marketplaceListingId: id })
+      .select("dates status")
+      .lean();
+
     const bookingIds = bookings.map((b) => b._id);
+
+    doc.bookings = bookings;
 
     const reviews = await Review.find({ bookingId: { $in: bookingIds } })
       .populate("userId", "name email")
@@ -1166,12 +1169,13 @@ export const updateMarketplaceListing = async (
       res.status(400).json({ success: false, message: "price is required" });
       return;
     }
-    if ("rentalImages" in req.body && !files?.rentalImages) {
-      res
-        .status(400)
-        .json({ success: false, message: "rentalImages is required" });
-      return;
-    }
+
+    // if ("rentalImages" in req.body && !files?.rentalImages) {
+    //   res
+    //     .status(400)
+    //     .json({ success: false, message: "rentalImages is required" });
+    //   return;
+    // }
 
     //Only allow updating fields that exist in schema
     const allowedUpdates = Object.keys(existingListing.toObject());
@@ -1188,8 +1192,9 @@ export const updateMarketplaceListing = async (
       images: newImages.length > 0 ? newImages : existingListing.images,
       rentalImages:
         newRentalImages.length > 0
-          ? newRentalImages
+          ? [...(existingListing.rentalImages || []), ...newRentalImages]
           : existingListing.rentalImages,
+      status: "pending"
     };
 
     const updatedListing = await MarketplaceListing.findByIdAndUpdate(
