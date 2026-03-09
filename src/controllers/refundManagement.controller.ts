@@ -251,8 +251,6 @@ export const createRefundRequest = asyncHandler(
     const cutoffHours =
       (policy.cancellationCutoffTime?.days || 0) * 24 +
       (policy.cancellationCutoffTime?.hours || 0);
-    console.log("hoursUntilCheckIn", hoursUntilCheckIn)
-    console.log("cutoffHours", cutoffHours)
 
     // Flat fee amount
     const flatFee = Number((policy as any).flatFee?.amount ?? 0);
