@@ -1328,7 +1328,7 @@ export const updateMarketplaceListing = async (
       images: newImages.length > 0 ? newImages : existingListing.images,
       rentalImages:
         newRentalImages.length > 0
-          ? [...(existingListing.rentalImages || []), ...newRentalImages]
+          ? newRentalImages
           : existingListing.rentalImages,
       status: "pending"
     };
