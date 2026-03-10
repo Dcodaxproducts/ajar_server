@@ -897,7 +897,7 @@ export const getMarketplaceListingById = async (
       })
       .populate({
         path: "zone",
-        select: "name",
+        select: "name polygons",
       })
       .populate("leaser")
       .session(session)
