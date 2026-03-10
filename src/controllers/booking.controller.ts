@@ -1095,7 +1095,7 @@ export const getBookingById = async (
           },
           {
             path: "zone",
-            select: "name",
+            select: "name polygons",
           },
         ],
       })
@@ -1197,7 +1197,7 @@ export const getBookingsByUser = async (
         match: zone ? { zone } : {},
         populate: {
           path: "zone",
-          select: "name",
+          select: "name polygons",
         },
       })
       .populate("renter", "name email")
@@ -1380,7 +1380,7 @@ export const getRenterBookingById = async (
           },
           {
             path: "zone",
-            select: "name",
+            select: "name polygons",
           },
         ],
       })

@@ -495,16 +495,35 @@ export const updateZone = async (
       }
     }
 
-    //Handle polygons parsing
+    // Handle polygons parsing
     let polygons = existingZone.polygons;
     if (rawPolygons) {
       try {
-        polygons =
+        const parsedPolygons =
           typeof rawPolygons === "string"
             ? JSON.parse(rawPolygons)
             : rawPolygons;
+
+        // ✅ Same GeoJSON conversion as createZone
+        polygons = {
+          type: "MultiPolygon",
+          coordinates: parsedPolygons.map((polygon: Array<{ lat: number; lng: number }>) => {
+            const coords = polygon.map((coord) => [coord.lng, coord.lat]);
+
+            // Close the polygon
+            if (coords.length > 0) {
+              const firstPoint = coords[0];
+              const lastPoint = coords[coords.length - 1];
+              if (firstPoint[0] !== lastPoint[0] || firstPoint[1] !== lastPoint[1]) {
+                coords.push([...firstPoint]);
+              }
+            }
+
+            return [coords];
+          }),
+        };
       } catch {
-        polygons = existingZone.polygons;
+        polygons = existingZone.polygons; // fallback to existing on error
       }
     }
 
