@@ -12,6 +12,7 @@ import {
   getAllMarketplaceListingsforLeaser,
   getMarketplaceListingByIdforLeaser,
   getPopularMarketplaceListings,
+  getListingBookedDates,
 } from "../controllers/marketplaceListings.controller";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
@@ -38,6 +39,8 @@ router.get("/guest", asyncHandler(getAllMarketplaceListings));
 
 router.get("/listing/:id", asyncHandler(getMarketplaceListingByIdforLeaser));
 router.get("/popular", getPopularMarketplaceListings);
+
+router.get("/:id/booked-dates", useAuth, asyncHandler(getListingBookedDates));
 
 router.get("/:id", asyncHandler(getMarketplaceListingById));
 

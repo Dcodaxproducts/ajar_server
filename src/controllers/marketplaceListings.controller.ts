@@ -1016,6 +1016,142 @@ export const getMarketplaceListingById = async (
   }
 };
 
+export const getListingBookedDates = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { month } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      sendResponse(res, null, "Invalid listing ID", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    const listing = await MarketplaceListing.findById(id)
+      .select("_id priceUnit")
+      .lean();
+
+    if (!listing) {
+      sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    // Build date range filter based strictly on Month
+    let rangeStart: Date;
+    let rangeEnd: Date;
+
+    if (month) {
+      const [year, mon] = (month as string).split("-");
+      rangeStart = new Date(Date.UTC(+year, +mon - 1, 1));
+      rangeEnd = new Date(Date.UTC(+year, +mon, 0, 23, 59, 59, 999));
+    } else {
+      // Default to current month if no month is provided
+      const now = new Date();
+      rangeStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      rangeEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+    }
+
+    const bookings = await Booking.find({
+      marketplaceListingId: id,
+      status: { $nin: ["cancelled", "rejected", "expired"] },
+      "dates.checkIn": { $lte: rangeEnd },
+      "dates.checkOut": { $gte: rangeStart },
+    })
+      .select("dates -_id")
+      .lean();
+
+    // ================================================================
+    // CASE 1: HOUR-BASED — return blocked time slots per date
+    // ================================================================
+    if (listing.priceUnit === "hour") {
+      const blockedSlotsMap: Record<string, { from: string; to: string }[]> = {};
+
+      for (const booking of bookings) {
+        const checkIn = new Date(booking.dates.checkIn);
+        const checkOut = new Date(booking.dates.checkOut);
+
+        const dateKey = checkIn.toISOString().split("T")[0];
+        const fromTime = checkIn.toISOString().substring(11, 16);
+        const toTime = checkOut.toISOString().substring(11, 16);
+
+        if (!blockedSlotsMap[dateKey]) {
+          blockedSlotsMap[dateKey] = [];
+        }
+
+        blockedSlotsMap[dateKey].push({ from: fromTime, to: toTime });
+      }
+
+      const blockedSlots = Object.entries(blockedSlotsMap).map(
+        ([date, slots]) => ({ date, slots })
+      );
+
+      const fullyBlockedDates = blockedSlots
+        .filter((entry) =>
+          entry.slots.some((s) => s.from === "00:00" && s.to === "23:59")
+        )
+        .map((entry) => entry.date);
+
+      sendResponse(
+        res,
+        {
+          listingId: id,
+          priceUnit: "hour",
+          blockedSlots,
+          fullyBlockedDates,
+          totalBlockedSlots: blockedSlots.length,
+          range: {
+            from: rangeStart.toISOString().split("T")[0],
+            to: rangeEnd.toISOString().split("T")[0],
+          },
+        },
+        "Booked slots fetched successfully",
+        STATUS_CODES.OK
+      );
+      return; // Added return to prevent double response
+    }
+
+    // ================================================================
+    // CASE 2: DAY / MONTH / YEAR — return blocked dates
+    // ================================================================
+    const blockedDates: string[] = [];
+
+    for (const booking of bookings) {
+      const start = new Date(Math.max(new Date(booking.dates.checkIn).getTime(), rangeStart.getTime()));
+      const end = new Date(Math.min(new Date(booking.dates.checkOut).getTime(), rangeEnd.getTime()));
+
+      const current = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+
+      while (current <= end) {
+        blockedDates.push(current.toISOString().split("T")[0]);
+        current.setUTCDate(current.getUTCDate() + 1);
+      }
+    }
+
+    const uniqueBlockedDates = [...new Set(blockedDates)].sort();
+
+    sendResponse(
+      res,
+      {
+        listingId: id,
+        priceUnit: listing.priceUnit,
+        blockedDates: uniqueBlockedDates,
+        totalBlockedDates: uniqueBlockedDates.length,
+        range: {
+          from: rangeStart.toISOString().split("T")[0],
+          to: rangeEnd.toISOString().split("T")[0],
+        },
+      },
+      "Booked dates fetched successfully",
+      STATUS_CODES.OK
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
 // Additional utility function to clean up all orphaned listings
 export const cleanupAllOrphanedListings = async (
   req: Request,
