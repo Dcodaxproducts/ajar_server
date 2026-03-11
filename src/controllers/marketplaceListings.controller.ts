@@ -1073,15 +1073,58 @@ export const getListingBookedDates = async (
         const checkIn = new Date(booking.dates.checkIn);
         const checkOut = new Date(booking.dates.checkOut);
 
-        const dateKey = checkIn.toISOString().split("T")[0];
-        const fromTime = checkIn.toISOString().substring(11, 16);
-        const toTime = checkOut.toISOString().substring(11, 16);
+        const current = new Date(Date.UTC(
+          checkIn.getUTCFullYear(),
+          checkIn.getUTCMonth(),
+          checkIn.getUTCDate()
+        ));
 
-        if (!blockedSlotsMap[dateKey]) {
-          blockedSlotsMap[dateKey] = [];
+        const checkOutDate = new Date(Date.UTC(
+          checkOut.getUTCFullYear(),
+          checkOut.getUTCMonth(),
+          checkOut.getUTCDate()
+        ));
+
+        while (current <= checkOutDate) {
+          const dateKey = current.toISOString().split("T")[0];
+
+          const isFirstDay = current.getTime() === new Date(Date.UTC(
+            checkIn.getUTCFullYear(),
+            checkIn.getUTCMonth(),
+            checkIn.getUTCDate()
+          )).getTime();
+
+          const isLastDay = current.getTime() === checkOutDate.getTime();
+
+          let fromTime: string;
+          let toTime: string;
+
+          if (isFirstDay && isLastDay) {
+            // Same day booking
+            fromTime = checkIn.toISOString().substring(11, 16);
+            toTime = checkOut.toISOString().substring(11, 16);
+          } else if (isFirstDay) {
+            // First day: from checkIn time to midnight
+            fromTime = checkIn.toISOString().substring(11, 16);
+            toTime = "23:59";
+          } else if (isLastDay) {
+            // Last day: from midnight to checkOut time
+            fromTime = "00:00";
+            toTime = checkOut.toISOString().substring(11, 16);
+          } else {
+            // Middle days: fully blocked
+            fromTime = "00:00";
+            toTime = "23:59";
+          }
+
+          if (!blockedSlotsMap[dateKey]) {
+            blockedSlotsMap[dateKey] = [];
+          }
+
+          blockedSlotsMap[dateKey].push({ from: fromTime, to: toTime });
+
+          current.setUTCDate(current.getUTCDate() + 1);
         }
-
-        blockedSlotsMap[dateKey].push({ from: fromTime, to: toTime });
       }
 
       const blockedSlots = Object.entries(blockedSlotsMap).map(
@@ -1110,7 +1153,7 @@ export const getListingBookedDates = async (
         "Booked slots fetched successfully",
         STATUS_CODES.OK
       );
-      return; // Added return to prevent double response
+      return;
     }
 
     // ================================================================
