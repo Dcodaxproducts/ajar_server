@@ -6,8 +6,6 @@ import { Field } from "../models/field.model";
 import mongoose from "mongoose";
 import { SubCategory } from "../models/category.model";
 import { paginateQuery } from "../utils/paginate";
-import slugify from "slugify";
-import { Dropdown } from "../models/dropdown.model";
 
 // CREATE NEW FORM
 export const createNewForm = async (
@@ -76,24 +74,29 @@ export const createNewForm = async (
     }
 
     // User selected fields
-    const validUserFields = await Field.find({ _id: { $in: fields } });
+    const validUserFieldsRaw = await Field.find({ _id: { $in: fields } });
 
-    if (validUserFields.length !== fields.length) {
+    if (validUserFieldsRaw.length !== fields.length) {
       sendResponse(res, null, "Some fields are invalid", STATUS_CODES.BAD_REQUEST);
       return;
     }
+
+    // Re-sort the database results to match the order sent from the frontend
+    const validUserFields = fields.map((id: string) =>
+      validUserFieldsRaw.find((f: any) => f._id.toString() === id.toString())
+    );
 
     // Extract + DEDUPLICATE conditional.dependsOn IDs
     const conditionalFieldIds = Array.from(
       new Set(
         validUserFields
-          .map((field) => field.conditional?.dependsOn?.toString())
+          .map((field: any) => field.conditional?.dependsOn?.toString())
           .filter(Boolean)
       )
-    ).map((id) => new mongoose.Types.ObjectId(id));
+    ).map((id) => new mongoose.Types.ObjectId(id as string));
 
-    //    Validate conditional fields (NOW SAFE)
-    let conditionalFields: typeof validUserFields = [];
+    // Validate conditional fields
+    let conditionalFields: any[] = [];
     if (conditionalFieldIds.length > 0) {
       conditionalFields = await Field.find({
         _id: { $in: conditionalFieldIds },
@@ -109,7 +112,6 @@ export const createNewForm = async (
         return;
       }
     }
-
 
     // Required system fields
     const requiredFieldNames = [
@@ -141,23 +143,18 @@ export const createNewForm = async (
     // Fixed fields
     const fixedFields = await Field.find({ isFixed: true });
 
-
     // Merge ALL field IDs (NO DUPLICATES)
-
     const allFieldIds: mongoose.Types.ObjectId[] = [
       ...requiredFields.map((f) => f._id as mongoose.Types.ObjectId),
       ...fixedFields.map((f) => f._id as mongoose.Types.ObjectId),
-      ...validUserFields.map((f) => f._id as mongoose.Types.ObjectId),
-      ...conditionalFields.map((f) => f._id as mongoose.Types.ObjectId),
+      ...validUserFields.map((f: any) => f._id as mongoose.Types.ObjectId),
+      ...conditionalFields.map((f: any) => f._id as mongoose.Types.ObjectId),
     ];
 
     const uniqueFieldIds = Array.from(
       new Map(allFieldIds.map((id) => [id.toString(), id])).values()
     );
 
-    /**
-     * Create form
-     */
     const form = new Form({
       name,
       description,
@@ -610,16 +607,7 @@ export const updateForm = async (
       return;
     }
 
-    if (subCategory && !mongoose.Types.ObjectId.isValid(subCategory)) {
-      sendResponse(res, null, "Invalid subCategory ID", STATUS_CODES.BAD_REQUEST);
-      return;
-    }
-
-    if (zone && !mongoose.Types.ObjectId.isValid(zone)) {
-      sendResponse(res, null, "Invalid zone ID", STATUS_CODES.BAD_REQUEST);
-      return;
-    }
-
+    // Required system fields
     const requiredFieldNames = [
       "name",
       "subTitle",
@@ -636,13 +624,7 @@ export const updateForm = async (
     if (requiredFields.length !== requiredFieldNames.length) {
       const found = requiredFields.map((f) => f.name);
       const missing = requiredFieldNames.filter((n) => !found.includes(n));
-
-      sendResponse(
-        res,
-        null,
-        `Required fields missing in database: ${missing.join(", ")}`,
-        STATUS_CODES.BAD_REQUEST
-      );
+      sendResponse(res, null, `Required fields missing: ${missing.join(", ")}`, STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -657,42 +639,40 @@ export const updateForm = async (
       );
 
       if (invalidField) {
-        sendResponse(
-          res,
-          null,
-          "Invalid field ID in fields array",
-          STATUS_CODES.BAD_REQUEST
-        );
+        sendResponse(res, null, "Invalid field ID", STATUS_CODES.BAD_REQUEST);
         return;
       }
 
-      const validUserFields = await Field.find({ _id: { $in: fields } });
+      // 1. Get the fields from DB (MongoDB returns these in random order)
+      const validUserFieldsRaw = await Field.find({ _id: { $in: fields } });
 
-      if (validUserFields.length !== fields.length) {
-        sendResponse(
-          res,
-          null,
-          "Some fields are invalid",
-          STATUS_CODES.BAD_REQUEST
-        );
+      if (validUserFieldsRaw.length !== fields.length) {
+        sendResponse(res, null, "Some fields are invalid", STATUS_CODES.BAD_REQUEST);
         return;
       }
 
+      // 2. Map through the frontend 'fields' array to ensure the DB docs match that order
+      const validUserFields = fields.map((id: string) =>
+        validUserFieldsRaw.find((f: any) => f._id.toString() === id.toString())
+      );
+
+      // 3. Extract IDs in the new correct order
+      userFieldIds = validUserFields.map(
+        (f: any) => f._id as mongoose.Types.ObjectId
+      );
+
+      // Extract conditional fields based on the now-ordered user fields
       const conditionalFieldIds = Array.from(
         new Set(
           validUserFields
-            .map((field) => field.conditional?.dependsOn?.toString())
+            .map((field: any) => field.conditional?.dependsOn?.toString())
             .filter(Boolean)
         )
-      ).map((id) => new mongoose.Types.ObjectId(id));
+      ).map((id) => new mongoose.Types.ObjectId(id as string));
 
       if (conditionalFieldIds.length > 0) {
         conditionalFields = await Field.find({ _id: { $in: conditionalFieldIds } });
       }
-
-      userFieldIds = validUserFields.map(
-        (f) => f._id as mongoose.Types.ObjectId
-      );
     }
 
     const allFieldIds: mongoose.Types.ObjectId[] = [
