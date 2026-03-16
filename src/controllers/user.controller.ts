@@ -734,7 +734,10 @@ export const getAllUsersWithStats = async (
 
     // ✅ Search by name
     if (search) {
-      userFilter.name = { $regex: search, $options: "i" };
+      userFilter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } }
+      ];
     }
 
     if (fromDate || toDate) {
