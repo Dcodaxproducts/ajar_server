@@ -9,11 +9,15 @@ export interface ILanguageTranslation {
   };
 }
 
-export interface IConditional {
-  dependsOn: Types.ObjectId;
+export interface IConditionalValue {
   value: string | number | boolean;
+  options?: string[];
 }
 
+export interface IConditional {
+  dependsOn: Types.ObjectId;
+  conditions: IConditionalValue[];
+}
 export interface IDocumentField {
   name: string;
   filesUrl: string[];
@@ -64,7 +68,12 @@ const FieldSchema = new Schema<IField>(
         type: Schema.Types.ObjectId,
         ref: "Field",
       },
-      value: Schema.Types.Mixed,
+      conditions: [
+        {
+          value: { type: Schema.Types.Mixed, required: true },
+          options: { type: [String], default: undefined },
+        }
+      ],
     },
     options: { type: [String], default: undefined },
     order: { type: Number, default: 0 },

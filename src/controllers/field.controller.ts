@@ -1,11 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import mongoose, { Types } from "mongoose";
-import { Field } from "../models/field.model";
+import { Field, IField } from "../models/field.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { Form } from "../models/form.model";
 import { paginateQuery } from "../utils/paginate";
 import { removeEmptyConditional } from "../utils/fieldUtils";
+import { HydratedDocument } from "mongoose";
 
 // GET all fields
 export const getAllFields = async (
@@ -214,86 +215,68 @@ export const createNewField = async (
       fieldData.documentConfig = [];
     }
 
-    let parentField = null;
+    let parentField: HydratedDocument<IField> | null = null;
 
     // 🔐 CONDITIONAL VALIDATION
-    if (
-      fieldData.conditional &&
-      fieldData.conditional.dependsOn &&
-      fieldData.conditional.value !== null &&
-      fieldData.conditional.value !== undefined
-    ) {
-      const { dependsOn, value } = fieldData.conditional;
+    if (fieldData.conditional && fieldData.conditional.dependsOn) {
+      const { dependsOn, conditions } = fieldData.conditional;
 
       // 1️⃣ Conditional allowed only on select & radio
       if (!["select", "radio"].includes(fieldData.type)) {
-        sendResponse(
-          res,
-          null,
-          "Conditional logic is only allowed on select or radio fields",
-          STATUS_CODES.BAD_REQUEST
-        );
+        sendResponse(res, null, "Conditional logic is only allowed on select or radio fields", STATUS_CODES.BAD_REQUEST);
         return;
       }
 
-      // 2️⃣ dependsOn must exist
-      if (!dependsOn || !mongoose.Types.ObjectId.isValid(dependsOn)) {
-        sendResponse(
-          res,
-          null,
-          "Invalid or missing conditional.dependsOn",
-          STATUS_CODES.BAD_REQUEST
-        );
+      // 2️⃣ dependsOn must be valid
+      if (!mongoose.Types.ObjectId.isValid(dependsOn)) {
+        sendResponse(res, null, "Invalid or missing conditional.dependsOn", STATUS_CODES.BAD_REQUEST);
         return;
       }
 
-      // 3️⃣ value must exist
-      if (value === undefined || value === null) {
-        sendResponse(
-          res,
-          null,
-          "conditional.value is required when conditional is provided",
-          STATUS_CODES.BAD_REQUEST
-        );
+      // 3️⃣ conditions array must exist and not be empty
+      if (!Array.isArray(conditions) || conditions.length === 0) {
+        sendResponse(res, null, "conditional.conditions must be a non-empty array", STATUS_CODES.BAD_REQUEST);
         return;
       }
 
-      // 4️⃣ Parent field must exist
+      // 4️⃣ Each condition must have a value
+      const hasInvalidCondition = conditions.some(
+        (c: { value: any; options?: string[] }) =>
+          c.value === undefined || c.value === null
+      );
+      if (hasInvalidCondition) {
+        sendResponse(res, null, "Each condition must have a value", STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+
+      // 5️⃣ Parent field must exist
       parentField = await Field.findById(dependsOn);
-
       if (!parentField) {
-        sendResponse(
-          res,
-          null,
-          "Parent field not found",
-          STATUS_CODES.NOT_FOUND
-        );
+        sendResponse(res, null, "Parent field not found", STATUS_CODES.NOT_FOUND);
         return;
       }
 
-      // 5️⃣ Parent field must be select or radio
+      // 6️⃣ Parent must be select or radio
       if (!["select", "radio"].includes(parentField.type || "")) {
-        sendResponse(
-          res,
-          null,
-          "Parent field must be of type select or radio",
-          STATUS_CODES.BAD_REQUEST
-        );
+        sendResponse(res, null, "Parent field must be of type select or radio", STATUS_CODES.BAD_REQUEST);
         return;
       }
 
-      // 6️⃣ conditional.value must match parent options
-      if (
-        parentField.options &&
-        !parentField.options.includes(value)
-      ) {
-        sendResponse(
-          res,
-          null,
-          `Value must be one of: ${parentField.options.join(", ")}`,
-          STATUS_CODES.BAD_REQUEST
-        );
-        return;
+      // 7️⃣ Each condition value must match parent options
+      if (parentField && parentField.options && parentField.options.length > 0) {
+        const invalidValues = conditions
+          .map((c: { value: any }) => c.value)
+          .filter((v: any) => !parentField!.options!.includes(v));
+
+        if (invalidValues.length > 0) {
+          sendResponse(
+            res,
+            null,
+            `Invalid condition values: ${invalidValues.join(", ")}. Must be one of: ${parentField.options.join(", ")}`,
+            STATUS_CODES.BAD_REQUEST
+          );
+          return;
+        }
       }
     }
 
@@ -367,6 +350,69 @@ export const updateField = async (
       return;
     }
 
+    // ✅ CONDITIONAL VALIDATION
+    if (updates.conditional && updates.conditional.dependsOn) {
+      const { dependsOn, conditions } = updates.conditional;
+
+      // 1️⃣ Conditional allowed only on select & radio
+      if (!["select", "radio"].includes(updates.type)) {
+        sendResponse(res, null, "Conditional logic is only allowed on select or radio fields", STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+
+      // 2️⃣ dependsOn must be valid
+      if (!mongoose.Types.ObjectId.isValid(dependsOn)) {
+        sendResponse(res, null, "Invalid or missing conditional.dependsOn", STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+
+      // 3️⃣ conditions array must exist and not be empty
+      if (!Array.isArray(conditions) || conditions.length === 0) {
+        sendResponse(res, null, "conditional.conditions must be a non-empty array", STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+
+      // 4️⃣ Each condition must have a value
+      const hasInvalidCondition = conditions.some(
+        (c: { value: any; options?: string[] }) =>
+          c.value === undefined || c.value === null
+      );
+      if (hasInvalidCondition) {
+        sendResponse(res, null, "Each condition must have a value", STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+
+      // 5️⃣ Parent field must exist
+      const parentField = await Field.findById(dependsOn);
+      if (!parentField) {
+        sendResponse(res, null, "Parent field not found", STATUS_CODES.NOT_FOUND);
+        return;
+      }
+
+      // 6️⃣ Parent must be select or radio
+      if (!["select", "radio"].includes(parentField.type || "")) {
+        sendResponse(res, null, "Parent field must be of type select or radio", STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+
+      // 7️⃣ Each condition value must match parent options
+      if (parentField && parentField.options && parentField.options.length > 0) {
+        const invalidValues = conditions
+          .map((c: { value: any }) => c.value)
+          .filter((v: any) => !parentField!.options!.includes(v));
+
+        if (invalidValues.length > 0) {
+          sendResponse(
+            res,
+            null,
+            `Invalid condition values: ${invalidValues.join(", ")}. Must be one of: ${parentField.options.join(", ")}`,
+            STATUS_CODES.BAD_REQUEST
+          );
+          return;
+        }
+      }
+    }
+
     const sanitizedUpdates: any = {};
     for (const key in updates) {
       if (updates[key] !== undefined) {
@@ -383,12 +429,7 @@ export const updateField = async (
       return;
     }
 
-    sendResponse(
-      res,
-      updatedField,
-      "Field updated successfully",
-      STATUS_CODES.OK
-    );
+    sendResponse(res, updatedField, "Field updated successfully", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }

@@ -420,19 +420,22 @@ export const getFormByZoneAndSubCategory = async (
       .populate({
         path: "fields",
         populate: {
-          path: "conditional.dependsOn", // Level 1
-          populate: {
-            path: "conditional.dependsOn", // Level 2
-            populate: {
-              path: "conditional.dependsOn", // Level 3
+          path: "conditional.dependsOn",
+          populate: [
+            // ✅ Populate nested conditional.dependsOn levels
+            {
+              path: "conditional.dependsOn",
               populate: {
-                path: "conditional.dependsOn", // Level 4
+                path: "conditional.dependsOn",
                 populate: {
-                  path: "conditional.dependsOn" // Level 5
-                }
-              }
-            }
-          }
+                  path: "conditional.dependsOn",
+                  populate: {
+                    path: "conditional.dependsOn",
+                  },
+                },
+              },
+            },
+          ],
         },
       })
       .lean();
@@ -442,23 +445,50 @@ export const getFormByZoneAndSubCategory = async (
       return;
     }
 
-    // Localize top-level fields
+    // ✅ Localize top-level fields + localize conditions options
     const allLocalizedFields = (form.fields as any[]).map((field) => {
       const fieldTranslation = field?.languages?.find(
         (entry: any) => entry.locale?.toLowerCase() === lang
       );
+
+      // ✅ Localize each condition's parent field if populated
+      const localizedConditional = field.conditional
+        ? {
+            ...field.conditional,
+            dependsOn: field.conditional.dependsOn
+              ? (() => {
+                  const parent = field.conditional.dependsOn;
+                  const parentTranslation = parent?.languages?.find(
+                    (entry: any) => entry.locale?.toLowerCase() === lang
+                  );
+                  return {
+                    ...parent,
+                    name: parentTranslation?.translations?.name || parent.name,
+                    label: parentTranslation?.translations?.label || parent.label,
+                    placeholder: parentTranslation?.translations?.placeholder || parent.placeholder,
+                  };
+                })()
+              : null,
+            // ✅ conditions array stays as-is (value + options pairs)
+            conditions: field.conditional.conditions || [],
+          }
+        : undefined;
 
       return {
         ...field,
         name: fieldTranslation?.translations?.name || field.name,
         label: fieldTranslation?.translations?.label || field.label,
         placeholder: fieldTranslation?.translations?.placeholder || field.placeholder,
+        conditional: localizedConditional,
       };
     });
 
     const dependsOnIds = new Set(
       allLocalizedFields
-        .map((f) => f.conditional?.dependsOn?._id?.toString() || f.conditional?.dependsOn?.toString())
+        .map((f) =>
+          f.conditional?.dependsOn?._id?.toString() ||
+          f.conditional?.dependsOn?.toString()
+        )
         .filter(Boolean)
     );
 
