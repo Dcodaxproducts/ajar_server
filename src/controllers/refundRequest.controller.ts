@@ -247,7 +247,7 @@ export const updateRefundStatus = async (
   try {
     const { id } = req.params;
 
-    const { status } = req.body;
+    const { status, adminNote } = req.body;
 
     if (!["pending", "accept", "reject"].includes(status)) {
       await session.abortTransaction();
@@ -256,6 +256,17 @@ export const updateRefundStatus = async (
         res,
         null,
         "Invalid status value",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
+
+    if (status === "reject" && (!adminNote || adminNote.trim() === "")) {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(
+        res,
+        null,
+        "A rejection note is required to process this request",
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -317,6 +328,10 @@ export const updateRefundStatus = async (
       );
     }
 
+    if (adminNote) {
+      booking.refundNote = adminNote;
+    }
+
     const renter = booking.renter as any;
     const leaser = booking.leaser as any;
 
@@ -330,6 +345,7 @@ export const updateRefundStatus = async (
     if (status === "reject") {
       refund.status = "reject";
       await refund.save({ session });
+      await booking.save({ session });
 
       await session.commitTransaction();
       session.endSession();

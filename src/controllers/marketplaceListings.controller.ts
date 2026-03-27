@@ -223,7 +223,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
 export const updateListingStatus = async (req: AuthRequest, res: Response) => {
   try {
     const { listingId } = req.params;
-    const { status } = req.body;
+    const { status, rejectionNote } = req.body;
 
     // Only allow valid statuses
     if (!["approved", "rejected"].includes(status)) {
@@ -232,6 +232,15 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
         message: "Invalid status. Allowed values: approved, rejected",
       });
     }
+
+    // Require rejectionNote when rejecting
+    if (status === "rejected" && !rejectionNote) {
+      return res.status(400).json({
+        success: false,
+        message: "rejectionNote is required when rejecting a listing",
+      });
+    }
+
 
     // Find listing and update status
     const listing = await MarketplaceListing.findById(listingId);
@@ -243,6 +252,7 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
     }
 
     listing.status = status;
+    listing.rejectionNote = status === "rejected" ? rejectionNote : null;
     await listing.save();
 
     // Notify leaser about status update

@@ -57,6 +57,7 @@ export interface IBooking extends Document {
     returnDate?: Date;
   };
   previousBookingId?: mongoose.Types.ObjectId;
+  refundNote?: string;
 }
 
 const BookingSchema = new Schema<IBooking>(
@@ -132,6 +133,10 @@ const BookingSchema = new Schema<IBooking>(
     previousBookingId: {
       type: Schema.Types.ObjectId,
       ref: "Booking",
+    },
+    refundNote: { 
+      type: String, 
+      default: "" 
     },
   },
   { timestamps: true }

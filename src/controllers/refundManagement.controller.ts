@@ -177,7 +177,7 @@ export const createRefundRequest = asyncHandler(
     const { user } = req as any;
 
     // Allow only safe fields
-    const allowedUserFields = ["booking", "reason", "selectTime"];
+    const allowedUserFields = ["booking", "reason", "selectTime","note"];
     const sanitizedBody: any = {};
 
     allowedUserFields.forEach((field) => {

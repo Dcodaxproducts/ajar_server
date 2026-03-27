@@ -36,6 +36,7 @@ export interface IMarketplaceListing extends Document {
   isAvailable: boolean;
   currentBookingId: mongoose.Types.ObjectId[];
   status: "pending" | "approved" | "rejected";
+  rejectionNote?: string;
   [key: string]: any;
 }
 
@@ -89,6 +90,7 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
       enum: ["pending", "approved", "rejected"],
       default: "pending",
     },
+    rejectionNote: { type: String, default: null },
   },
   { timestamps: true, strict: false }
 );
