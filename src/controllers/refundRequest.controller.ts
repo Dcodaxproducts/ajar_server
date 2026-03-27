@@ -187,7 +187,7 @@ export const getRefundRequestById = asyncHandler(
           select: "name zone subCategory",
         },
       })
-      .populate("user", "name email");
+      .populate("user", "name email profilePicture");
 
     if (!refund) {
       res.status(404).json({ message: "Refund request not found" });
