@@ -2,10 +2,11 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface IUserDocument {
   name: string;
-  fileUrl: string; // ✅ Changed: single string instead of array
+  fileUrl: string;
   expiryDate?: Date;
   status?: "pending" | "approved" | "rejected";
   reason?: string;
+  reminderSent?: boolean;
 }
 
 export interface IUser extends Document {
@@ -60,14 +61,15 @@ export interface IUser extends Document {
 const UserDocumentSchema = new Schema<IUserDocument>(
   {
     name: { type: String, required: true },
-    fileUrl: { type: String, required: true }, // ✅ Changed: single string
+    fileUrl: { type: String, required: true },
     expiryDate: { type: Date },
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected"],
+      enum: ["pending", "approved", "rejected","expired"],
       default: "pending",
     },
     reason: { type: String },
+    reminderSent: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

@@ -11,7 +11,6 @@ import {
 import { sendEmail } from "../helpers/node-mailer";
 import { createCustomer } from "../helpers/stripe-functions";
 import { generateZodSchema } from "../utils/generate-zod-schema";
-import { UserDocument } from "../models/userDocs.model";
 import { Category } from "../models/category.model";
 import { Booking } from "../models/booking.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
@@ -361,51 +360,80 @@ export const getUserDetails = async (
     const role = req.user?.role;
 
     if (!userId || !role) {
-      sendResponse(
-        res,
-        null,
-        "User not authenticated",
-        STATUS_CODES.UNAUTHORIZED
-      );
+      sendResponse(res, null, "User not authenticated", STATUS_CODES.UNAUTHORIZED);
       return;
     }
 
     let user: any = null;
 
-    // Helper function to check role existence
     const hasRole = (r: string): boolean =>
       Array.isArray(role) ? role.includes(r) : role === r;
 
     if (hasRole("admin") || hasRole("user")) {
-      // Get all user details except password
       user = await User.findById(userId).select("-password").lean();
 
       if (hasRole("user") && user) {
         const now = new Date();
-        const hasExpiredDoc = user.documents?.some(
-          (d: any) => d.expiryDate && new Date(d.expiryDate) < now
+        const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        let needsSave = false;
+
+        user.documents = await Promise.all(
+          (user.documents ?? []).map(async (d: any) => {
+            // ✅ Mark as expired + notify
+            if (d.expiryDate && new Date(d.expiryDate) < now && d.status !== "expired") {
+              needsSave = true;
+              await sendNotification(
+                userId,
+                "Document Expired",
+                `Your document "${d.name}" has expired. Please renew it to restore your account access.`,
+                { type: "system" }
+              );
+              return { ...d, status: "expired" };
+            }
+
+            // ✅ Send 7-day reminder once
+            if (
+              d.expiryDate &&
+              new Date(d.expiryDate) > now &&
+              new Date(d.expiryDate) <= sevenDaysLater &&
+              !d.reminderSent
+            ) {
+              await sendNotification(
+                userId,
+                "Document Expiring Soon",
+                `Your document "${d.name}" will expire in 7 days. Please renew it to avoid account suspension.`,
+                { type: "system" }
+              );
+              needsSave = true;
+              return { ...d, reminderSent: true };
+            }
+
+            return d;
+          })
         );
 
+        const hasExpiredDoc = user.documents?.some((d: any) => d.status === "expired");
+
         if (hasExpiredDoc && user.status !== "inactive") {
-          await User.findByIdAndUpdate(userId, { status: "inactive" });
+          needsSave = true;
           user.status = "inactive";
+        }
+
+        if (needsSave) {
+          await User.findByIdAndUpdate(userId, {
+            status: user.status,
+            documents: user.documents,
+          });
         }
       }
     } else if (hasRole("staff")) {
-      // Get all staff details with populated role information - EXACTLY like login
       user = await Employee.findById(userId)
-        .populate({
-          path: "allowAccess",
-          select: "-__v",
-        })
+        .populate({ path: "allowAccess", select: "-__v" })
         .select("-__v")
         .lean();
 
       if (user) {
-        // Add role field for consistency with user response
         user.role = "staff";
-
-        // Check if name already exists (from the database)
         if (!user.name) {
           if (user.firstName && user.lastName) {
             user.name = `${user.firstName} ${user.lastName}`;
@@ -426,14 +454,7 @@ export const getUserDetails = async (
       return;
     }
 
-    sendResponse(
-      res,
-      {
-        user
-      },
-      "User details fetched successfully",
-      STATUS_CODES.OK
-    );
+    sendResponse(res, { user }, "User details fetched successfully", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -904,6 +925,7 @@ export const updateUserProfile = async (
 
     sendResponse(res, userWithoutPassword, "Profile updated successfully", STATUS_CODES.OK);
   } catch (error) {
+    console.log(error)
     next(error);
   }
 };
@@ -1217,6 +1239,7 @@ export const getDashboardStats = async (
 // };
 
 // In user.controller.ts
+
 export const updateUserStatus = async (
   req: AuthRequest,
   res: Response,
@@ -1288,7 +1311,7 @@ export const deleteUser = async (
 export const removeUserDocument = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.id;
-    const { fileUrl } = req.body; // ✅ identify doc by name, not fileUrl
+    const { fileUrl } = req.body;
 
     if (!fileUrl) {
       res.status(400).json({ success: false, message: "documentName is required" });
@@ -1305,14 +1328,6 @@ export const removeUserDocument = async (req: AuthRequest, res: Response, next: 
 
     if (!doc) {
       res.status(404).json({ success: false, message: "Document not found" });
-      return;
-    }
-
-    if (doc.status === "approved") {
-      res.status(403).json({
-        success: false,
-        message: "Approved documents cannot be removed",
-      });
       return;
     }
 
@@ -1369,7 +1384,7 @@ dotenv.config();
 
 //  Initialize Firebase Admin once
 if (!admin.apps.length) {
-  const serviceAccount = require("../config/ajar-48a79-firebase-adminsdk-fbsvc-50588602d0.json");
+  const serviceAccount = require("../config/ajar-48a79-a36300a52be7");
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
@@ -1484,6 +1499,7 @@ import jwksClient from "jwks-rsa";
 import { WalletTransaction } from "../models/walletTransaction.model";
 import { WithdrawRequest } from "../models/withdrawRequest.model";
 import mongoose from "mongoose";
+import { sendNotification } from "../utils/notifications";
 
 dotenv.config();
 
