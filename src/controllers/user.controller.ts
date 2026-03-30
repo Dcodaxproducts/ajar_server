@@ -146,11 +146,11 @@ export const loginUser = async (
       return;
     }
 
-    if (user.status !== "active" && user.status !== "unblocked") {
+    if (user.status === "blocked") {
       sendResponse(
         res,
-        null,
-        `Account is ${user.status}. Please contact support.`,
+        { code: "USER_BLOCKED" },
+        "Your account has been blocked. Please contact support.",
         STATUS_CODES.FORBIDDEN
       );
       return;
