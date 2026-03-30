@@ -22,35 +22,21 @@ export const uploadUserDocuments = async (
       return sendResponse(res, null, "Unauthorized", STATUS_CODES.UNAUTHORIZED);
     }
 
-    const { expiryDate, name, oldUrl, filesUrl } = req.body;
-    const files = req.files as Express.Multer.File[];
+    const { expiryDate, name, fileUrl } = req.body;
+    const file = req.file as Express.Multer.File; // ✅ single file, not array
 
     if (!name) {
-      return sendResponse(
-        res,
-        null,
-        "Document name is required",
-        STATUS_CODES.BAD_REQUEST
-      );
+      return sendResponse(res, null, "Document name is required", STATUS_CODES.BAD_REQUEST);
     }
 
-    // Accept either uploaded files OR filesUrl from body
-    let newUrls: string[] = [];
-    if (files && files.length > 0) {
-      newUrls = files.map((f) => `/uploads/${f.filename}`);
-    } else if (filesUrl) {
-      if (Array.isArray(filesUrl)) {
-        newUrls = filesUrl;
-      } else {
-        newUrls = [filesUrl];
-      }
+    // ✅ Accept either an uploaded file OR a fileUrl from body
+    let newFileUrl: string;
+    if (file) {
+      newFileUrl = `/uploads/${file.filename}`;
+    } else if (fileUrl && typeof fileUrl === "string") {
+      newFileUrl = fileUrl;
     } else {
-      return sendResponse(
-        res,
-        null,
-        "At least one file or URL must be provided",
-        STATUS_CODES.BAD_REQUEST
-      );
+      return sendResponse(res, null, "A file or URL must be provided", STATUS_CODES.BAD_REQUEST);
     }
 
     const user = await User.findById(userId);
@@ -58,40 +44,31 @@ export const uploadUserDocuments = async (
       return sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
     }
 
-    const existingDocIndex = user.documents.findIndex(
-      (doc: any) => doc.name === name
-    );
+    const existingDoc = user.documents.find((doc: any) => doc.name === name);
 
-    if (existingDocIndex > -1) {
-      if (oldUrl) {
-        // Replace old file with new one
-        const urlIndex =
-          user.documents[existingDocIndex].filesUrl.indexOf(oldUrl);
-
-        if (urlIndex > -1) {
-          user.documents[existingDocIndex].filesUrl[urlIndex] = newUrls[0];
-        } else {
-          return sendResponse(
-            res,
-            null,
-            "Old file URL not found in document",
-            STATUS_CODES.NOT_FOUND
-          );
-        }
-      } else {
-        // Append new URLs
-        user.documents[existingDocIndex].filesUrl.push(...newUrls);
+    if (existingDoc) {
+      // ✅ Block re-upload if pending or approved
+      if (existingDoc.fileUrl && existingDoc.status !== "rejected") {
+        return sendResponse(
+          res,
+          { document: name, status: existingDoc.status },
+          existingDoc.status === "approved"
+            ? `Document "${name}" is already approved and cannot be re-uploaded`
+            : `Document "${name}" is already submitted and under review`,
+          STATUS_CODES.CONFLICT
+        );
       }
 
-      if (expiryDate) {
-        user.documents[existingDocIndex].expiryDate = new Date(expiryDate);
-      }
-      user.documents[existingDocIndex].status = "pending";
+      // Status is "rejected" → allow overwrite
+      existingDoc.fileUrl = newFileUrl;
+      existingDoc.status = "pending"; // reset
+      existingDoc.reason = undefined; // clear rejection reason
+      if (expiryDate) existingDoc.expiryDate = new Date(expiryDate);
     } else {
-      //  New document
+      // ✅ Fresh document
       user.documents.push({
         name,
-        filesUrl: newUrls,
+        fileUrl: newFileUrl,
         expiryDate: expiryDate ? new Date(expiryDate) : undefined,
         status: "pending",
       });
@@ -99,14 +76,7 @@ export const uploadUserDocuments = async (
 
     await user.save();
 
-    return sendResponse(
-      res,
-      user,
-      oldUrl
-        ? "Document file replaced successfully"
-        : "Document(s) uploaded/updated successfully",
-      STATUS_CODES.OK
-    );
+    return sendResponse(res, user, "Document uploaded successfully", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }

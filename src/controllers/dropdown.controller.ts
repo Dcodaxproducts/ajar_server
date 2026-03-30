@@ -38,6 +38,8 @@ export const getDropdownByName = async (
       return;
     }
 
+    console.log(dropdown);
+
     sendResponse(
       res,
       dropdown,
@@ -82,7 +84,7 @@ export const addValueToDropdown = async (
 ): Promise<void> => {
   try {
     const { name } = req.params;
-    const { value, name: valueName, category } = req.body;
+    const { value, name: valueName, hasExpiry, autoApproval } = req.body;
 
     const dropdown = await Dropdown.findOne({ name });
 
@@ -91,12 +93,29 @@ export const addValueToDropdown = async (
       return;
     }
 
+    // Check if value already exists
     if (dropdown.values.find((v) => v.value === value)) {
       sendResponse(res, null, "Value already exists", STATUS_CODES.BAD_REQUEST);
       return;
     }
 
-    dropdown.values.push({ value, name: valueName });
+    // Define the allowed dropdown names for these extra features
+    const allowedDocumentTypes = ["leaserDocuments", "renterDocuments","userDocuments"];
+    const isDocumentType = allowedDocumentTypes.includes(name);
+
+    // Prepare the new value object
+    const newValue: any = { 
+      value, 
+      name: valueName 
+    };
+
+    // Only add toggles if it's one of the document-related dropdowns
+    if (isDocumentType) {
+      newValue.hasExpiry = hasExpiry ?? false;
+      newValue.autoApproval = autoApproval ?? false;
+    }
+
+    dropdown.values.push(newValue);
     await dropdown.save();
 
     sendResponse(res, dropdown, "Value added successfully", STATUS_CODES.OK);

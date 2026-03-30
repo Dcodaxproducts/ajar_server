@@ -27,6 +27,7 @@ import {
   fillMissingPeriods,
   buildDashboardChartData
 } from "../utils/range";
+import { Dropdown } from "../models/dropdown.model";
 
 export const createUser = async (
   req: Request,
@@ -378,6 +379,18 @@ export const getUserDetails = async (
     if (hasRole("admin") || hasRole("user")) {
       // Get all user details except password
       user = await User.findById(userId).select("-password").lean();
+
+      if (hasRole("user") && user) {
+        const now = new Date();
+        const hasExpiredDoc = user.documents?.some(
+          (d: any) => d.expiryDate && new Date(d.expiryDate) < now
+        );
+
+        if (hasExpiredDoc && user.status !== "inactive") {
+          await User.findByIdAndUpdate(userId, { status: "inactive" });
+          user.status = "inactive";
+        }
+      }
     } else if (hasRole("staff")) {
       // Get all staff details with populated role information - EXACTLY like login
       user = await Employee.findById(userId)
@@ -413,16 +426,10 @@ export const getUserDetails = async (
       return;
     }
 
-    // Fetch attached documents
-    const docsAttached = await UserDocument.find({
-      user: userId,
-    }).lean();
-
     sendResponse(
       res,
       {
-        user,
-        documents: docsAttached,
+        user
       },
       "User details fetched successfully",
       STATUS_CODES.OK
@@ -803,23 +810,25 @@ export const updateUserProfile = async (
   try {
     const userId = req.user?.id;
     if (!userId) {
-      sendResponse(
-        res,
-        null,
-        "User not authenticated",
-        STATUS_CODES.UNAUTHORIZED
-      );
+      sendResponse(res, null, "User not authenticated", STATUS_CODES.UNAUTHORIZED);
       return;
     }
 
     const updates: any = { ...req.body };
+
     const user = await User.findById(userId);
 
     if (!user) {
       sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
       return;
     }
-    console.log(req.files)
+
+    const { dropdownName } = req.body;
+
+    const dropdown = dropdownName
+      ? await Dropdown.findOne({ name: dropdownName }).lean()
+      : null;
+
     if (req.files && Array.isArray(req.files)) {
       for (const file of req.files as Express.Multer.File[]) {
         const fieldName = file.fieldname;
@@ -830,25 +839,62 @@ export const updateUserProfile = async (
           continue;
         }
 
-        const existingDocIndex = user.documents.findIndex(
-          (d) => d.name === fieldName
-        );
-        console.log("existingDocIndex", existingDocIndex)
+        // ✅ Check autoApproval from dropdown config, fallback to "pending"
+        const docConfig = dropdown?.values.find((v) => v.value === fieldName);
+        const resolvedStatus = docConfig?.autoApproval ? "approved" : "pending";
 
-        if (existingDocIndex >= 0) {
-          user.documents[existingDocIndex].filesUrl.push(fileUrl);
+        const existingDoc = user.documents.find((d) => d.name === fieldName);
+
+        if (existingDoc) {
+          if (existingDoc.fileUrl && existingDoc.status !== "rejected") {
+            sendResponse(
+              res,
+              { document: fieldName, status: existingDoc.status },
+              existingDoc.status === "approved"
+                ? `Document "${fieldName}" is already approved and cannot be re-uploaded`
+                : `Document "${fieldName}" is already submitted and under review`,
+              STATUS_CODES.CONFLICT
+            );
+            return;
+          }
+
+          // Rejected → allow overwrite
+          existingDoc.fileUrl = fileUrl;
+          existingDoc.status = resolvedStatus;
+          existingDoc.reason = undefined;
         } else {
+          // Fresh document
           user.documents.push({
             name: fieldName,
-            filesUrl: [fileUrl],
-            status: "pending",
+            fileUrl,
+            status: resolvedStatus,
           });
         }
       }
     }
+
     if (updates.profilePicture) {
       user.profilePicture = updates.profilePicture;
       delete updates.profilePicture;
+    }
+
+    // ✅ Remove dropdownName from updates so it doesn't get saved on user
+    delete updates.dropdownName;
+
+    // ✅ Extract expiryDate and apply it to the matching document
+    const { expiryDate } = updates;
+    delete updates.expiryDate;
+
+    if (expiryDate && req.files && Array.isArray(req.files)) {
+      for (const file of req.files as Express.Multer.File[]) {
+        const fieldName = file.fieldname;
+        if (fieldName === "profilePicture") continue;
+
+        const doc = user.documents.find((d) => d.name === fieldName);
+        if (doc) {
+          doc.expiryDate = new Date(expiryDate);
+        }
+      }
     }
 
     Object.assign(user, updates);
@@ -856,12 +902,7 @@ export const updateUserProfile = async (
     const updatedUser = await user.save();
     const { password, ...userWithoutPassword } = updatedUser.toObject();
 
-    sendResponse(
-      res,
-      userWithoutPassword,
-      "Profile updated successfully",
-      STATUS_CODES.OK
-    );
+    sendResponse(res, userWithoutPassword, "Profile updated successfully", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -1244,54 +1285,52 @@ export const deleteUser = async (
   }
 };
 
-export const removeUserDocument = async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.id;
-  const { fileUrl } = req.body;
+export const removeUserDocument = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    const { fileUrl } = req.body; // ✅ identify doc by name, not fileUrl
 
-  if (!fileUrl) {
-    res.status(400).json({ success: false, message: "fileUrl is required" });
-    return;
-  }
+    if (!fileUrl) {
+      res.status(400).json({ success: false, message: "documentName is required" });
+      return;
+    }
 
-  const user = await User.findById(userId);
-  if (!user) {
-    res.status(404).json({ success: false, message: "User not found" });
-    return;
-  }
+    const user = await User.findById(userId);
+    if (!user) {
+      res.status(404).json({ success: false, message: "User not found" });
+      return;
+    }
 
-  // Check if the fileUrl exists in any document
-  const documentWithFile = user.documents.find((doc) =>
-    doc.filesUrl.includes(fileUrl)
-  );
+    const doc = user.documents.find((d) => d.name === fileUrl);
 
-  if (!documentWithFile) {
-    res.status(404).json({ success: false, message: "File not found" });
-    return;
-  }
+    if (!doc) {
+      res.status(404).json({ success: false, message: "Document not found" });
+      return;
+    }
 
-  if (documentWithFile.status === "approved") {
-    res.status(403).json({
-      success: false,
-      message: "Approved documents cannot be removed",
+    if (doc.status === "approved") {
+      res.status(403).json({
+        success: false,
+        message: "Approved documents cannot be removed",
+      });
+      return;
+    }
+
+    // ✅ Remove the entire document subdoc by name
+    await User.findByIdAndUpdate(
+      userId,
+      { $pull: { documents: { name: fileUrl } } },
+      { new: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Document removed successfully",
     });
-    return;
+  } catch (error) {
+    next(error);
   }
-
-  // Remove only the specific URL from filesUrl array
-  await User.findByIdAndUpdate(
-    userId,
-    { $pull: { "documents.$[].filesUrl": fileUrl } },
-    { new: true }
-  );
-
-  res.status(200).json({
-    success: true,
-    message: "File removed successfully",
-  });
 };
-
-// for documents get dropdown
-import { Dropdown } from "../models/dropdown.model";
 
 export const getUserDocuments = async (
   req: Request,

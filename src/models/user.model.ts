@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface IUserDocument {
   name: string;
-  filesUrl: string[];
+  fileUrl: string; // ✅ Changed: single string instead of array
   expiryDate?: Date;
   status?: "pending" | "approved" | "rejected";
   reason?: string;
@@ -44,7 +44,6 @@ export interface IUser extends Document {
   status: "active" | "inactive" | "blocked" | "unblocked";
   documents: IUserDocument[];
   fcmToken?: string;
-  // Wallet (added)
   wallet: {
     balance: number;
   };
@@ -58,13 +57,18 @@ export interface IUser extends Document {
   ];
 }
 
-const UserDocumentSchema = new Schema<IUserDocument>({
-  name: { type: String, required: true },
-  filesUrl: [{ type: String, required: true }],
-  expiryDate: { type: Date },
-  status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
-  reason: { type: String },
-},
+const UserDocumentSchema = new Schema<IUserDocument>(
+  {
+    name: { type: String, required: true },
+    fileUrl: { type: String, required: true }, // ✅ Changed: single string
+    expiryDate: { type: Date },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+    reason: { type: String },
+  },
   { timestamps: true }
 );
 
@@ -106,19 +110,16 @@ const UserSchema: Schema<IUser> = new Schema(
     },
     documents: [UserDocumentSchema],
     fcmToken: { type: String, default: "" },
-    // ADD WALLET (Only balance — NO transactions inside)
     wallet: {
-      // balance: { type: mongoose.Schema.Types.Decimal128, default: 0 },
       balance: { type: Number, default: 0 },
     },
-
     bankAccounts: [
       {
         bankName: { type: String },
         accountName: { type: String },
         accountNumber: { type: String },
         ibanNumber: { type: String },
-      }
+      },
     ],
     twoFactor: {
       enabled: { type: Boolean, default: false },
@@ -133,11 +134,9 @@ const UserSchema: Schema<IUser> = new Schema(
           codeHash: { type: String },
         },
       ],
-      // Login-specific 2FA fields
       loginCode: { type: String, default: "" },
       loginExpiry: { type: Date, default: null },
     },
-
     twoFactorVerified: { type: Boolean, default: false },
   },
   { timestamps: true }

@@ -3,6 +3,9 @@ import mongoose, { Document, Schema } from "mongoose";
 interface IDropdownValue {
   name: string;
   value: string;
+  // Added new toggles
+  hasExpiry: boolean;
+  autoApproval: boolean;
 }
 
 interface IDropdown extends Document {
@@ -16,6 +19,9 @@ const DropdownValueSchema = new Schema<IDropdownValue>(
   {
     name: { type: String, required: true },
     value: { type: String, required: true },
+    // New fields with defaults
+    hasExpiry: { type: Boolean, default: false },
+    autoApproval: { type: Boolean, default: false },
   },
   { _id: false }
 ); 
@@ -37,7 +43,6 @@ const DropdownSchema = new Schema<IDropdown>(
   },
   { timestamps: true }
 );
-
 
 const Dropdown = mongoose.model<IDropdown>("Dropdown", DropdownSchema);
 export { Dropdown, IDropdown };
