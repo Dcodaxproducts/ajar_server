@@ -177,7 +177,7 @@ export const createRefundRequest = asyncHandler(
     const { user } = req as any;
 
     // Allow only safe fields
-    const allowedUserFields = ["booking", "reason", "selectTime","note"];
+    const allowedUserFields = ["booking", "reason", "note"];
     const sanitizedBody: any = {};
 
     allowedUserFields.forEach((field) => {
@@ -186,7 +186,7 @@ export const createRefundRequest = asyncHandler(
       }
     });
 
-    const { booking, reason, selectTime, note } = sanitizedBody;
+    const { booking, reason, note } = sanitizedBody;
 
     // Validate booking
     if (!(await isValidObjectIdAndExists(booking, Booking))) {
@@ -221,9 +221,10 @@ export const createRefundRequest = asyncHandler(
       return;
     }
 
-    if (bookingData.status === "pending") {
+    if (bookingData.status !== "booking_cancelled") {
       res.status(400).json({
-        message: "Refund is not applicable for pending bookings."
+        success: false,
+        message: "Refund is only applicable for bookings with 'booking_cancelled' status."
       });
       return;
     }
@@ -279,13 +280,16 @@ export const createRefundRequest = asyncHandler(
     const refundRequest = await RefundRequest.create({
       booking,
       reason,
-      selectTime,
       user: user?.id,
       deduction,
       totalRefundAmount,
       policy: policy._id,
       note,
       status: "pending",
+    });
+
+    await Booking.findByIdAndUpdate(booking, {
+      refundRequest: refundRequest._id
     });
 
     res.status(201).json({
@@ -554,6 +558,75 @@ export const updateRefundStatus = asyncHandler(
       success: true,
       message: `Refund request status updated to '${status}'`,
       data: refund,
+    });
+  }
+);
+
+export const getRefundPreview = asyncHandler(
+  async (req: Request & { user?: any }, res: Response): Promise<void> => {
+    const bookingId = req.query.bookingId as string;
+
+    if (!bookingId || !(await isValidObjectIdAndExists(bookingId, Booking))) {
+      res.status(400).json({ success: false, message: "Invalid or missing booking ID" });
+      return;
+    }
+
+    const bookingData = await Booking.findById(bookingId).populate("marketplaceListingId");
+
+    if (!bookingData || !bookingData.marketplaceListingId) {
+      res.status(404).json({ success: false, message: "Booking not found" });
+      return;
+    }
+
+    // Ownership & Status Check
+    if (bookingData.renter.toString() !== req.user?.id && req.user?.role !== 'admin') {
+      res.status(403).json({ success: false, message: "Unauthorized access" });
+      return;
+    }
+
+    const listing: any = bookingData.marketplaceListingId;
+    const policy = await RefundPolicy.findOne({
+      zone: listing.zone,
+      subCategory: listing.subCategory
+    });
+
+    if (!policy || !policy.allowFund) {
+      res.status(400).json({ success: false, message: "Refund not allowed for this category/zone." });
+      return;
+    }
+
+    const cutoffDays = Number(policy.cancellationCutoffTime?.days ?? 0);
+    const cutoffHours = Number(policy.cancellationCutoffTime?.hours ?? 0);
+    const totalCutoffHours = (cutoffDays * 24) + cutoffHours;
+
+    const flatFeeAmount = Number((policy.flatFee?.amount as any) ?? 0);
+
+    const checkInDate = new Date(bookingData.dates.checkIn);
+    const now = new Date();
+    const hoursUntilCheckIn = (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+    const totalPrice = bookingData.priceDetails.totalPrice || 0;
+
+    let deduction = 0;
+    let totalRefundAmount = 0;
+
+    if (hoursUntilCheckIn > totalCutoffHours) {
+      deduction = flatFeeAmount;
+      totalRefundAmount = Math.max(0, totalPrice - deduction);
+    } else {
+      deduction = totalPrice;
+      totalRefundAmount = 0;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalBookingAmount: totalPrice,
+        deductionFee: deduction,
+        estimatedRefund: totalRefundAmount,
+        policyName: policy.refundWindow,
+        isEligible: totalRefundAmount > 0
+      },
     });
   }
 );

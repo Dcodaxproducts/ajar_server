@@ -1066,7 +1066,7 @@ export const getListingBookedDates = async (
 
     const bookings = await Booking.find({
       marketplaceListingId: id,
-      status: { $nin: ["cancelled", "rejected", "expired"] },
+      status: { $nin: ["request_cancelled", "rejected", "expired"] },
       "dates.checkIn": { $lte: rangeEnd },
       "dates.checkOut": { $gte: rangeStart },
     })

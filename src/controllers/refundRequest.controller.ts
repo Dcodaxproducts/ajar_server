@@ -435,8 +435,7 @@ export const updateRefundStatus = async (
     refund.status = "accept";
     await refund.save({ session });
 
-    booking.status = "cancelled";
-    await booking.save({ session })
+    await booking.save({ session });
 
     await session.commitTransaction();
     session.endSession();
@@ -496,8 +495,6 @@ export const updateRefundStatus = async (
         totalRenterRefund: refundAmount.toFixed(2),
       }
     );
-
-    booking.status = "cancelled"
 
     return sendResponse(
       res,

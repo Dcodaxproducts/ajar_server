@@ -9,6 +9,7 @@ import {
   updateRefundRequest,
   deleteRefundRequest,
   updateRefundStatus,
+  getRefundPreview,
 } from "../controllers/refundManagement.controller";
 import { authMiddleware } from "../middlewares/auth.middleware"; 
 
@@ -25,6 +26,7 @@ router.patch("/admin/:id/status", useAuth, updateRefundStatus);
 router.patch("/admin/:id/status", useAuth, updateRefundStatus);
 
 // for user
+router.get("/user/preview", useAuth, getRefundPreview);
 router.post("/user", useAuth, createRefundRequest);
 router.get("/user", useAuth, getMyRefundRequests);
 router.patch("/user/:id", useAuth, updateRefundRequest);

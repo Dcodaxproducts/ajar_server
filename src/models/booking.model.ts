@@ -32,8 +32,8 @@ interface IDamagesCharges {
 
 export interface IBooking extends Document {
 
-    _id: mongoose.Types.ObjectId; 
-  status: "pending" | "approved" | "in_progress" | "rejected" | "completed" | "cancelled" | "expired";
+  _id: mongoose.Types.ObjectId;
+  status: "pending" | "approved" | "in_progress" | "rejected" | "completed" | "request_cancelled" | "booking_cancelled" | "expired";
   renter: mongoose.Types.ObjectId | IUser;
   leaser?: mongoose.Types.ObjectId | IUser;
   marketplaceListingId: mongoose.Types.ObjectId | IMarketplaceListing;
@@ -57,6 +57,7 @@ export interface IBooking extends Document {
     returnDate?: Date;
   };
   previousBookingId?: mongoose.Types.ObjectId;
+  refundRequest?: mongoose.Types.ObjectId;
   refundNote?: string;
 }
 
@@ -64,7 +65,7 @@ const BookingSchema = new Schema<IBooking>(
   {
     status: {
       type: String,
-      enum: ["pending", "approved", "in_progress", "rejected", "completed", "cancelled","expired"],
+      enum: ["pending", "approved", "in_progress", "rejected", "completed", "request_cancelled", "booking_cancelled", "expired"],
       default: "pending",
     },
     renter: {
@@ -134,9 +135,14 @@ const BookingSchema = new Schema<IBooking>(
       type: Schema.Types.ObjectId,
       ref: "Booking",
     },
-    refundNote: { 
-      type: String, 
-      default: "" 
+    refundRequest: {
+      type: Schema.Types.ObjectId,
+      ref: "RefundRequest",
+      default: null
+    },
+    refundNote: {
+      type: String,
+      default: ""
     },
   },
   { timestamps: true }

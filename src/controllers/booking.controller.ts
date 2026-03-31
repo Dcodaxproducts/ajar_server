@@ -21,6 +21,7 @@ import { calculateBookingPrice } from "../utils/calculateBookingPrice";
 import { Payment } from "../models/payment.model";
 import { WalletTransaction } from "../models/walletTransaction.model";
 import { DamageReport } from "../models/damageReport.model";
+import { RefundRequest } from "../models/refundRequest.model";
 
 //NEW HELPER — detects date-only strings (YYYY-MM-DD)
 const isDateOnly = (value: string) => {
@@ -554,7 +555,7 @@ export const updateBookingStatus = async (
     }
 
     // ========== STATUS VALIDATION ==========
-    const allowedStatuses = ["approved", "rejected", "completed", "cancelled"];
+    const allowedStatuses = ["approved", "rejected", "completed", "request_cancelled", "booking_cancelled"];
     if (!allowedStatuses.includes(finalStatus)) {
       await session.abortTransaction();
       session.endSession();
@@ -566,7 +567,7 @@ export const updateBookingStatus = async (
       );
     }
 
-    if (finalStatus === "cancelled" && !isRenter) {
+    if (finalStatus === "request_cancelled" && !isRenter) {
       await session.abortTransaction();
       session.endSession();
       return sendResponse(
@@ -574,6 +575,17 @@ export const updateBookingStatus = async (
         null,
         "Only renter can cancel the booking",
         STATUS_CODES.FORBIDDEN
+      );
+    }
+
+    if (finalStatus === "booking_cancelled" && parentBooking.status !== "approved") {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(
+        res,
+        null,
+        "Booking can only be booking_cancelled when it is in approved status",
+        STATUS_CODES.BAD_REQUEST
       );
     }
 
@@ -884,11 +896,24 @@ export const updateBookingStatus = async (
         renterMsg = `Your booking for "${listingName}" has been rejected.`;
       } else if (finalStatus === "completed") {
         renterMsg = `The booking for "${listingName}" has been completed.`;
-      } else if (finalStatus === "cancelled") {
+      } else if (finalStatus === "request_cancelled") {
         renterMsg = `Your booking for "${listingName}" has been cancelled.`;
       }
+      else if (finalStatus === "booking_cancelled") {
+        renterMsg = `Your booking for "${listingName}" has been cancelled. Please check the "Refund Info" for eligibility and deduction details as per the policy.`;
+      }
 
-      await sendNotification(renterId, `Booking ${finalStatus}`, renterMsg, {
+      let notificationTitle = `Booking ${finalStatus.replace(/-/g, " ").replace(/_/g, " ")}`
+
+      if (finalStatus === "booking_cancelled") {
+        notificationTitle = "Booking Cancelled";
+      } else if (finalStatus === "request_cancelled") {
+        notificationTitle = "Request Cancelled";
+      } else {
+        notificationTitle = `Booking ${finalStatus.charAt(0).toUpperCase() + finalStatus.slice(1)}`;
+      }
+
+      await sendNotification(renterId, notificationTitle, renterMsg, {
         bookingId: finalBooking._id?.toString(),
         listingId,
         type: "booking",
@@ -928,14 +953,15 @@ export const getAllBookings = async (
       | "pending"
       | "approved"
       | "rejected"
-      | "cancelled"
       | "completed"
+      | "booking_cancelled"
+      | "request_cancelled"
       | undefined;
 
     const filter: any = {};
     if (
       status &&
-      ["pending", "approved", "rejected", "cancelled", "completed"].includes(
+      ["pending", "approved", "in_progress", "rejected", "completed", "request_cancelled", "booking_cancelled", "expired"].includes(
         status
       )
     ) {
@@ -1171,8 +1197,10 @@ export const getBookingsByUser = async (
     const user = (req as any).user;
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
+    const isRefundable = req.query.isRefundable === 'true';
 
     const status = req.query.status as string | undefined;
+
     const role = req.query.role as string | undefined;
     const zone = req.query.zone as string | undefined;
 
@@ -1191,6 +1219,10 @@ export const getBookingsByUser = async (
 
     if (status) filter.status = status;
 
+    if (isRefundable) {
+      filter.refundRequest = null;
+    }
+
     let baseQuery = Booking.find(filter)
       .populate({
         path: "marketplaceListingId",
@@ -1202,6 +1234,10 @@ export const getBookingsByUser = async (
       })
       .populate("renter", "name email")
       .populate("leaser", "name email")
+      .populate({
+        path: "refundRequest",
+        select: "status reason totalRefundAmount deduction note createdAt"
+      })
       .sort({ createdAt: -1 })
       .lean();
 
@@ -1385,6 +1421,10 @@ export const getRenterBookingById = async (
         ],
       })
       .populate("renter", "name email profilePicture")
+      .populate({
+        path: "refundRequest",
+        select: "status reason totalRefundAmount deduction note createdAt"
+      })
       .lean();
 
     if (!booking) {
