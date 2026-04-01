@@ -1,6 +1,6 @@
 import express from "express";
 import {
-  createRefundRequest,
+  // createRefundRequest,
   getMyRefundRequests,
   updateRefundRequest,
   deleteRefundRequest,
@@ -19,7 +19,7 @@ const router = express.Router();
 
 const useAuth = authMiddleware as any;
 
-router.post("/", useAuth, createRefundRequest);
+// router.post("/", useAuth, createRefundRequest);
 router.get("/", getMyRefundRequests);
 router.get("/:id", getRefundRequestById);
 router.patch("/:id", useAuth, updateRefundRequest);

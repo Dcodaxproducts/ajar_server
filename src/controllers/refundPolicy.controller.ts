@@ -95,84 +95,69 @@ export const getRefundPoliciesByZoneAndCategory = asyncHandler(
 // Update Refund Policy
 export const updateRefundPolicy = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    const zone = req.params.zone || req.body.zone;
-    const subCategory = req.params.subCategory || req.body.subCategory;
+    // params take precedence over body — body is a convenience fallback
+    const zoneId = req.params.zone ?? req.body.zone;
+    const subCategoryId = req.params.subCategory ?? req.body.subCategory;
 
-    // Check mismatch if both provided
-    if (req.params.zone && req.body.zone && req.params.zone !== req.body.zone) {
-      res
-        .status(400)
-        .json({ message: "Zone ID mismatch between params and body" });
+    // fail fast — no silent undefineds reaching the DB
+    if (!zoneId || !subCategoryId) {
+      res.status(400).json({ message: "zone and subCategory are required" });
       return;
     }
 
+    // mismatch guard: only fires when both sources actually supply a value
+    if (req.params.zone && req.body.zone && req.params.zone !== req.body.zone) {
+      res.status(400).json({ message: "Zone mismatch between params and body" });
+      return;
+    }
     if (
       req.params.subCategory &&
       req.body.subCategory &&
       req.params.subCategory !== req.body.subCategory
     ) {
-      res
-        .status(400)
-        .json({ message: "SubCategory ID mismatch between params and body" });
+      res.status(400).json({ message: "SubCategory mismatch between params and body" });
       return;
     }
 
-    // Validate IDs
-    if (!(await isValidObjectIdAndExists(zone, Zone))) {
+    // validate both IDs in parallel — no reason to await them sequentially
+    const [zoneExists, subCategoryExists] = await Promise.all([
+      isValidObjectIdAndExists(zoneId, Zone),
+      isValidObjectIdAndExists(subCategoryId, Category),
+    ]);
+
+    if (!zoneExists) {
       res.status(400).json({ message: "Invalid zone ID" });
       return;
     }
-
-    if (!(await isValidObjectIdAndExists(subCategory, Category))) {
+    if (!subCategoryExists) {
       res.status(400).json({ message: "Invalid subCategory ID" });
       return;
     }
 
-    // Find existing policy
-    let policy = await RefundPolicy.findOne({ zone, subCategory });
+    // only patch fields that were actually sent — never overwrite with undefined
+    const { allowRefund, tiers, noteText } = req.body;
+    const patch: Record<string, unknown> = {};
+    if (allowRefund !== undefined) patch.allowRefund = allowRefund;
+    if (tiers !== undefined) patch.tiers = tiers;
+    if (noteText !== undefined) patch.noteText = noteText;
 
-    if (policy) {
-      policy = await RefundPolicy.findByIdAndUpdate(
-        policy._id,
-        {
-          zone,
-          subCategory,
-          allowFund: req.body.allowFund ?? policy.allowFund,
-          cancellationCutoffTime:
-            req.body.cancellationCutoffTime ?? policy.cancellationCutoffTime,
-          flatFee: req.body.flatFee ?? policy.flatFee,
-          noteText: req.body.noteText ?? policy.noteText,
-          refundWindow: req.body.refundWindow ?? policy.refundWindow,
-        },
-        { new: true }
-      );
+    // single DB round-trip — findOne + update/create was two
+    const policy  = await RefundPolicy.findOneAndUpdate(
+      { zone: zoneId, subCategory: subCategoryId },
+      { $set: patch },
+      {
+        new: true,
+        upsert: true,
+        runValidators: true,
+        setDefaultsOnInsert: true,
+      }
+    );
 
-      res.status(200).json({
-        success: true,
-        message: "Refund policy updated successfully",
-        data: policy,
-      });
-      return;
-    }
 
-    // Create new if not found
-    const newPolicy = await RefundPolicy.create({
-      zone,
-      subCategory,
-      allowFund: req.body.allowFund ?? false,
-      cancellationCutoffTime: req.body.cancellationCutoffTime ?? {
-        days: 0,
-        hours: 0,
-      },
-      flatFee: req.body.flatFee ?? { amount: 0, days: 0, hours: 0 },
-      noteText: req.body.noteText ?? "",
-      refundWindow: req.body.refundWindow ?? "full",
-    });
-
-    res.status(201).json({
+    res.status(200).json({
       success: true,
-      message: "Refund policy created successfully",
-      data: newPolicy,
+      message: "Refund policy saved successfully",
+      data: policy 
     });
   }
 );

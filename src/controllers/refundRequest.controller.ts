@@ -13,74 +13,74 @@ import { capitalizeName } from "../utils/capitalizeName";
 import { User } from "../models/user.model";
 
 // Create Refund Request
-export const createRefundRequest = asyncHandler(
-  async (req: Request & { user?: any }, res: Response) => {
-    const { booking, reason, note } = req.body;
+// export const createRefundRequest = asyncHandler(
+//   async (req: Request & { user?: any }, res: Response) => {
+//     const { booking, reason, note } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(booking)) {
-      res.status(400).json({ message: "Invalid booking ID" });
-      return;
-    }
+//     if (!mongoose.Types.ObjectId.isValid(booking)) {
+//       res.status(400).json({ message: "Invalid booking ID" });
+//       return;
+//     }
 
-    const bookingData = await Booking.findById(booking).populate(
-      "marketplaceListingId"
-    );
-    if (!bookingData || !bookingData.marketplaceListingId) {
-      res.status(404).json({ message: "Booking or listing not found" });
-      return;
-    }
+//     const bookingData = await Booking.findById(booking).populate(
+//       "marketplaceListingId"
+//     );
+//     if (!bookingData || !bookingData.marketplaceListingId) {
+//       res.status(404).json({ message: "Booking or listing not found" });
+//       return;
+//     }
 
-    const listing: any = bookingData.marketplaceListingId;
-    const zone = listing.zone;
-    const subCategory = listing.subCategory;
+//     const listing: any = bookingData.marketplaceListingId;
+//     const zone = listing.zone;
+//     const subCategory = listing.subCategory;
 
-    const policy = await RefundPolicy.findOne({ zone, subCategory });
-    if (!policy || !policy.allowFund) {
-      res.status(400).json({ message: "Refund not allowed for this booking" });
-      return;
-    }
+//     const policy = await RefundPolicy.findOne({ zone, subCategory });
+//     if (!policy || !policy.allowFund) {
+//       res.status(400).json({ message: "Refund not allowed for this booking" });
+//       return;
+//     }
 
-    const checkInDate = new Date(bookingData.dates.checkIn);
-    const now = new Date();
-    const hoursUntilCheckIn =
-      (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+//     const checkInDate = new Date(bookingData.dates.checkIn);
+//     const now = new Date();
+//     const hoursUntilCheckIn =
+//       (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    const cutoffHours =
-      (policy.cancellationCutoffTime?.days || 0) * 24 +
-      (policy.cancellationCutoffTime?.hours || 0);
+//     const cutoffHours =
+//       (policy.cancellationCutoffTime?.days || 0) * 24 +
+//       (policy.cancellationCutoffTime?.hours || 0);
 
-    // Convert flatFee.amount to number safely
-    const flatFeeAmount = Number(policy.flatFee?.amount) || 0;
-    const totalPrice = bookingData.priceDetails?.totalPrice || 0;
+//     // Convert flatFee.amount to number safely
+//     const flatFeeAmount = Number(policy.flatFee?.amount) || 0;
+//     const totalPrice = bookingData.priceDetails?.totalPrice || 0;
 
-    let deduction = 0;
-    let totalRefundAmount = 0;
+//     let deduction = 0;
+//     let totalRefundAmount = 0;
 
-    if (hoursUntilCheckIn > cutoffHours) {
-      deduction = flatFeeAmount;
-      totalRefundAmount = totalPrice - deduction;
-    } else {
-      deduction = totalPrice;
-      totalRefundAmount = 0;
-    }
+//     if (hoursUntilCheckIn > cutoffHours) {
+//       deduction = flatFeeAmount;
+//       totalRefundAmount = totalPrice - deduction;
+//     } else {
+//       deduction = totalPrice;
+//       totalRefundAmount = 0;
+//     }
 
-    const refund = await RefundRequest.create({
-      booking,
-      reason,
-      deduction,
-      totalRefundAmount,
-      policy: policy._id,
-      user: req.user?.id,
-      note
-    });
+//     const refund = await RefundRequest.create({
+//       booking,
+//       reason,
+//       deduction,
+//       totalRefundAmount,
+//       policy: policy._id,
+//       user: req.user?.id,
+//       note
+//     });
 
-    res.status(201).json({
-      success: true,
-      message: "Refund request submitted successfully",
-      data: refund,
-    });
-  }
-);
+//     res.status(201).json({
+//       success: true,
+//       message: "Refund request submitted successfully",
+//       data: refund,
+//     });
+//   }
+// );
 
 // Get My Refund Requests
 export const getMyRefundRequests = asyncHandler(
@@ -125,6 +125,7 @@ export const getMyRefundRequests = asyncHandler(
     });
   }
 );
+
 // export const getMyRefundRequests = asyncHandler(
 //   async (req: Request & { user?: any }, res: Response) => {
 //     const page = Number(req.query.page) || 1;
@@ -375,78 +376,96 @@ export const updateRefundStatus = async (
     const leaserAmount = refund.totalRefundAmount - (adminFee + tax) + (refund?.deduction || 0);
     const adminCollection = refund?.deduction || 0;
 
-    if (!leaser?.wallet || leaser.wallet.balance < leaserAmount) {
-      await session.abortTransaction();
-      session.endSession();
-      return sendResponse(
-        res,
-        {
-          requiredAmount: leaserAmount.toFixed(2),
-          currentBalance: leaser.wallet?.balance?.toFixed(2) || 0,
-        },
-        "Leaser has insufficient wallet balance for refund",
-        STATUS_CODES.BAD_REQUEST
-      );
+    // 1. Balance validation for Leaser (only if leaser is actually losing money)
+    if (leaserAmount > 0) {
+      if (!leaser?.wallet || leaser.wallet.balance < leaserAmount) {
+        await session.abortTransaction();
+        session.endSession();
+        return sendResponse(
+          res,
+          null,
+          "Leaser has insufficient wallet balance for refund",
+          STATUS_CODES.BAD_REQUEST
+        );
+      }
+      leaser.wallet.balance -= leaserAmount;
+      await leaser.save({ session });
     }
 
-    // Wallet movement
-    leaser.wallet.balance -= leaserAmount;
-    renter.wallet.balance += refundAmount;
-    admin.wallet.balance += (refund?.deduction || 0) - (adminFee + tax);
+    // 2. Renter Wallet Update (ONLY if amount > 0)
+    if (refundAmount > 0) {
+      renter.wallet.balance += refundAmount;
+      await renter.save({ session });
+    }
 
-    await leaser.save({ session });
-    await renter.save({ session });
+    // 3. Admin Wallet Update
+    const adminNetChange = (refund?.deduction || 0) - (adminFee + tax);
+    admin.wallet.balance += adminNetChange;
     await admin.save({ session });
 
-    await WalletTransaction.insertMany(
-      [
-        {
-          userId: renter._id,
-          type: "credit",
-          amount: refundAmount.toFixed(2),
-          source: "refund",
-          status: "succeeded"
-        },
-        {
-          userId: leaser._id,
-          type: "debit",
-          amount: leaserAmount.toFixed(2),
-          source: "refund",
-          status: "succeeded",
-        },
-        {
-          userId: admin._id,
-          type: "credit",
-          amount: adminCollection.toFixed(2),
-          source: "refund",
-          status: "succeeded",
-        },
-        {
-          userId: admin._id,
-          type: "debit",
-          amount: (adminFee + tax).toFixed(2),
-          source: "refund",
-          status: "succeeded",
-        }
-      ],
-      { session }
+    // 4. Transactions (Filtered to exclude $0 entries)
+    const transactions = [];
+
+    if (refundAmount > 0) {
+      transactions.push({
+        userId: renter._id,
+        type: "credit",
+        amount: refundAmount.toFixed(2),
+        source: "refund",
+        status: "succeeded"
+      });
+    }
+
+    if (leaserAmount > 0) {
+      transactions.push({
+        userId: leaser._id,
+        type: "debit",
+        amount: leaserAmount.toFixed(2),
+        source: "refund",
+        status: "succeeded",
+      });
+    }
+
+    // Always log admin side for accounting
+    transactions.push(
+      {
+        userId: admin._id,
+        type: "debit",
+        amount: (adminFee + tax).toFixed(2),
+        source: "refund",
+        status: "succeeded",
+      },
+       {
+        userId: admin._id,
+        type: "credit",
+        amount: adminCollection.toFixed(2),
+        source: "refund",
+        status: "succeeded",
+      }
     );
+
+    await WalletTransaction.insertMany(transactions, { session });
 
     refund.status = "accept";
     await refund.save({ session });
-
     await booking.save({ session });
 
     await session.commitTransaction();
     session.endSession();
 
-    // ================= NOTIFICATIONS =================
+    // ================= NOTIFICATIONS (Conditional Text) =================
+
+    // Renter Notification
+    const renterMsg = refundAmount > 0
+      ? `Your refund request for "${capitalizeName(listingName)}" has been approved. $${refundAmount.toFixed(2)} has been added to your wallet.`
+      : `Your refund request for "${capitalizeName(listingName)}" has been approved (No monetary refund applicable).`;
+
     await sendNotification(
       renter._id.toString(),
       "Refund Approved",
-      `You received a refund of $${refundAmount.toFixed(2)} for "${capitalizeName(listingName)}".`,
+      renterMsg,
       {
-        refundId: (refund._id as any).toString(),
+        refundId: refund?._id as string,
         bookingId: booking._id.toString(),
         type: "refund",
         status: "approved",
@@ -454,18 +473,21 @@ export const updateRefundStatus = async (
       }
     );
 
-    await sendNotification(
-      leaser._id.toString(),
-      "Refund Processed",
-      `A refund of $${leaserAmount.toFixed(2)} has been deducted from your wallet for "${capitalizeName(listingName)}".`,
-      {
-        refundId: (refund._id as any).toString(),
-        bookingId: booking._id.toString(),
-        type: "refund",
-        status: "approved",
-        deductedAmount: leaserAmount.toFixed(2),
-      }
-    );
+    // Leaser Notification
+    if (leaserAmount > 0) {
+      await sendNotification(
+        leaser._id.toString(),
+        "Refund Processed",
+        `A refund adjustment of $${leaserAmount.toFixed(2)} has been deducted from your wallet for "${capitalizeName(listingName)}".`,
+        {
+          refundId: refund._id as string,
+          bookingId: booking._id.toString(),
+          type: "refund",
+          status: "approved",
+          deductedAmount: leaserAmount.toFixed(2),
+        }
+      );
+    }
 
     // ================= ADMIN NOTIFICATION =================
     await sendNotification(

@@ -10,6 +10,7 @@ import { RefundPolicy } from "../models/refundPolicy.model";
 import { RefundRequest } from "../models/refundRequest.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
+import { calculateRefund } from "../utils/calculateRefund";
 
 interface AuthRequest extends Request {
   user?: {
@@ -176,10 +177,9 @@ export const createRefundRequest = asyncHandler(
   async (req: Request & { user?: any }, res: Response): Promise<void> => {
     const { user } = req as any;
 
-    // Allow only safe fields
+    // only pick allowed fields from body
     const allowedUserFields = ["booking", "reason", "note"];
     const sanitizedBody: any = {};
-
     allowedUserFields.forEach((field) => {
       if (req.body[field] !== undefined) {
         sanitizedBody[field] = req.body[field];
@@ -188,30 +188,29 @@ export const createRefundRequest = asyncHandler(
 
     const { booking, reason, note } = sanitizedBody;
 
-    // Validate booking
+    // validate booking ID
     if (!(await isValidObjectIdAndExists(booking, Booking))) {
       res.status(400).json({ message: "Invalid booking ID" });
       return;
     }
 
-    // Check if refund request already exists for this booking and user
+    // prevent duplicate refund requests
     const existingRefund = await RefundRequest.findOne({
       booking,
-      user: req.user?.id,
+      user: user?.id,
     });
-
 
     if (existingRefund) {
       sendResponse(
         res,
         null,
-        "Refund request For this booking already exists",
+        "Refund request for this booking already exists",
         STATUS_CODES.NOT_FOUND
       );
-      return
+      return;
     }
 
-    // Get booking + listing
+    // fetch booking + listing
     const bookingData = await Booking.findById(booking).populate(
       "marketplaceListingId"
     );
@@ -221,75 +220,58 @@ export const createRefundRequest = asyncHandler(
       return;
     }
 
+    // only cancelled bookings are eligible
     if (bookingData.status !== "booking_cancelled") {
       res.status(400).json({
         success: false,
-        message: "Refund is only applicable for bookings with 'booking_cancelled' status."
+        message: "Refund is only applicable for bookings with 'booking_cancelled' status.",
       });
       return;
     }
 
     const listing: any = bookingData.marketplaceListingId;
-    const zone = listing.zone;
-    const subCategory = listing.subCategory;
 
-    // Find refund policy
-    const policy = await RefundPolicy.findOne({ zone, subCategory });
+    // fetch refund policy
+    const policy = await RefundPolicy.findOne({
+      zone: listing.zone,
+      subCategory: listing.subCategory,
+    });
 
-    if (!policy || !policy.allowFund) {
+    if (!policy || !policy.allowRefund) {
       res.status(400).json({ message: "Refund not allowed for this booking" });
       return;
     }
 
-    // Calculate time difference
+    const totalPrice = Number(bookingData.priceDetails?.totalPrice ?? 0);
     const checkInDate = new Date(bookingData.dates.checkIn);
-    const now = new Date();
 
-    const hoursUntilCheckIn =
-      (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+    // calculateRefund handles all tier logic
+    const result = calculateRefund(totalPrice, checkInDate, policy);
 
-    // Use cancellationCutoffTime
-    const cutoffHours =
-      (policy.cancellationCutoffTime?.days || 0) * 24 +
-      (policy.cancellationCutoffTime?.hours || 0);
+    // not eligible — cutoff has passed
+    // if (result.refundAmount <= 0) {
+    //   res.status(400).json({
+    //     success: false,
+    //     message: "Refund not allowed. Cancellation cutoff period has passed.",
+    //   });
+    //   return;
+    // }
 
-    // Flat fee amount
-    const flatFee = Number((policy as any).flatFee?.amount ?? 0);
-
-    const totalPrice = bookingData.priceDetails.totalPrice || 0;
-
-    let deduction = 0;
-    let totalRefundAmount = 0;
-
-    if (hoursUntilCheckIn > cutoffHours) {
-      deduction = flatFee;
-      totalRefundAmount = totalPrice - deduction;
-    } else {
-      deduction = totalPrice;
-      totalRefundAmount = 0;
-    }
-
-    if (totalRefundAmount <= 0) {
-      res.status(400).json({
-        message: "Refund not allowed. Cancellation cutoff period has passed."
-      });
-      return;
-    }
-
-    // ✅ Create refund request (schema-safe)
+    // create refund request
     const refundRequest = await RefundRequest.create({
       booking,
       reason,
-      user: user?.id,
-      deduction,
-      totalRefundAmount,
-      policy: policy._id,
       note,
+      user: user?.id,
+      deduction: result.deductedAmount,
+      totalRefundAmount: result.refundAmount,
+      policy: policy._id,
       status: "pending",
     });
 
+    // link refund request back to booking
     await Booking.findByIdAndUpdate(booking, {
-      refundRequest: refundRequest._id
+      refundRequest: refundRequest._id,
     });
 
     res.status(201).json({
@@ -566,66 +548,63 @@ export const getRefundPreview = asyncHandler(
   async (req: Request & { user?: any }, res: Response): Promise<void> => {
     const bookingId = req.query.bookingId as string;
 
+    // validate booking ID
     if (!bookingId || !(await isValidObjectIdAndExists(bookingId, Booking))) {
       res.status(400).json({ success: false, message: "Invalid or missing booking ID" });
       return;
     }
 
-    const bookingData = await Booking.findById(bookingId).populate("marketplaceListingId");
+    const booking = await Booking.findById(bookingId).populate("marketplaceListingId");
 
-    if (!bookingData || !bookingData.marketplaceListingId) {
+    if (!booking || !booking.marketplaceListingId) {
       res.status(404).json({ success: false, message: "Booking not found" });
       return;
     }
 
-    // Ownership & Status Check
-    if (bookingData.renter.toString() !== req.user?.id && req.user?.role !== 'admin') {
-      res.status(403).json({ success: false, message: "Unauthorized access" });
+    // booking must be in a cancellable state
+    if (booking.status !== "booking_cancelled") {
+      res.status(400).json({ success: false, message: "Only cancelled bookings can be refunded" });
       return;
     }
 
-    const listing: any = bookingData.marketplaceListingId;
+    const listing = booking.marketplaceListingId as any;
+
     const policy = await RefundPolicy.findOne({
       zone: listing.zone,
-      subCategory: listing.subCategory
+      subCategory: listing.subCategory,
     });
 
-    if (!policy || !policy.allowFund) {
-      res.status(400).json({ success: false, message: "Refund not allowed for this category/zone." });
+    if (!policy || !policy.allowRefund) {
+      res.status(200).json({
+        success: true,
+        data: {
+          totalBookingAmount: booking.priceDetails.totalPrice,
+          deductionFee: booking.priceDetails.totalPrice,
+          estimatedRefund: 0,
+          isEligible: false,
+          appliedTier: null,
+          reason: "Refunds are not allowed for this category/zone",
+        },
+      });
       return;
     }
 
-    const cutoffDays = Number(policy.cancellationCutoffTime?.days ?? 0);
-    const cutoffHours = Number(policy.cancellationCutoffTime?.hours ?? 0);
-    const totalCutoffHours = (cutoffDays * 24) + cutoffHours;
-
-    const flatFeeAmount = Number((policy.flatFee?.amount as any) ?? 0);
-
-    const checkInDate = new Date(bookingData.dates.checkIn);
-    const now = new Date();
-    const hoursUntilCheckIn = (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-    const totalPrice = bookingData.priceDetails.totalPrice || 0;
-
-    let deduction = 0;
-    let totalRefundAmount = 0;
-
-    if (hoursUntilCheckIn > totalCutoffHours) {
-      deduction = flatFeeAmount;
-      totalRefundAmount = Math.max(0, totalPrice - deduction);
-    } else {
-      deduction = totalPrice;
-      totalRefundAmount = 0;
-    }
+    // use the pure calculator — no logic lives in the controller
+    const result = calculateRefund(
+      booking.priceDetails.totalPrice,
+      new Date(booking.dates.checkIn),
+      policy
+    );
 
     res.status(200).json({
       success: true,
       data: {
-        totalBookingAmount: totalPrice,
-        deductionFee: deduction,
-        estimatedRefund: totalRefundAmount,
-        policyName: policy.refundWindow,
-        isEligible: totalRefundAmount > 0
+        totalBookingAmount: booking.priceDetails.totalPrice,
+        deductionFee: result.deductedAmount,
+        estimatedRefund: result.refundAmount,
+        isEligible: result.refundAmount > 0,
+        appliedTier: result.appliedTier,
+        reason: result.reason,
       },
     });
   }

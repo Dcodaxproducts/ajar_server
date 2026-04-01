@@ -919,6 +919,32 @@ export const updateBookingStatus = async (
         type: "booking",
         status: finalStatus,
       });
+
+      // ========== LEASER NOTIFICATIONS FOR CANCELLATION ==========
+      if (finalStatus === "request_cancelled" || finalStatus === "booking_cancelled") {
+        let leaserMsg = "";
+        let leaserTitle = "";
+
+        if (finalStatus === "request_cancelled") {
+          leaserTitle = "Booking Request Cancelled";
+          leaserMsg = `The pending booking request for your listing "${listingName}" has been cancelled by the renter.`;
+        } else if (finalStatus === "booking_cancelled") {
+          leaserTitle = "Confirmed Booking Cancelled";
+          leaserMsg = `The approved booking for "${listingName}" has been cancelled by the renter. Your item is now available for others to book.`;
+        }
+
+        await sendNotification(
+          leaserId,
+          leaserTitle,
+          leaserMsg,
+          {
+            bookingId: finalBooking._id?.toString(),
+            listingId,
+            type: "booking",
+            status: finalStatus,
+          }
+        );
+      }
     } catch (err) {
       console.error("Failed to notify users about booking status change:", err);
     }
