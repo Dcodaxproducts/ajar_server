@@ -4,9 +4,10 @@ export type PriceUnit = "hour" | "day" | "month" | "year";
 
 export interface IListingDocument {
   name: string;
-  filesUrl: string[];
+  fileUrl: string;
   expiryDate?: Date;
-  verified?: boolean;
+  isExpired?: boolean;
+  reminderSent: boolean;
 }
 
 interface ILanguageTranslation {
@@ -15,7 +16,7 @@ interface ILanguageTranslation {
 }
 
 export interface IMarketplaceListing extends Document {
-  _id: Types.ObjectId;  
+  _id: Types.ObjectId;
   leaser: mongoose.Types.ObjectId;
   subCategory: mongoose.Types.ObjectId;
   zone: mongoose.Types.ObjectId;
@@ -28,7 +29,7 @@ export interface IMarketplaceListing extends Document {
   address: string;
   currency?: string;
   price: number;
-  priceUnit: PriceUnit; 
+  priceUnit: PriceUnit;
   isActive?: boolean;
   language?: string;
   languages?: ILanguageTranslation[];
@@ -40,12 +41,16 @@ export interface IMarketplaceListing extends Document {
   [key: string]: any;
 }
 
-const ListingDocumentSchema = new Schema<IListingDocument>({
-  name: { type: String, required: true },
-  filesUrl: [{ type: String, required: true }],
-  expiryDate: { type: Date },
-  verified: { type: Boolean, default: false },
-});
+const ListingDocumentSchema = new Schema<IListingDocument>(
+  {
+    name: { type: String, required: true },
+    fileUrl: { type: String, required: true },
+    expiryDate: { type: Date },
+    isExpired: { type: Boolean, default: false },
+    reminderSent: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
 
 const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
   {

@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from "express";
 import { RefundRequest } from "../models/refundRequest.model";
-import { RefundPolicy } from "../models/refundPolicy.model";
 import { Booking } from "../models/booking.model";
 import asyncHandler from "express-async-handler";
 import mongoose from "mongoose";

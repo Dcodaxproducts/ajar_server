@@ -379,7 +379,6 @@ export const getUserDetails = async (
 
         user.documents = await Promise.all(
           (user.documents ?? []).map(async (d: any) => {
-            // ✅ Mark as expired + notify
             if (d.expiryDate && new Date(d.expiryDate) < now && d.status !== "expired") {
               needsSave = true;
               await sendNotification(

@@ -516,7 +516,18 @@ export const updateForm = async (
 ): Promise<void> => {
   try {
     const id = req.params.id as string;
-    const { fields = [] } = req.body;
+    
+    // Destructure everything sent from the frontend
+    const { 
+      fields = [], 
+      userDocuments = [], 
+      leaserDocuments = [], 
+      setting,
+      name,
+      description,
+      zone,
+      subCategory
+    } = req.body;
 
     const form = await Form.findById(id);
 
@@ -525,15 +536,28 @@ export const updateForm = async (
       return;
     }
 
-    // Maintain frontend order for the IDs we are actually storing
-    const userFieldIds = fields.map((fid: string) => new mongoose.Types.ObjectId(fid));
+    // 1. Update Fields (Maintaining order)
+    form.fields = fields.map((fid: string) => new mongoose.Types.ObjectId(fid));
 
-    // Update the form fields with only the top-level selection
-    form.fields = userFieldIds;
+    // 2. Update Documents (THIS WAS MISSING)
+    form.userDocuments = userDocuments;
+    form.leaserDocuments = leaserDocuments;
 
+    // 3. Update Setting Object
+    if (setting) {
+      form.setting = setting;
+    }
+
+    // 4. Update other basic info if changed
+    if (name) form.name = name;
+    if (description) form.description = description;
+    if (zone) form.zone = new mongoose.Types.ObjectId(zone);
+    if (subCategory) form.subCategory = new mongoose.Types.ObjectId(subCategory);
+
+    // Save the changes
     await form.save();
 
-    // Fetch the updated form with 5 levels of population for the response
+    // Fetch the updated form with population for the response
     const updatedForm = await Form.findById(form._id)
       .populate("zone")
       .populate("subCategory")
@@ -541,6 +565,7 @@ export const updateForm = async (
         path: "fields",
         populate: {
           path: "conditional.dependsOn",
+          // ... (keep your existing nested population)
           populate: {
             path: "conditional.dependsOn",
             populate: {
@@ -548,7 +573,10 @@ export const updateForm = async (
               populate: {
                 path: "conditional.dependsOn",
                 populate: {
-                  path: "conditional.dependsOn"
+                  path: "conditional.dependsOn",
+                  populate: {
+                    path: "conditional.dependsOn"
+                  }
                 }
               }
             }

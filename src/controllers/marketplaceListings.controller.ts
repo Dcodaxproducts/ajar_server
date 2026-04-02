@@ -2,21 +2,17 @@ import { Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
 import { STATUS_CODES } from "../config/constants";
 import { sendResponse } from "../utils/response";
-import { paginateQuery } from "../utils/paginate";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { Zone } from "../models/zone.model";
 import { SubCategory } from "../models/category.model";
 import { Form } from "../models/form.model";
-import { Field, IField } from "../models/field.model";
 import { Booking } from "../models/booking.model";
-import { UserDocument } from "../models/userDocs.model";
-import { UserForm } from "../models/userForm.model";
-import { validateDocuments } from "../middlewares/documentvalidationhelper.middleware";
 import { User } from "../models/user.model";
 import { Review } from "../models/review.model";
 import { sendNotification } from "../utils/notifications";
 import { FavouriteCheck } from "../models/favouriteChecks.model";
+import { Dropdown } from "../models/dropdown.model";
 
 // controllers/marketplaceListings.controller.ts]
 const toCamelCase = (str: string) =>
@@ -27,21 +23,15 @@ const toCamelCase = (str: string) =>
     .replace(/^[A-Z]/, (s) => s.toLowerCase());
 
 export const createMarketplaceListing = async (req: any, res: Response) => {
-  console.log("Starting createMarketplaceListing process...");
   try {
     const { zone, subCategory } = req.body;
     const leaser = req.user.id;
-
-    console.log(
-      `Request received for Zone: ${zone}, SubCategory: ${subCategory}, Leaser ID: ${leaser}`
-    );
 
     // Normalize body keys
     const normalisedBody: any = {};
     for (const key of Object.keys(req.body)) {
       normalisedBody[toCamelCase(key)] = req.body[key];
     }
-    console.log("Normalized request body:", normalisedBody);
 
     // Early validation for required fields
     const requiredFields = ["name", "subTitle", "price", "priceUnit"];
@@ -55,7 +45,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       }
     }
 
-    //ADDED: validate allowed price units
+    // validate allowed price units
     const validUnits = ["hour", "day", "month", "year"];
     if (!validUnits.includes(normalisedBody.priceUnit)) {
       return res.status(400).json({
@@ -64,20 +54,21 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       });
     }
 
-    // Load Form for zone + subCategory
-    const form = await Form.findOne({
-      zone: new mongoose.Types.ObjectId(zone),
-      subCategory: new mongoose.Types.ObjectId(subCategory),
-    }).populate("fields");
+    // Load Form and Leaser Document Validation Config
+    const [form, leaserDocConfig] = await Promise.all([
+      Form.findOne({
+        zone: new mongoose.Types.ObjectId(zone),
+        subCategory: new mongoose.Types.ObjectId(subCategory),
+      }).populate("fields"),
+      Dropdown.findOne({ name: "leaserDocuments" })
+    ]);
 
     if (!form) {
-      console.log("Form not found for specified Zone/SubCategory.");
       return res.status(400).json({
         success: false,
         message: "Form not found for this Zone/SubCategory",
       });
     }
-    console.log("Form found:", (form as any).name);
 
     // Handle uploaded files and separate them
     const uploadedFiles = (req.files as Express.Multer.File[]) || [];
@@ -87,16 +78,12 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
 
     const requiredDocs = (form as any).leaserDocuments || [];
     const uploadedDocNames = uploadedFiles.map((file) => file.fieldname);
-    console.log("Required documents from Form:", requiredDocs);
-    console.log("Uploaded file field names:", uploadedDocNames);
-    console.log("Incoming files:", req.files);
 
     // Check for required rentalImages
     const hasRentalImages = uploadedFiles.some(
       (file) => file.fieldname === "rentalImages"
     );
     if (!hasRentalImages) {
-      console.log("Missing required file: rentalImages");
       return res.status(400).json({
         success: false,
         message: "rentalImages is required",
@@ -109,7 +96,6 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
         (docName: string) => !uploadedDocNames.includes(docName)
       );
       if (missingDocs.length > 0) {
-        console.log("Missing required documents:", missingDocs);
         return res.status(400).json({
           success: false,
           message: `Missing required document(s): ${missingDocs.join(", ")}`,
@@ -118,27 +104,41 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       }
     }
 
-    // Separate images and documents
-    uploadedFiles.forEach((file) => {
+    // Separate images and documents with Expiry Validation
+    for (const file of uploadedFiles) {
       const filePath = `/uploads/${file.filename}`;
-      if (file.fieldname === "images") {
+      const fieldName = file.fieldname;
+
+      if (fieldName === "images") {
         generalImages.push(filePath);
-      } else if (file.fieldname === "rentalImages") {
+      } else if (fieldName === "rentalImages") {
         rentalImages.push(filePath);
       } else {
+        // --- Added: Dropdown Expiry Validation ---
+        const docRule = leaserDocConfig?.values.find((v) => v.value === fieldName);
+        const expiryKey = `${fieldName}_expiry`;
+        const rawExpiry = req.body[expiryKey];
+
+        // Validation Error if dropdown says hasExpiry is true but no expiry was sent
+        if (docRule?.hasExpiry && !rawExpiry) {
+          return res.status(400).json({
+            success: false,
+            message: `Expiry date is required for document: ${docRule.name || fieldName}`,
+          });
+        }
+
+        const expiryDate = rawExpiry ? new Date(rawExpiry) : undefined;
+
         listingDocs.push({
-          name: file.fieldname,
-          filesUrl: [filePath],
+          name: fieldName,
+          fileUrl: filePath,
+          expiryDate: expiryDate,
+          isExpired: expiryDate ? expiryDate < new Date() : false,
         });
       }
-    });
-
-    console.log("General Images:", generalImages);
-    console.log("Rental Images:", rentalImages);
-    console.log("Listing Documents:", listingDocs);
+    }
 
     // Validate dynamic fields from form
-    console.log("Starting validation of dynamic fields...");
     const fields = (form as any).fields as any[];
     const requestData: any = {};
 
@@ -148,9 +148,6 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
 
       // Skip document-type fields (file uploads handled above)
       if (field.type === "document") {
-        console.log(
-          `Skipping validation for document-type field: ${fieldName}`
-        );
         continue;
       }
 
@@ -165,10 +162,6 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       if (value !== undefined) requestData[fieldName] = value;
     }
 
-    console.log("Dynamic fields validated successfully.");
-
-    // Create Marketplace Listing with separated data
-    console.log("Creating new Marketplace Listing...");
     const listing = new MarketplaceListing({
       leaser,
       zone,
@@ -308,7 +301,7 @@ export const getAllMarketplaceListingsforLeaser = async (
 
     const filter: any = {};
 
-    //ROLE-BASED FILTERS
+    // ROLE-BASED FILTERS
     if (req.user) {
       if (req.user.role === "admin") {
         if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
@@ -334,7 +327,7 @@ export const getAllMarketplaceListingsforLeaser = async (
       }
     }
 
-    //CATEGORY & SUBCATEGORY FILTERS
+    // CATEGORY & SUBCATEGORY FILTERS
     if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
       filter.subCategory = new mongoose.Types.ObjectId(String(subCategory));
     }
@@ -343,16 +336,13 @@ export const getAllMarketplaceListingsforLeaser = async (
       const subCategoryIds = await SubCategory.find({
         category: category,
       }).distinct("_id");
-
       filter.subCategory = { $in: subCategoryIds };
     }
 
-    //AGGREGATION PIPELINE
+    // AGGREGATION PIPELINE
     const pipeline: any[] = [
       { $match: filter },
-
       { $sort: { createdAt: -1 } },
-
       {
         $lookup: {
           from: "categories",
@@ -362,7 +352,6 @@ export const getAllMarketplaceListingsforLeaser = async (
         },
       },
       { $unwind: "$subCategory" },
-
       {
         $lookup: {
           from: "users",
@@ -372,7 +361,6 @@ export const getAllMarketplaceListingsforLeaser = async (
         },
       },
       { $unwind: "$leaser" },
-
       {
         $lookup: {
           from: "zones",
@@ -382,8 +370,6 @@ export const getAllMarketplaceListingsforLeaser = async (
         },
       },
       { $unwind: "$zone" },
-
-      // Lookup all bookings for each listing
       {
         $lookup: {
           from: "bookings",
@@ -392,8 +378,6 @@ export const getAllMarketplaceListingsforLeaser = async (
           as: "bookings",
         },
       },
-
-      //Lookup reviews for those bookings
       {
         $lookup: {
           from: "reviews",
@@ -402,16 +386,12 @@ export const getAllMarketplaceListingsforLeaser = async (
           as: "reviews",
         },
       },
-
-      //Calculate average rating & total reviews
       {
         $addFields: {
           averageRating: { $avg: "$reviews.stars" },
           totalReviews: { $size: "$reviews" },
         },
       },
-
-      //Lookup Form based on subCategory + zone
       {
         $lookup: {
           from: "forms",
@@ -437,49 +417,34 @@ export const getAllMarketplaceListingsforLeaser = async (
           as: "form",
         },
       },
-
       {
         $addFields: {
-          userDocuments: {
-            $ifNull: [{ $arrayElemAt: ["$form.userDocuments", 0] }, []],
-          },
-          leaserDocuments: {
-            $ifNull: [{ $arrayElemAt: ["$form.leaserDocuments", 0] }, []],
-          },
+          userDocuments: { $ifNull: [{ $arrayElemAt: ["$form.userDocuments", 0] }, []] },
+          leaserDocuments: { $ifNull: [{ $arrayElemAt: ["$form.leaserDocuments", 0] }, []] },
         },
       },
-      { $project: { form: 0, documents: 0 } },
+      // --- FIXED: form is removed, but 'documents' is kept ---
+      { $project: { form: 0 } },
 
-      // Sort by recent if requested
       ...(recent === "true" ? [{ $sort: { createdAt: -1 } }] : []),
-
       { $skip: (Number(page) - 1) * Number(limit) },
       { $limit: Number(limit) },
     ];
 
-    const listings = await MarketplaceListing.aggregate(pipeline).session(
-      session
-    );
-    const total = await MarketplaceListing.countDocuments(filter).session(
-      session
-    );
+    const listings = await MarketplaceListing.aggregate(pipeline).session(session);
+    const total = await MarketplaceListing.countDocuments(filter).session(session);
 
-    //LANGUAGE HANDLING
+    // LANGUAGE HANDLING
     const final = listings.map((obj: any) => {
       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
       if (listingLang?.translations) {
-        obj.description =
-          listingLang.translations.description || obj.description;
+        obj.description = listingLang.translations.description || obj.description;
       }
       delete obj.languages;
       return obj;
     });
 
-    //STATS
-    const uniqueUserIds = await MarketplaceListing.distinct(
-      "leaser",
-      filter
-    ).session(session);
+    const uniqueUserIds = await MarketplaceListing.distinct("leaser", filter).session(session);
     const totalUsersWithListings = uniqueUserIds.length;
 
     await session.commitTransaction();
@@ -785,9 +750,14 @@ export const getMarketplaceListingByIdforLeaser = async (
     }
 
     const doc: any = await MarketplaceListing.findById(id)
-      .populate({ path: "subCategory", populate: { path: "category" } })
-      .populate("leaser")
+      .populate({
+        path: "subCategory",
+        select: "name languages category",
+        populate: { path: "category", select: "name" },
+      })
+      .populate("leaser", "name email profilePicture createdAt")
       .populate("zone")
+      .session(session)
       .lean();
 
     if (!doc) {
@@ -797,16 +767,86 @@ export const getMarketplaceListingByIdforLeaser = async (
       return;
     }
 
+    // --- OPTIMIZED LOGIC: CHECK FOR EXPIRED & EXPIRING SOON ---
+    const now = new Date();
+    const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    let needsUpdate = false;
+
+    const expiredDocNames: string[] = [];
+    const expiringSoonDocNames: string[] = [];
+
+    // Loop through documents to check status
+    doc.documents = (doc.documents || []).map((d: any) => {
+      const expiryDate = d.expiryDate ? new Date(d.expiryDate) : null;
+
+      if (expiryDate) {
+        // 1. Check for NEWLY EXPIRED
+        if (expiryDate < now && d.isExpired !== true) {
+          expiredDocNames.push(d.name);
+          needsUpdate = true;
+          return { ...d, isExpired: true };
+        }
+
+        // 2. Check for EXPIRING SOON (7 Days)
+        // Only send if it hasn't been sent before (using reminderSent flag)
+        if (expiryDate > now && expiryDate <= sevenDaysLater && !d.reminderSent) {
+          expiringSoonDocNames.push(d.name);
+          needsUpdate = true;
+          return { ...d, reminderSent: true };
+        }
+      }
+      return d;
+    });
+
+    if (needsUpdate) {
+      // Update Database
+      await MarketplaceListing.updateOne(
+        { _id: id },
+        {
+          $set: {
+            // If any doc is expired, listing must be pending
+            status: expiredDocNames.length > 0 ? "pending" : doc.status,
+            documents: doc.documents
+          }
+        },
+        { session }
+      );
+
+      const leaserId = doc.leaser?._id || doc.leaser;
+
+      // Send Expired Notifications
+      if (expiredDocNames.length > 0 && leaserId) {
+        await sendNotification(
+          leaserId.toString(),
+          "Listing Action Required: Document Expired",
+          `Your listing "${doc.name}" is now pending because documents have expired: ${expiredDocNames.join(", ")}`,
+          { listingId: id, type: "listing_expired" }
+        );
+      }
+
+      // Send 7-Day Warning Notifications
+      if (expiringSoonDocNames.length > 0 && leaserId) {
+        await sendNotification(
+          leaserId.toString(),
+          "Urgent: Document Expiring Soon",
+          `Documents for your listing "${doc.name}" will expire in 7 days: ${expiringSoonDocNames.join(", ")}. Please update them to keep your listing active.`,
+          { listingId: id, type: "listing_warning" }
+        );
+      }
+    }
+    // --- END LOGIC ---
+
     const bookings = await Booking.find({ marketplaceListingId: id })
       .select("dates status")
+      .session(session)
       .lean();
 
     const bookingIds = bookings.map((b) => b._id);
-
     doc.bookings = bookings;
 
     const reviews = await Review.find({ bookingId: { $in: bookingIds } })
       .populate("userId", "name email")
+      .session(session)
       .lean();
 
     const averageRating =
@@ -834,14 +874,10 @@ export const getMarketplaceListingByIdforLeaser = async (
     }
 
     if (form?.setting) {
-      const renterCommission =
-        (form.setting.renterCommission?.value || 0) / 100;
-      const leaserCommission =
-        (form.setting.leaserCommission?.value || 0) / 100;
+      const renterCommission = (form.setting.renterCommission?.value || 0) / 100;
+      const leaserCommission = (form.setting.leaserCommission?.value || 0) / 100;
       const taxRate = (form.setting.tax || 0) / 100;
-
       const totalCommissionRate = renterCommission + leaserCommission;
-
       const adminFee = doc.price * totalCommissionRate;
       const tax = (doc.price + adminFee) * taxRate;
 
@@ -852,7 +888,8 @@ export const getMarketplaceListingByIdforLeaser = async (
       doc.tax = 0;
     }
 
-    delete doc.documents;
+    // --- FIXED: Do not delete doc.documents ---
+    // delete doc.documents; <--- REMOVED this line
     delete doc.languages;
     delete doc.__v;
 
@@ -903,13 +940,14 @@ export const getMarketplaceListingById = async (
     const doc = await MarketplaceListing.findById(id)
       .populate({
         path: "subCategory",
-        populate: { path: "category" },
+        select: "name languages category",
+        populate: { path: "category", select: "name" },
       })
       .populate({
         path: "zone",
-        select: "name polygons",
+        select: "name",
       })
-      .populate("leaser")
+      .populate("leaser", "name email profilePicture")
       .session(session)
       .lean();
 
@@ -919,6 +957,96 @@ export const getMarketplaceListingById = async (
       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
       return;
     }
+
+    // --- OPTIMIZED LOGIC: CHECK FOR EXPIRED & 7-DAY REMINDERS ---
+    const now = new Date();
+    const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    let needsUpdate = false;
+
+    const expiredDocs = (doc.documents || []).filter(
+      (d: any) => d.expiryDate && new Date(d.expiryDate) < now && d.isExpired !== true
+    );
+
+    const reminderDocs = (doc.documents || []).filter(
+      (d: any) => d.expiryDate &&
+        new Date(d.expiryDate) > now &&
+        new Date(d.expiryDate) <= sevenDaysLater &&
+        d.reminderSent !== true
+    );
+
+    if (expiredDocs.length > 0 || reminderDocs.length > 0) {
+      needsUpdate = true;
+      const leaserId = doc.leaser?._id || doc.leaser;
+
+      // 1. Handle Expirations
+      if (expiredDocs.length > 0) {
+        const docNames = expiredDocs.map((d: any) => d.name).join(", ");
+
+        await MarketplaceListing.updateOne(
+          { _id: id },
+          {
+            $set: {
+              status: "pending",
+              "documents.$[elem].isExpired": true
+            }
+          },
+          {
+            arrayFilters: [{ "elem.expiryDate": { $lt: now }, "elem.isExpired": { $ne: true } }],
+            session
+          }
+        );
+
+        if (leaserId) {
+          await sendNotification(
+            leaserId.toString(),
+            "Listing Action Required: Document Expired",
+            `Your listing "${doc.name}" is now pending because documents have expired: ${docNames}`,
+            { listingId: id, type: "listing_expired" }
+          );
+        }
+      }
+
+      // 2. Handle 7-Day Reminders
+      if (reminderDocs.length > 0) {
+        const docNames = reminderDocs.map((d: any) => d.name).join(", ");
+
+        await MarketplaceListing.updateOne(
+          { _id: id },
+          {
+            $set: { "documents.$[rem].reminderSent": true }
+          },
+          {
+            arrayFilters: [{
+              "rem.expiryDate": { $gt: now, $lte: sevenDaysLater },
+              "rem.reminderSent": { $ne: true }
+            }],
+            session
+          }
+        );
+
+        if (leaserId) {
+          await sendNotification(
+            leaserId.toString(),
+            "Urgent: Document Expiring Soon",
+            `Documents for "${doc.name}" expire in 7 days: ${docNames}`,
+            { listingId: id, type: "listing_warning" }
+          );
+        }
+      }
+
+      // Sync local 'doc' object so Admin sees updated flags immediately
+      doc.documents.forEach((d: any) => {
+        const dDate = d.expiryDate ? new Date(d.expiryDate) : null;
+        if (dDate) {
+          if (dDate < now) {
+            d.isExpired = true;
+            doc.status = "pending";
+          }
+          if (dDate > now && dDate <= sevenDaysLater) d.reminderSent = true;
+        }
+      });
+    }
+    // --- END OPTIMIZED LOGIC ---
 
     const zoneId =
       typeof doc.zone === "object" ? (doc.zone as any)._id : doc.zone;
@@ -1320,79 +1448,107 @@ export const updateMarketplaceListing = async (
       return;
     }
 
+    // Authorization: Only the owner can update
     if (String(existingListing.leaser) !== String(req.user?.id)) {
-      sendResponse(
-        res,
-        null,
-        "Forbidden: You are not the owner",
-        STATUS_CODES.FORBIDDEN
-      );
+      sendResponse(res, null, "Forbidden: You are not the owner", STATUS_CODES.FORBIDDEN);
       return;
     }
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    const newImages: string[] = [];
+    const newRentalImages: string[] = [];
+    const updatedListingDocs: any[] = [...(existingListing.documents || [])];
 
-    let newImages: string[] = [];
-    let newRentalImages: string[] = [];
-
+    // 1. Handle General Images
     if (files?.images) {
-      newImages = files.images.map((file) => `/uploads/${file.filename}`);
+      newImages.push(...files.images.map((file) => `/uploads/${file.filename}`));
     }
 
+    // 2. Handle Rental Images
     if (files?.rentalImages) {
-      newRentalImages = files.rentalImages.map(
-        (file) => `/uploads/${file.filename}`
-      );
+      newRentalImages.push(...files.rentalImages.map((file) => `/uploads/${file.filename}`));
     }
 
-    //Manual validation
-    if ("name" in req.body && !req.body.name) {
-      res.status(400).json({ success: false, message: "name is required" });
-      return;
-    }
-    if ("subTitle" in req.body && !req.body.subTitle) {
-      res.status(400).json({ success: false, message: "subTitle is required" });
-      return;
-    }
-    if ("price" in req.body && !req.body.price) {
-      res.status(400).json({ success: false, message: "price is required" });
-      return;
+    // 3. --- CRITICAL: Handle Legal Documents Update & Reset ---
+    // Look for any file fields that are NOT images or rentalImages
+    if (files) {
+      for (const fieldName of Object.keys(files)) {
+        if (fieldName !== "images" && fieldName !== "rentalImages") {
+          const file = files[fieldName][0];
+          const filePath = `/uploads/${file.filename}`;
+          
+          // Get the new expiry date from the body (e.g., qatar_id_expiry)
+          const expiryKey = `${fieldName}_expiry`;
+          const rawExpiry = req.body[expiryKey];
+          const expiryDate = rawExpiry ? new Date(rawExpiry) : undefined;
+
+          // Find if this document already exists in the array
+          const docIndex = updatedListingDocs.findIndex((d) => d.name === fieldName);
+
+          const docData = {
+            name: fieldName,
+            fileUrl: filePath,
+            expiryDate: expiryDate,
+            isExpired: false,    // RESET: Always false on new upload
+            reminderSent: false  // RESET: Always false on new upload
+          };
+
+          if (docIndex > -1) {
+            updatedListingDocs[docIndex] = docData; // Update existing
+          } else {
+            updatedListingDocs.push(docData); // Add new
+          }
+        }
+      }
     }
 
-    // if ("rentalImages" in req.body && !files?.rentalImages) {
-    //   res
-    //     .status(400)
-    //     .json({ success: false, message: "rentalImages is required" });
-    //   return;
-    // }
+    // 4. Update individual expiry dates even if file didn't change
+    // (In case leaser only updated the date text)
+    updatedListingDocs.forEach((d) => {
+      const expiryKey = `${d.name}_expiry`;
+      if (req.body[expiryKey]) {
+        d.expiryDate = new Date(req.body[expiryKey]);
+        d.isExpired = false;    // Reset because date changed
+        d.reminderSent = false; // Reset because date changed
+      }
+    });
 
-    //Only allow updating fields that exist in schema
+    // Manual validation for required text fields
+    const required = ["name", "subTitle", "price"];
+    for (const field of required) {
+      if (field in req.body && !req.body[field]) {
+        res.status(400).json({ success: false, message: `${field} is required` });
+        return
+      }
+    }
+
+    // Filter body for allowed fields
     const allowedUpdates = Object.keys(existingListing.toObject());
     const filteredBody: any = {};
-
     for (const key of Object.keys(req.body)) {
       if (allowedUpdates.includes(key)) {
         filteredBody[key] = req.body[key];
       }
     }
 
+    // 5. Final Update Object
     const updatedFields = {
       ...filteredBody,
+      documents: updatedListingDocs, // Save the RESET documents
       images: newImages.length > 0 ? newImages : existingListing.images,
-      rentalImages:
-        newRentalImages.length > 0
-          ? [...(existingListing.rentalImages || []), ...newRentalImages]
-          : existingListing.rentalImages,
-      status: "pending"
+      rentalImages: newRentalImages.length > 0 
+        ? [...(existingListing.rentalImages || []), ...newRentalImages] 
+        : existingListing.rentalImages,
+      status: "pending" // Always set to pending for Admin review after update
     };
 
     const updatedListing = await MarketplaceListing.findByIdAndUpdate(
       id,
-      updatedFields,
+      { $set: updatedFields },
       { new: true }
     );
 
-    sendResponse(res, updatedListing, "Listing updated", STATUS_CODES.OK);
+    sendResponse(res, updatedListing, "Listing updated and sent for review", STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
