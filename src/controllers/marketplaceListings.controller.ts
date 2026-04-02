@@ -866,8 +866,33 @@ export const getMarketplaceListingByIdforLeaser = async (
       .lean();
 
     if (form) {
-      doc.userDocuments = form.userDocuments || [];
-      doc.leaserDocuments = form.leaserDocuments || [];
+      const rawUserDocs: string[] = form.userDocuments || [];
+      const rawLeaserDocs: string[] = form.leaserDocuments || [];
+
+      // Fetch both dropdowns in parallel
+      const [userDropdown, leaserDropdown] = await Promise.all([
+        Dropdown.findOne({ name: "userDocuments" }).session(session).lean(),
+        Dropdown.findOne({ name: "leaserDocuments" }).session(session).lean(),
+      ]);
+
+      const userDropdownValues = userDropdown?.values || [];
+      const leaserDropdownValues = leaserDropdown?.values || [];
+
+      const mapDocs = (keys: string[], dropdownValues: any[]) =>
+        keys.map((key) => {
+          const match = dropdownValues.find((v: any) => v.value === key);
+          return match
+            ? {
+              value: match.value,
+              name: match.name,
+              hasExpiry: match.hasExpiry,
+              autoApproval: match.autoApproval,
+            }
+            : { value: key, name: key, hasExpiry: false, autoApproval: false };
+        });
+
+      doc.userDocuments = mapDocs(rawUserDocs, userDropdownValues);
+      doc.leaserDocuments = mapDocs(rawLeaserDocs, leaserDropdownValues);
     } else {
       doc.userDocuments = [];
       doc.leaserDocuments = [];
@@ -1476,7 +1501,7 @@ export const updateMarketplaceListing = async (
         if (fieldName !== "images" && fieldName !== "rentalImages") {
           const file = files[fieldName][0];
           const filePath = `/uploads/${file.filename}`;
-          
+
           // Get the new expiry date from the body (e.g., qatar_id_expiry)
           const expiryKey = `${fieldName}_expiry`;
           const rawExpiry = req.body[expiryKey];
@@ -1536,8 +1561,8 @@ export const updateMarketplaceListing = async (
       ...filteredBody,
       documents: updatedListingDocs, // Save the RESET documents
       images: newImages.length > 0 ? newImages : existingListing.images,
-      rentalImages: newRentalImages.length > 0 
-        ? [...(existingListing.rentalImages || []), ...newRentalImages] 
+      rentalImages: newRentalImages.length > 0
+        ? [...(existingListing.rentalImages || []), ...newRentalImages]
         : existingListing.rentalImages,
       status: "pending" // Always set to pending for Admin review after update
     };
