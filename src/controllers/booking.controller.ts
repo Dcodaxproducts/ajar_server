@@ -2367,3 +2367,83 @@ export const submitBookingPin = async (
     next(err);
   }
 };
+
+// controllers/booking.controller.ts
+
+export const getSeasonalBookingsGraph = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const year = Number(req.query.year) || new Date().getFullYear();
+
+    const pipeline: mongoose.PipelineStage[] = [
+      {
+        $match: {
+          createdAt: {
+            $gte: new Date(`${year}-01-01T00:00:00.000Z`),
+            $lte: new Date(`${year}-12-31T23:59:59.999Z`),
+          },
+        },
+      },
+      {
+        $addFields: {
+          month: { $month: "$createdAt" },
+          week: {
+            $ceil: {
+              $divide: [{ $dayOfMonth: "$createdAt" }, 7],
+            },
+          },
+        },
+      },
+      {
+        $group: {
+          _id: { month: "$month", week: "$week" },
+          totalBookings: { $sum: 1 },
+        },
+      },
+      { $sort: { "_id.month": 1, "_id.week": 1 } },
+    ];
+
+    const raw = await Booking.aggregate(pipeline);
+
+    // Build Jan–Dec structure with all 4 weeks defaulting to 0
+    const MONTH_NAMES = [
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+
+    const result = MONTH_NAMES.map((name, i) => {
+      const monthNumber = i + 1;
+
+      const weeks = [1, 2, 3, 4].map((weekNumber) => {
+        const found = raw.find(
+          (r) => r._id.month === monthNumber && r._id.week === weekNumber
+        );
+        return {
+          week: `Week ${weekNumber}`,
+          totalBookings: found?.totalBookings ?? 0,
+        };
+      });
+
+      return {
+        month: name,
+        monthNumber,
+        weeks,
+        totalBookings: weeks.reduce((sum, w) => sum + w.totalBookings, 0),
+      };
+    });
+
+    return sendResponse(res, {
+      statusCode: STATUS_CODES.OK,
+      message: "Bookings graph data retrieved successfully",
+      data: {
+        year,
+        months: result,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -10,11 +10,11 @@ import {
   updateBookingStatus,
   submitBookingPin,
   getRenterBookingById,
+  getSeasonalBookingsGraph,
 } from "../controllers/booking.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { Booking } from "../models/booking.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
-import { get } from "http";
 import { allowRoles } from "../middlewares/allowRoles";
 
 const router = express.Router();
@@ -49,5 +49,7 @@ router.patch(
 router.patch("/:id/status", useAuth, userOnly, asyncHandler(updateBookingStatus));
 router.delete("/:id", useAuth, deleteBooking);
 router.post("/:id/submit-pin", useAuth, userOnly, asyncHandler(submitBookingPin));
+
+router.get("/graph/seasonal", useAuth, adminOnly, asyncHandler(getSeasonalBookingsGraph));
 
 export default router;
