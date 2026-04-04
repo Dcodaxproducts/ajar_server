@@ -9,6 +9,7 @@ import { IUser, User } from "../models/user.model";
 import {
   IMarketplaceListing,
   MarketplaceListing,
+  PriceUnit,
 } from "../models/marketplaceListings.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { Types } from "mongoose";
@@ -22,6 +23,8 @@ import { Payment } from "../models/payment.model";
 import { WalletTransaction } from "../models/walletTransaction.model";
 import { DamageReport } from "../models/damageReport.model";
 import { RefundRequest } from "../models/refundRequest.model";
+import { Zone } from "../models/zone.model";
+import { IRentalDuration, IRentalPolicies } from "../models/rentalPolicy.model";
 
 //NEW HELPER — detects date-only strings (YYYY-MM-DD)
 const isDateOnly = (value: string) => {
@@ -45,6 +48,7 @@ const normalizeBookingDates = (checkInRaw: string, checkOutRaw: string) => {
   return { checkIn, checkOut };
 };
 
+// createBooking
 // createBooking
 export const createBooking = async (req: AuthRequest, res: Response) => {
   try {
@@ -76,6 +80,62 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: "Renter not found" });
     }
 
+    // --- SECURITY DEPOSIT + RENTAL POLICY FETCH ---
+    // Fetch the zone to get the linked RentalPolicy
+    const zone = await Zone.findById(listing.zone).populate<{ rentalPolicies: IRentalPolicies }>("rentalPolicies");
+    if (!zone) return res.status(404).json({ message: "Zone not found for this listing" });
+
+    const rentalPolicy = zone.rentalPolicies as IRentalPolicies | null;
+
+    // Determine security deposit amount (0 if policy missing or deposit not required)
+    const securityDepositAmount =
+      rentalPolicy?.securityDepositRules?.depositRequired
+        ? rentalPolicy.securityDepositRules.depositAmount
+        : 0;
+
+    // --- RENTAL DURATION LIMITS HELPER ---
+    // Converts any IRentalDuration to hours for uniform comparison
+    const toHours = (duration: IRentalDuration): number => {
+      switch (duration.unit) {
+        case "hour": return duration.value;
+        case "day": return duration.value * 24;
+        case "month": return duration.value * 24 * 30;
+        case "year": return duration.value * 24 * 365;
+        default: return duration.value;
+      }
+    };
+
+    // Validates checkIn→checkOut against the policy's rentalDurationLimits for a given priceUnit
+    // Returns null if valid, or an error message string if invalid
+    const validateRentalDuration = (
+      checkIn: Date,
+      checkOut: Date,
+      priceUnit: PriceUnit
+    ): string | null => {
+      if (!rentalPolicy?.rentalDurationLimits?.length) return null; // No limits set — allow all
+
+      const limitRule = rentalPolicy.rentalDurationLimits.find(
+        (l) => l.appliesToPriceUnit === priceUnit
+      );
+      if (!limitRule) return null; // No rule for this price unit — allow
+      console.log({ limitRule })
+
+      const diffMs = checkOut.getTime() - checkIn.getTime();
+      const diffHours = diffMs / (1000 * 60 * 60);
+
+      const minHours = toHours(limitRule.minimumDuration);
+      const maxHours = toHours(limitRule.maximumDuration);
+
+      if (diffHours < minHours) {
+        return `Minimum rental duration for this listing is ${limitRule.minimumDuration.value} ${limitRule.minimumDuration.unit}(s)`;
+      }
+      if (diffHours > maxHours) {
+        return `Maximum rental duration for this listing is ${limitRule.maximumDuration.value} ${limitRule.maximumDuration.unit}(s)`;
+      }
+
+      return null; // Valid
+    };
+
     /* ---------------------------------------------------------
        EXTENSION LOGIC
     --------------------------------------------------------- */
@@ -94,6 +154,12 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         return res.status(400).json({ message: "Extension date is required" });
       }
 
+      // --- EXTENSION ALLOWED CHECK ---
+      // If the rental policy explicitly disallows extensions, reject early
+      if (rentalPolicy && rentalPolicy.extensionAllowed === false) {
+        return res.status(400).json({ message: "Extensions are not allowed for this listing's zone policy" });
+      }
+
       const extensionStartDate = new Date(existingActiveBooking.dates.checkOut);
       const extensionEndDate = new Date(extensionDate);
 
@@ -101,6 +167,17 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         return res.status(400).json({
           message: "Extension date must be after previous checkout date",
         });
+      }
+
+      // --- RENTAL DURATION LIMITS CHECK (EXTENSION) ---
+      // Validate the extension period alone against the duration limits
+      const extensionDurationError = validateRentalDuration(
+        extensionStartDate,
+        extensionEndDate,
+        listing.priceUnit as PriceUnit
+      );
+      if (extensionDurationError) {
+        return res.status(400).json({ message: extensionDurationError });
       }
 
       const isAvailableForExtend = await isBookingDateAvailable(
@@ -118,18 +195,20 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
       // FIX: Use the shared utility for consistent calculation
       const priceBreakdown = calculateBookingPrice({
-        basePrice: listing.price, // Unit price
+        basePrice: listing.price,
         unit: listing.priceUnit,
         checkIn: extensionStartDate,
         checkOut: extensionEndDate,
-        adminCommissionRate, // Now available
-        taxRate,             // Now available
+        adminCommissionRate,
+        taxRate,
       });
 
       const priceDetails = {
         price: priceBreakdown.basePrice,
         adminFee: priceBreakdown.adminFee,
         tax: priceBreakdown.tax,
+        // Extensions do NOT charge a new deposit — deposit was already held on original booking
+        securityDeposit: 0,
         totalPrice: priceBreakdown.totalPrice,
       };
 
@@ -160,9 +239,9 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         isExtend: false,
         previousBookingId: existingActiveBooking._id,
         extensionRequestedDate: extensionEndDate,
+        rentalPolicyId: rentalPolicy?._id, // Store which policy was active at time of booking
       });
 
-      // Notify Leaser logic (omitted for brevity, same as before)
       try {
         await sendNotification(
           leaserId.toString(),
@@ -175,7 +254,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       return res.status(201).json({
         message: "Extension request created successfully",
         booking: extendedBooking,
-        priceBreakdown, // Return full breakdown
+        priceBreakdown,
       });
     }
 
@@ -187,6 +266,17 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     }
 
     const { checkIn: checkInDate, checkOut: checkOutDate } = normalizeBookingDates(dates.checkIn, dates.checkOut);
+
+    // --- RENTAL DURATION LIMITS CHECK (NEW BOOKING) ---
+    // Must run before availability check — no point querying DB if dates are out of policy
+    const durationError = validateRentalDuration(
+      checkInDate,
+      checkOutDate,
+      listing.priceUnit as PriceUnit
+    );
+    if (durationError) {
+      return res.status(400).json({ message: durationError });
+    }
 
     let availabilityCheckIn = checkInDate;
     if (listing.priceUnit === "hour") {
@@ -223,7 +313,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     }
 
     // 2. FIX: Unified Calculation Logic
-    // Removed the "if (sameDay)" block entirely. Use calculateBookingPrice for everything.
     const priceBreakdown = calculateBookingPrice({
       basePrice: listing.price,
       unit: listing.priceUnit,
@@ -237,9 +326,13 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       price: priceBreakdown.basePrice,
       adminFee: priceBreakdown.adminFee,
       tax: priceBreakdown.tax,
-      totalPrice: priceBreakdown.totalPrice,
+      // Include security deposit from zone's rental policy (0 if not required)
+      securityDeposit: securityDepositAmount,
+      // Total = booking price + security deposit
+      totalPrice: priceBreakdown.totalPrice + securityDepositAmount,
     };
 
+    // --- WALLET BALANCE CHECK (includes security deposit in required amount) ---
     if (renter.wallet.balance < priceDetails.totalPrice) {
       return res.status(400).json({
         message: "Insufficient wallet balance to create booking. Please add funds.",
@@ -261,6 +354,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         unit: listing.priceUnit,
         duration: priceBreakdown.duration,
       },
+      rentalPolicyId: rentalPolicy?._id, // Store which policy was active at time of booking
     });
 
     try {
@@ -276,6 +370,12 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       message: "Booking created successfully",
       booking: newBooking,
       priceBreakdown,
+      // Return deposit info so frontend can show the renter what was held
+      securityDeposit: {
+        amount: securityDepositAmount,
+        required: securityDepositAmount > 0,
+        conditions: rentalPolicy?.securityDepositRules?.depositConditions ?? "",
+      },
     });
 
   } catch (error) {
@@ -283,6 +383,246 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     return res.status(500).json({ message: "Server error", error });
   }
 };
+
+// export const createBooking = async (req: AuthRequest, res: Response) => {
+//   try {
+//     const user = req.user as { id: string; role: string };
+//     if (!user) return res.status(401).json({ message: "Unauthorised" });
+
+//     const { marketplaceListingId, dates, extensionDate, ...bookingData } = req.body;
+
+//     if (!mongoose.Types.ObjectId.isValid(marketplaceListingId)) {
+//       return res.status(400).json({ message: "Invalid Marketplace Listing ID" });
+//     }
+
+//     const listing = await MarketplaceListing.findById(marketplaceListingId);
+//     if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+//     const listingId = listing._id as Types.ObjectId;
+//     const leaserId = listing.leaser as Types.ObjectId;
+
+//     // 1. MOVED UP: Fetch Form first so we have Tax/Commission rates for both Extensions and New Bookings
+//     const form = await Form.findOne({ subCategory: listing.subCategory, zone: listing.zone });
+//     if (!form) return res.status(400).json({ message: "Form settings not found for this listing" });
+
+//     // Prepare rates
+//     const adminCommissionRate = (form.setting.renterCommission.value + form.setting.leaserCommission.value) / 100;
+//     const taxRate = form.setting.tax / 100;
+
+//     const renter = await User.findById(user.id);
+//     if (!renter) {
+//       return res.status(404).json({ message: "Renter not found" });
+//     }
+
+//     /* ---------------------------------------------------------
+//        EXTENSION LOGIC
+//     --------------------------------------------------------- */
+//     const existingActiveBooking = await Booking.findOne({
+//       renter: user.id,
+//       marketplaceListingId: listingId,
+//       "bookingDates.handover": { $ne: null },
+//       $or: [
+//         { "bookingDates.returnDate": { $exists: false } },
+//         { "bookingDates.returnDate": null },
+//       ],
+//     });
+
+//     if (existingActiveBooking) {
+//       if (!extensionDate) {
+//         return res.status(400).json({ message: "Extension date is required" });
+//       }
+
+//       const extensionStartDate = new Date(existingActiveBooking.dates.checkOut);
+//       const extensionEndDate = new Date(extensionDate);
+
+//       if (extensionEndDate <= extensionStartDate) {
+//         return res.status(400).json({
+//           message: "Extension date must be after previous checkout date",
+//         });
+//       }
+
+//       const isAvailableForExtend = await isBookingDateAvailable(
+//         listingId,
+//         extensionStartDate,
+//         extensionEndDate,
+//         existingActiveBooking._id
+//       );
+
+//       if (!isAvailableForExtend) {
+//         return res.status(400).json({
+//           message: "Listing is not available for the selected extension period",
+//         });
+//       }
+
+//       // FIX: Use the shared utility for consistent calculation
+//       const priceBreakdown = calculateBookingPrice({
+//         basePrice: listing.price, // Unit price
+//         unit: listing.priceUnit,
+//         checkIn: extensionStartDate,
+//         checkOut: extensionEndDate,
+//         adminCommissionRate, // Now available
+//         taxRate,             // Now available
+//       });
+
+//       const priceDetails = {
+//         price: priceBreakdown.basePrice,
+//         adminFee: priceBreakdown.adminFee,
+//         tax: priceBreakdown.tax,
+//         totalPrice: priceBreakdown.totalPrice,
+//       };
+
+//       if (renter.wallet.balance < priceDetails.totalPrice) {
+//         return res.status(400).json({
+//           message: "Insufficient wallet balance to request extension. Please add funds.",
+//           requiredBalance: priceDetails.totalPrice,
+//           currentBalance: renter.wallet.balance,
+//         });
+//       }
+
+//       const extendedBooking = await Booking.create({
+//         ...bookingData,
+//         dates: {
+//           checkIn: existingActiveBooking.dates.checkIn,
+//           checkOut: extensionEndDate,
+//         },
+//         renter: user.id,
+//         leaser: leaserId,
+//         marketplaceListingId: listingId,
+//         status: "pending",
+//         priceDetails,
+//         pricingMeta: {
+//           priceFromListing: listing.price,
+//           unit: listing.priceUnit,
+//           duration: priceBreakdown.duration,
+//         },
+//         isExtend: false,
+//         previousBookingId: existingActiveBooking._id,
+//         extensionRequestedDate: extensionEndDate,
+//       });
+
+//       // Notify Leaser logic (omitted for brevity, same as before)
+//       try {
+//         await sendNotification(
+//           leaserId.toString(),
+//           "New Extension Request",
+//           `Renter requested an extension for listing "${listing.name}".`,
+//           { bookingId: extendedBooking._id.toString(), listingId: listing._id.toString(), type: "extension", status: "pending" }
+//         );
+//       } catch (err) { console.error(err); }
+
+//       return res.status(201).json({
+//         message: "Extension request created successfully",
+//         booking: extendedBooking,
+//         priceBreakdown, // Return full breakdown
+//       });
+//     }
+
+//     /* ---------------------------------------------------------
+//        NEW BOOKING LOGIC
+//     --------------------------------------------------------- */
+//     if (!dates?.checkIn || !dates?.checkOut) {
+//       return res.status(400).json({ message: "Booking dates (checkIn & checkOut) are required" });
+//     }
+
+//     const { checkIn: checkInDate, checkOut: checkOutDate } = normalizeBookingDates(dates.checkIn, dates.checkOut);
+
+//     let availabilityCheckIn = checkInDate;
+//     if (listing.priceUnit === "hour") {
+//       availabilityCheckIn = new Date(checkInDate.getTime() + 1);
+//     }
+
+//     const isAvailable = await isBookingDateAvailable(
+//       listingId,
+//       availabilityCheckIn,
+//       checkOutDate
+//     );
+
+//     if (!isAvailable) {
+//       return res.status(400).json({ message: "Listing is already booked for the selected dates" });
+//     }
+
+//     // Check required documents
+//     const requiredUserDocs = form.userDocuments || [];
+//     if (requiredUserDocs.length > 0) {
+//       const renterProfile = await User.findById(user.id);
+//       if (!renterProfile) return res.status(404).json({ message: "Renter profile not found" });
+
+//       const missingDocs: string[] = [];
+//       const unapprovedDocs: string[] = [];
+
+//       for (const requiredDoc of requiredUserDocs) {
+//         const userDoc = renterProfile.documents.find((doc: any) => doc.name === requiredDoc);
+//         if (!userDoc) missingDocs.push(requiredDoc);
+//         else if (userDoc.status !== "approved") unapprovedDocs.push(requiredDoc);
+//       }
+
+//       if (missingDocs.length > 0) return res.status(400).json({ message: `Missing docs: ${missingDocs.join(", ")}` });
+//       if (unapprovedDocs.length > 0) return res.status(400).json({ message: `Unapproved docs: ${unapprovedDocs.join(", ")}` });
+//     }
+
+//     // 2. FIX: Unified Calculation Logic
+//     // Removed the "if (sameDay)" block entirely. Use calculateBookingPrice for everything.
+//     const priceBreakdown = calculateBookingPrice({
+//       basePrice: listing.price,
+//       unit: listing.priceUnit,
+//       checkIn: checkInDate,
+//       checkOut: checkOutDate,
+//       adminCommissionRate,
+//       taxRate,
+//     });
+
+//     const priceDetails = {
+//       price: priceBreakdown.basePrice,
+//       adminFee: priceBreakdown.adminFee,
+//       tax: priceBreakdown.tax,
+//       totalPrice: priceBreakdown.totalPrice,
+//     };
+
+//     if (renter.wallet.balance < priceDetails.totalPrice) {
+//       return res.status(400).json({
+//         message: "Insufficient wallet balance to create booking. Please add funds.",
+//         requiredBalance: priceDetails.totalPrice,
+//         currentBalance: renter.wallet.balance,
+//       });
+//     }
+
+//     const newBooking = await Booking.create({
+//       ...bookingData,
+//       dates: { checkIn: checkInDate, checkOut: checkOutDate },
+//       renter: user.id,
+//       leaser: leaserId,
+//       status: "pending",
+//       marketplaceListingId: listingId,
+//       priceDetails,
+//       pricingMeta: {
+//         priceFromListing: listing.price,
+//         unit: listing.priceUnit,
+//         duration: priceBreakdown.duration,
+//       },
+//     });
+
+//     try {
+//       await sendNotification(
+//         leaserId.toString(),
+//         "New Booking Request",
+//         `Renter booked your listing "${listing.name}".`,
+//         { bookingId: newBooking._id.toString(), listingId: listing._id.toString(), type: "booking", status: "pending" }
+//       );
+//     } catch (err) { console.error(err); }
+
+//     return res.status(201).json({
+//       message: "Booking created successfully",
+//       booking: newBooking,
+//       priceBreakdown,
+//     });
+
+//   } catch (error) {
+//     console.error("Error creating booking:", error);
+//     return res.status(500).json({ message: "Server error", error });
+//   }
+// };
+
+
 
 // updateBookingStatus
 export const updateBookingStatus = async (
@@ -645,11 +985,18 @@ export const updateBookingStatus = async (
         );
       }
 
-      const { price, adminFee, tax } = parentBooking.priceDetails;
+      const { price, adminFee, tax, securityDeposit } = parentBooking.priceDetails;
+      console.log(securityDeposit)
+
+      const depositAmount = securityDeposit || 0;
 
       const renterPay = price + adminFee + tax + specialCharges;
       const leaserReceive = price + specialCharges;
       const adminReceive = adminFee + tax;
+
+      // Total amount renter needs: booking cost + security deposit held in escrow
+      const totalRenterDeduct = renterPay + depositAmount;
+
 
       // Wallet existence check
       if (!renter?.wallet) {
@@ -664,7 +1011,7 @@ export const updateBookingStatus = async (
       }
 
       // Balance validation
-      if (renter.wallet.balance < renterPay) {
+      if (renter.wallet.balance < totalRenterDeduct) {
         await session.abortTransaction();
         session.endSession();
 
@@ -677,7 +1024,7 @@ export const updateBookingStatus = async (
               bookingId: parentBooking._id.toString(),
               type: "booking",
               status: "payment_required",
-              requiredBalance: renterPay,
+              requiredBalance: totalRenterDeduct,
               currentBalance: renter.wallet.balance,
             }
           );
@@ -688,7 +1035,7 @@ export const updateBookingStatus = async (
         return sendResponse(
           res,
           {
-            requiredBalance: renterPay,
+            requiredBalance: totalRenterDeduct,
             currentBalance: renter.wallet.balance,
           },
           "Insufficient wallet balance. Booking cannot be approved.",
@@ -697,7 +1044,7 @@ export const updateBookingStatus = async (
       }
 
       // Deduct from renter
-      renter.wallet.balance -= renterPay;
+      renter.wallet.balance -= totalRenterDeduct;
       await renter.save({ session });
 
       // Credit leaser
@@ -708,44 +1055,73 @@ export const updateBookingStatus = async (
 
       // Credit admin
       if (admin?.wallet) {
-        admin.wallet.balance += adminReceive;
+        admin.wallet.balance += adminReceive + depositAmount;
         await admin.save({ session });
       }
 
 
-      await WalletTransaction.insertMany(
-        [
+      // Wallet transactions
+      const walletTxns: any[] = [
+        {
+          userId: renter._id,
+          type: "debit",
+          amount: renterPay,
+          source: "booking",
+          status: "succeeded",
+          createdAt: new Date(),
+          requestedAt: new Date(),
+        },
+        {
+          userId: leaser._id,
+          type: "credit",
+          amount: leaserReceive,
+          source: "booking",
+          status: "succeeded",
+          createdAt: new Date(),
+          requestedAt: new Date(),
+        },
+        {
+          userId: admin._id,
+          type: "credit",
+          amount: adminReceive,
+          source: "booking",
+          status: "succeeded",
+          createdAt: new Date(),
+          requestedAt: new Date(),
+          processedAt: new Date(),
+        },
+      ];
+
+      // Only add a separate deposit transaction if there actually is a deposit
+      if (depositAmount > 0) {
+        walletTxns.push(
+          // Debit deposit from renter separately so it's clearly traceable
           {
             userId: renter._id,
             type: "debit",
-            amount: renterPay,
+            amount: depositAmount,
             source: "booking",
             status: "succeeded",
+            note: "Security deposit held in escrow — refundable upon booking completion",
             createdAt: new Date(),
             requestedAt: new Date(),
           },
-          {
-            userId: leaser._id,
-            type: "credit",
-            amount: leaserReceive,
-            source: "booking",
-            status: "succeeded",
-            createdAt: new Date(),
-            requestedAt: new Date(),
-          },
+          // Credit deposit to admin escrow
           {
             userId: admin._id,
             type: "credit",
-            amount: adminReceive,
+            amount: depositAmount,
             source: "booking",
             status: "succeeded",
+            note: "Security deposit received into escrow for booking",
             createdAt: new Date(),
             requestedAt: new Date(),
             processedAt: new Date(),
           }
-        ],
-        { session }
-      );
+        );
+      }
+
+      await WalletTransaction.insertMany(walletTxns, { session });
 
       // Generate OTP PIN
       pin = generatePIN(4);
@@ -754,7 +1130,8 @@ export const updateBookingStatus = async (
       // Update price details and extra charges
       updateFields.priceDetails = {
         ...parentBooking.priceDetails,
-        totalPrice: renterPay,
+        securityDeposit: depositAmount, // Preserve deposit amount on the record
+        totalPrice: renterPay,          // totalPrice = booking cost (excl. deposit, consistent with creation)
       };
 
       updateFields.extraRequestCharges = {
@@ -771,7 +1148,7 @@ export const updateBookingStatus = async (
     finalBooking = await Booking.findByIdAndUpdate(
       id,
       { $set: updateFields },
-      { new: true }
+      { new: true, session }
     )
       .populate("renter", "email name fcmToken")
       .populate("leaser", "email name fcmToken");
@@ -835,6 +1212,10 @@ export const updateBookingStatus = async (
       const leaserReceive = finalBooking.priceDetails.price + specialCharges;
       const adminReceive = finalBooking.priceDetails.adminFee + finalBooking.priceDetails.tax;
 
+      const depositAmount = finalBooking.priceDetails.securityDeposit || 0;
+      const totalRenterDeducted = totalPaid + depositAmount;
+
+
       if (finalStatus === "approved") {
         await sendEmail({
           to: leaser.email,
@@ -851,45 +1232,65 @@ export const updateBookingStatus = async (
         await sendNotification(
           leaserId,
           "Booking Approved - PIN Code",
-          `The booking for "${listingName}" is approved. PIN Code: ${pin}. Amount deducted from User's wallet: $${totalPaid}.`,
+          `The booking for "${listingName}" is approved. PIN Code: ${pin}. Amount deducted from User's wallet: $${totalRenterDeducted.toFixed(2)}.`,
           {
             bookingId: finalBooking._id?.toString(),
             listingId,
             type: "booking",
             status: finalStatus,
-            deductedAmount: totalPaid,
+            deductedAmount: totalRenterDeducted.toFixed(2),
           }
         );
 
         await sendNotification(
           leaser._id.toString(),
           "Payment Received",
-          `You received $${leaserReceive} in your wallet for the booking of "${listingName}".`,
+          `You received $${leaserReceive.toFixed(2)} in your wallet for the booking of "${listingName}".`,
           {
             bookingId: finalBooking._id.toString(),
             type: "booking",
             status: "approved",
-            creditedAmount: leaserReceive,
+            creditedAmount: leaserReceive.toFixed(2),
           }
         );
 
         await sendNotification(
           admin._id as string,
           "Booking Fee Received",
-          `You received $${adminReceive} (admin fee + tax) for the booking of "${listingName}".`,
+          `You received $${adminReceive.toFixed(2)} (admin fee + tax) for the booking of "${listingName}".`,
           {
             bookingId: finalBooking._id.toString(),
             type: "booking",
             status: "approved",
-            creditedAmount: adminReceive,
+            creditedAmount: adminReceive.toFixed(2),
           }
         );
+        if (depositAmount > 0) {
+          await sendNotification(
+            admin._id as string,
+            "Security Deposit Received",
+            `A security deposit of $${depositAmount.toFixed(2)} has been held in escrow for the booking of "${listingName}". This will be refunded to the renter upon successful completion.`,
+            {
+              bookingId: finalBooking._id.toString(),
+              type: "booking",
+              status: "approved",
+              depositAmount,
+            }
+          );
+        }
       }
 
       let renterMsg = `Your booking ${finalBooking._id?.toString()} status changed to ${finalStatus}.`;
 
       if (finalStatus === "approved") {
-        renterMsg = `Your booking for "${listingName}" has been approved. 
+        // Show renter the full breakdown: booking cost + deposit (if any)
+        renterMsg = depositAmount > 0
+          ? `Your booking for "${listingName}" has been approved. 
+        Booking amount: $${totalPaid.toFixed(2)} deducted from your wallet. 
+        Security deposit: $${depositAmount.toFixed(2)} held in escrow (refundable upon completion). 
+        Total deducted: $${totalRenterDeducted.toFixed(2)}. 
+        The PIN has been sent to the leaser. Please provide the PIN at check-in.`
+          : `Your booking for "${listingName}" has been approved. 
         Amount deducted from your wallet: $${totalPaid.toFixed(2)}. 
         The PIN has been sent to the leaser. Please provide the PIN at check-in.`;
       } else if (finalStatus === "rejected") {
@@ -898,12 +1299,11 @@ export const updateBookingStatus = async (
         renterMsg = `The booking for "${listingName}" has been completed.`;
       } else if (finalStatus === "request_cancelled") {
         renterMsg = `Your booking for "${listingName}" has been cancelled.`;
-      }
-      else if (finalStatus === "booking_cancelled") {
+      } else if (finalStatus === "booking_cancelled") {
         renterMsg = `Your booking for "${listingName}" has been cancelled. Please check the "Refund Info" for eligibility and deduction details as per the policy.`;
       }
 
-      let notificationTitle = `Booking ${finalStatus.replace(/-/g, " ").replace(/_/g, " ")}`
+      let notificationTitle = `Booking ${finalStatus.replace(/-/g, " ").replace(/_/g, " ")}`;
 
       if (finalStatus === "booking_cancelled") {
         notificationTitle = "Booking Cancelled";
@@ -955,7 +1355,6 @@ export const updateBookingStatus = async (
       `Booking status updated to ${finalStatus}`,
       STATUS_CODES.OK
     );
-
 
   } catch (err) {
     await session.abortTransaction();

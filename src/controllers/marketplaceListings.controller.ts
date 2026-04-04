@@ -970,7 +970,10 @@ export const getMarketplaceListingById = async (
       })
       .populate({
         path: "zone",
-        select: "name",
+        select: "name polygons rentalPolicies",
+        populate: {
+          path: "rentalPolicies"
+        },
       })
       .populate("leaser", "name email profilePicture")
       .session(session)

@@ -6,6 +6,7 @@ interface IPriceDetails {
   price: number;
   adminFee: number;
   tax: number;
+  securityDeposit: number;
   totalPrice: number;
 }
 
@@ -59,6 +60,7 @@ export interface IBooking extends Document {
   previousBookingId?: mongoose.Types.ObjectId;
   refundRequest?: mongoose.Types.ObjectId;
   refundNote?: string;
+  rentalPolicyId: mongoose.Types.ObjectId;
 }
 
 const BookingSchema = new Schema<IBooking>(
@@ -94,6 +96,7 @@ const BookingSchema = new Schema<IBooking>(
       price: { type: Number, required: true },
       adminFee: { type: Number, required: true },
       tax: { type: Number, required: true },
+      securityDeposit: { type: Number, default: 0 },
       totalPrice: { type: Number, required: true },
     },
 
@@ -143,6 +146,11 @@ const BookingSchema = new Schema<IBooking>(
     refundNote: {
       type: String,
       default: ""
+    },
+    rentalPolicyId: {
+      type: Schema.Types.ObjectId,
+      ref: "RentalPolicy",
+      required: true,
     },
   },
   { timestamps: true }
