@@ -756,7 +756,12 @@ export const getMarketplaceListingByIdforLeaser = async (
         populate: { path: "category", select: "name" },
       })
       .populate("leaser", "name email profilePicture createdAt")
-      .populate("zone")
+      .populate({
+        path: "zone",
+        populate: {
+          path: "rentalPolicies",
+        },
+      })
       .session(session)
       .lean();
 
@@ -1482,7 +1487,14 @@ export const updateMarketplaceListing = async (
       return;
     }
 
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    // ✅ uploadAny gives req.files as an array — convert to fieldname-keyed object
+    const uploadedFiles = (req.files as Express.Multer.File[]) || [];
+    const files: { [fieldname: string]: Express.Multer.File[] } = {};
+    for (const file of uploadedFiles) {
+      if (!files[file.fieldname]) files[file.fieldname] = [];
+      files[file.fieldname].push(file);
+    }
+
     const newImages: string[] = [];
     const newRentalImages: string[] = [];
     const updatedListingDocs: any[] = [...(existingListing.documents || [])];
@@ -1497,41 +1509,47 @@ export const updateMarketplaceListing = async (
       newRentalImages.push(...files.rentalImages.map((file) => `/uploads/${file.filename}`));
     }
 
-    // 3. --- CRITICAL: Handle Legal Documents Update & Reset ---
-    // Look for any file fields that are NOT images or rentalImages
-    if (files) {
-      for (const fieldName of Object.keys(files)) {
-        if (fieldName !== "images" && fieldName !== "rentalImages") {
-          const file = files[fieldName][0];
-          const filePath = `/uploads/${file.filename}`;
+    const leaserDocConfig = await Dropdown.findOne({ name: "leaserDocuments" });
 
-          // Get the new expiry date from the body (e.g., qatar_id_expiry)
-          const expiryKey = `${fieldName}_expiry`;
-          const rawExpiry = req.body[expiryKey];
-          const expiryDate = rawExpiry ? new Date(rawExpiry) : undefined;
+    for (const fieldName of Object.keys(files)) {
+      if (fieldName !== "images" && fieldName !== "rentalImages") {
+        const file = files[fieldName][0];
+        const filePath = `/uploads/${file.filename}`;
 
-          // Find if this document already exists in the array
-          const docIndex = updatedListingDocs.findIndex((d) => d.name === fieldName);
+        const expiryKey = `${fieldName}_expiry`;
+        const rawExpiry = req.body[expiryKey];
 
-          const docData = {
-            name: fieldName,
-            fileUrl: filePath,
-            expiryDate: expiryDate,
-            isExpired: false,    // RESET: Always false on new upload
-            reminderSent: false  // RESET: Always false on new upload
-          };
+        // ✅ Validate expiry if dropdown rule requires it
+        const docRule = leaserDocConfig?.values.find((v: any) => v.value === fieldName);
+        if (docRule?.hasExpiry && !rawExpiry) {
+          res.status(400).json({
+            success: false,
+            message: `Expiry date is required for document: ${docRule.name || fieldName}`,
+          });
+          return;
+        }
 
-          if (docIndex > -1) {
-            updatedListingDocs[docIndex] = docData; // Update existing
-          } else {
-            updatedListingDocs.push(docData); // Add new
-          }
+        const expiryDate = rawExpiry ? new Date(rawExpiry) : undefined;
+
+        const docIndex = updatedListingDocs.findIndex((d) => d.name === fieldName);
+
+        const docData = {
+          name: fieldName,
+          fileUrl: filePath,
+          expiryDate: expiryDate,
+          isExpired: false,
+          reminderSent: false
+        };
+
+        if (docIndex > -1) {
+          updatedListingDocs[docIndex] = docData;
+        } else {
+          updatedListingDocs.push(docData);
         }
       }
     }
 
     // 4. Update individual expiry dates even if file didn't change
-    // (In case leaser only updated the date text)
     updatedListingDocs.forEach((d) => {
       const expiryKey = `${d.name}_expiry`;
       if (req.body[expiryKey]) {
@@ -1546,7 +1564,7 @@ export const updateMarketplaceListing = async (
     for (const field of required) {
       if (field in req.body && !req.body[field]) {
         res.status(400).json({ success: false, message: `${field} is required` });
-        return
+        return;
       }
     }
 
@@ -1562,7 +1580,7 @@ export const updateMarketplaceListing = async (
     // 5. Final Update Object
     const updatedFields = {
       ...filteredBody,
-      documents: updatedListingDocs, // Save the RESET documents
+      documents: updatedListingDocs,
       images: newImages.length > 0 ? newImages : existingListing.images,
       rentalImages: newRentalImages.length > 0
         ? [...(existingListing.rentalImages || []), ...newRentalImages]

@@ -5,6 +5,7 @@ import { STATUS_CODES } from "../config/constants";
 import { Field } from "../models/field.model";
 import mongoose from "mongoose";
 import { paginateQuery } from "../utils/paginate";
+import { Dropdown } from "../models/dropdown.model";
 
 // CREATE NEW FORM
 export const createNewForm = async (
@@ -415,14 +416,18 @@ export const getFormByZoneAndSubCategory = async (
     }
 
     const form = await Form.findOne({ zone, subCategory })
-      .populate("zone")
+      .populate({
+        path: "zone",
+        populate: {
+          path: "rentalPolicies",
+        },
+      })
       .populate("subCategory")
       .populate({
         path: "fields",
         populate: {
           path: "conditional.dependsOn",
           populate: [
-            // ✅ Populate nested conditional.dependsOn levels
             {
               path: "conditional.dependsOn",
               populate: {
@@ -451,27 +456,25 @@ export const getFormByZoneAndSubCategory = async (
         (entry: any) => entry.locale?.toLowerCase() === lang
       );
 
-      // ✅ Localize each condition's parent field if populated
       const localizedConditional = field.conditional
         ? {
-            ...field.conditional,
-            dependsOn: field.conditional.dependsOn
-              ? (() => {
-                  const parent = field.conditional.dependsOn;
-                  const parentTranslation = parent?.languages?.find(
-                    (entry: any) => entry.locale?.toLowerCase() === lang
-                  );
-                  return {
-                    ...parent,
-                    name: parentTranslation?.translations?.name || parent.name,
-                    label: parentTranslation?.translations?.label || parent.label,
-                    placeholder: parentTranslation?.translations?.placeholder || parent.placeholder,
-                  };
-                })()
-              : null,
-            // ✅ conditions array stays as-is (value + options pairs)
-            conditions: field.conditional.conditions || [],
-          }
+          ...field.conditional,
+          dependsOn: field.conditional.dependsOn
+            ? (() => {
+              const parent = field.conditional.dependsOn;
+              const parentTranslation = parent?.languages?.find(
+                (entry: any) => entry.locale?.toLowerCase() === lang
+              );
+              return {
+                ...parent,
+                name: parentTranslation?.translations?.name || parent.name,
+                label: parentTranslation?.translations?.label || parent.label,
+                placeholder: parentTranslation?.translations?.placeholder || parent.placeholder,
+              };
+            })()
+            : null,
+          conditions: field.conditional.conditions || [],
+        }
         : undefined;
 
       return {
@@ -496,10 +499,37 @@ export const getFormByZoneAndSubCategory = async (
       (field) => !dependsOnIds.has(field._id.toString())
     );
 
+    // ✅ ADDED: Enrich userDocuments & leaserDocuments (same pattern as getMarketplaceListingByIdforLeaser)
+    const rawUserDocs: string[] = form.userDocuments || [];
+    const rawLeaserDocs: string[] = form.leaserDocuments || [];
+
+    const [userDropdown, leaserDropdown] = await Promise.all([
+      Dropdown.findOne({ name: "userDocuments" }).lean(),
+      Dropdown.findOne({ name: "leaserDocuments" }).lean(),
+    ]);
+
+    const userDropdownValues = userDropdown?.values || [];
+    const leaserDropdownValues = leaserDropdown?.values || [];
+
+    const mapDocs = (keys: string[], dropdownValues: any[]) =>
+      keys.map((key) => {
+        const match = dropdownValues.find((v: any) => v.value === key);
+        return match
+          ? {
+            value: match.value,
+            name: match.name,
+            hasExpiry: match.hasExpiry,
+            autoApproval: match.autoApproval,
+          }
+          : { value: key, name: key, hasExpiry: false, autoApproval: false };
+      });
+
     const localizedForm = {
       ...form,
       fields: filteredFields,
       language: lang,
+      userDocuments: mapDocs(rawUserDocs, userDropdownValues),   // ✅ enriched
+      leaserDocuments: mapDocs(rawLeaserDocs, leaserDropdownValues), // ✅ enriched
     };
 
     sendResponse(res, localizedForm, "Form fetched successfully", STATUS_CODES.OK);
@@ -516,12 +546,12 @@ export const updateForm = async (
 ): Promise<void> => {
   try {
     const id = req.params.id as string;
-    
+
     // Destructure everything sent from the frontend
-    const { 
-      fields = [], 
-      userDocuments = [], 
-      leaserDocuments = [], 
+    const {
+      fields = [],
+      userDocuments = [],
+      leaserDocuments = [],
       setting,
       name,
       description,

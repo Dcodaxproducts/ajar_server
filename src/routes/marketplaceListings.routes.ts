@@ -66,7 +66,7 @@ router.patch(
 
 router.patch(
   "/:id",
-  uploadFiles(["images", "rentalImages","test"]),
+  uploadAny,
   useAuth,
   asyncHandler(languageTranslationMiddleware(MarketplaceListing)),
   asyncHandler(updateMarketplaceListing)

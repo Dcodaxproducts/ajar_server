@@ -179,7 +179,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       if (extensionDurationError) {
         return res.status(400).json({ message: extensionDurationError });
       }
-
+      console.log({ extensionStartDate, extensionEndDate })
       const isAvailableForExtend = await isBookingDateAvailable(
         listingId,
         extensionStartDate,
@@ -986,7 +986,6 @@ export const updateBookingStatus = async (
       }
 
       const { price, adminFee, tax, securityDeposit } = parentBooking.priceDetails;
-      console.log(securityDeposit)
 
       const depositAmount = securityDeposit || 0;
 
@@ -996,7 +995,6 @@ export const updateBookingStatus = async (
 
       // Total amount renter needs: booking cost + security deposit held in escrow
       const totalRenterDeduct = renterPay + depositAmount;
-
 
       // Wallet existence check
       if (!renter?.wallet) {
@@ -1140,8 +1138,63 @@ export const updateBookingStatus = async (
       };
     }
 
+    // AFTER
     if (finalStatus === "completed") {
       updateFields["bookingDates.returnDate"] = new Date();
+
+      // ✅ Refund security deposit back to renter
+      const depositAmount = parentBooking.priceDetails?.securityDeposit || 0;
+
+      if (depositAmount > 0) {
+        const renter = parentBooking.renter as any;
+        const renterId = renter?._id?.toString() || renter?.toString();
+
+        // Re-fetch renter to get latest wallet balance
+        const renterUser = await User.findById(renterId).session(session);
+
+        if (renterUser?.wallet) {
+          renterUser.wallet.balance += depositAmount;
+          await renterUser.save({ session });
+        }
+
+        // Deduct from admin escrow
+        if (admin?.wallet) {
+          admin.wallet.balance -= depositAmount;
+          await admin.save({ session });
+        }
+
+        // Record wallet transactions
+        await WalletTransaction.insertMany(
+          [
+            {
+              userId: renterId,
+              type: "credit",
+              amount: depositAmount,
+              source: "refund",
+              status: "succeeded",
+              note: "Security deposit refunded upon booking completion",
+              createdAt: new Date(),
+              requestedAt: new Date(),
+              processedAt: new Date(),
+            },
+            {
+              userId: admin._id,
+              type: "debit",
+              amount: depositAmount,
+              source: "refund",
+              status: "succeeded",
+              note: "Security deposit released from escrow to renter",
+              createdAt: new Date(),
+              requestedAt: new Date(),
+              processedAt: new Date(),
+            },
+          ],
+          { session }
+        );
+
+        // ✅ Store deposit amount on updateFields so notifications below can use it
+        updateFields["_depositRefunded"] = depositAmount;
+      }
     }
 
     // ========== UPDATE BOOKING ==========
@@ -1295,8 +1348,41 @@ export const updateBookingStatus = async (
         The PIN has been sent to the leaser. Please provide the PIN at check-in.`;
       } else if (finalStatus === "rejected") {
         renterMsg = `Your booking for "${listingName}" has been rejected.`;
+        // AFTER
       } else if (finalStatus === "completed") {
-        renterMsg = `The booking for "${listingName}" has been completed.`;
+        const refundedDeposit = finalBooking.priceDetails?.securityDeposit || 0;
+        renterMsg = refundedDeposit > 0
+          ? `The booking for "${listingName}" has been completed. Your security deposit of $${refundedDeposit.toFixed(2)} has been refunded to your wallet.`
+          : `The booking for "${listingName}" has been completed.`;
+
+        // ✅ Send dedicated deposit refund notification
+        if (refundedDeposit > 0) {
+          await sendNotification(
+            renterId,
+            "Security Deposit Refunded",
+            `Your security deposit of $${refundedDeposit.toFixed(2)} for "${listingName}" has been returned to your wallet.`,
+            {
+              bookingId: finalBooking._id?.toString(),
+              listingId,
+              type: "booking",
+              status: "completed",
+              refundedAmount: refundedDeposit,
+            }
+          );
+
+          await sendNotification(
+            admin._id as string,
+            "Security Deposit Released",
+            `The security deposit of $${refundedDeposit.toFixed(2)} for "${listingName}" has been released from escrow and refunded to the renter.`,
+            {
+              bookingId: finalBooking._id?.toString(),
+              listingId,
+              type: "booking",
+              status: "completed",
+              refundedAmount: refundedDeposit,
+            }
+          );
+        }
       } else if (finalStatus === "request_cancelled") {
         renterMsg = `Your booking for "${listingName}" has been cancelled.`;
       } else if (finalStatus === "booking_cancelled") {
@@ -1373,6 +1459,9 @@ export const getAllBookings = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
     const zone = req.query.zone as string | undefined;
+    const subCategory = req.query.subCategory as string | undefined; // ✅
+    const checkIn = req.query.checkIn as string | undefined;         // ✅
+    const checkOut = req.query.checkOut as string | undefined;       // ✅
 
     const status = req.query.status as
       | "pending"
@@ -1401,6 +1490,36 @@ export const getAllBookings = async (
       filter.marketplaceListingId = { $in: listingIds };
     }
 
+    // ✅ SubCategory filter — find listings in that subCategory
+    if (subCategory && mongoose.Types.ObjectId.isValid(subCategory)) {
+      const subCategoryListingIds = await MarketplaceListing.find({
+        subCategory: new mongoose.Types.ObjectId(subCategory),
+      }).distinct("_id");
+
+      // Merge with existing marketplaceListingId filter if zone was also applied
+      if (filter.marketplaceListingId) {
+        const zoneIds = filter.marketplaceListingId.$in.map((id: any) => id.toString());
+        const subCatIds = subCategoryListingIds.map((id) => id.toString());
+        const intersected = zoneIds.filter((id: string) => subCatIds.includes(id));
+        filter.marketplaceListingId = {
+          $in: intersected.map((id: string) => new mongoose.Types.ObjectId(id)),
+        };
+      } else {
+        filter.marketplaceListingId = { $in: subCategoryListingIds };
+      }
+    }
+
+    // ✅ CheckIn / CheckOut date range filter
+    if (checkIn || checkOut) {
+      if (checkIn) {
+        filter["dates.checkIn"] = { $gte: new Date(checkIn) };
+      }
+      if (checkOut) {
+        filter["dates.checkOut"] = { $lte: new Date(checkOut) };
+      }
+    }
+
+    // everything below is unchanged
     const baseQuery = Booking.find(filter)
       .populate({
         path: "marketplaceListingId",
@@ -1546,7 +1665,10 @@ export const getBookingById = async (
           },
           {
             path: "zone",
-            select: "name polygons",
+            select: "name polygons rentalPolicies",
+            populate: {
+              path: "rentalPolicies",
+            },
           },
         ],
       })
@@ -1654,7 +1776,10 @@ export const getBookingsByUser = async (
         match: zone ? { zone } : {},
         populate: {
           path: "zone",
-          select: "name polygons",
+          select: "name polygons rentalPolicies",
+          populate: {
+            path: "rentalPolicies",
+          },
         },
       })
       .populate("renter", "name email")
@@ -1841,7 +1966,10 @@ export const getRenterBookingById = async (
           },
           {
             path: "zone",
-            select: "name polygons",
+            select: "name polygons rentalPolicies",
+            populate: {
+              path: "rentalPolicies",
+            },
           },
         ],
       })
@@ -2377,8 +2505,27 @@ export const getSeasonalBookingsGraph = async (
 ) => {
   try {
     const year = Number(req.query.year) || new Date().getFullYear();
+    const subCategoryId = req.query.subCategory as string | undefined;
 
     const pipeline: mongoose.PipelineStage[] = [
+      ...(subCategoryId && mongoose.Types.ObjectId.isValid(subCategoryId)
+        ? [
+          {
+            $lookup: {
+              from: "marketplacelistings",
+              localField: "marketplaceListingId",
+              foreignField: "_id",
+              as: "listing",
+            },
+          } as mongoose.PipelineStage,
+          { $unwind: "$listing" } as mongoose.PipelineStage,
+          {
+            $match: {
+              "listing.subCategory": new mongoose.Types.ObjectId(subCategoryId),
+            },
+          } as mongoose.PipelineStage,
+        ]
+        : []),
       {
         $match: {
           createdAt: {
@@ -2408,7 +2555,6 @@ export const getSeasonalBookingsGraph = async (
 
     const raw = await Booking.aggregate(pipeline);
 
-    // Build Jan–Dec structure with all 4 weeks defaulting to 0
     const MONTH_NAMES = [
       "Jan", "Feb", "Mar", "Apr", "May", "Jun",
       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -2440,6 +2586,7 @@ export const getSeasonalBookingsGraph = async (
       message: "Bookings graph data retrieved successfully",
       data: {
         year,
+        category: subCategoryId || null,
         months: result,
       },
     });
