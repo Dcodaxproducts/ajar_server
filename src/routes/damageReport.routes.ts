@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  approveDamageReport,
   createDamageReport,
   deleteDamageReport,
   getAllDamageReports,
@@ -45,5 +46,8 @@ router.delete("/:id", asyncHandler(deleteDamageReport));
 
 // PATCH /api/damage-report/:id/status
 router.patch("/:id/status", useAuth, asyncHandler(updateDamageReportStatus));
+
+// PATCH /api/damage-report/approve
+router.patch("/report/approve", useAuth, asyncHandler(approveDamageReport));
 
 export default router;

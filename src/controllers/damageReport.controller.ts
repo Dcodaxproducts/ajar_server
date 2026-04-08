@@ -6,6 +6,9 @@ import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { paginateQuery } from "../utils/paginate";
 import { AuthRequest } from "../middlewares/auth.middleware";
+import { sendNotification } from "../utils/notifications";
+import { User } from "../models/user.model";
+import { WalletTransaction } from "../models/walletTransaction.model";
 
 // POST /api/damage-report
 export const createDamageReport = async (
@@ -22,12 +25,14 @@ export const createDamageReport = async (
       status,
     } = req.body;
 
+    const userId = req.user?.id;
+
     const attachments = (
       (req.files as { [fieldname: string]: Express.Multer.File[] })
         ?.attachments || []
-    ).map((file) => file.path);
+    ).map((file) => `/uploads/${file.filename}`);
 
-    // Validate booking ID
+    // 1. Validate booking ID format
     if (!mongoose.Types.ObjectId.isValid(bookingId)) {
       return sendResponse(
         res,
@@ -37,8 +42,19 @@ export const createDamageReport = async (
       );
     }
 
-    // Find booking
-    const booking = await Booking.findById(bookingId);
+    // 2. Check if a damage report already exists for this booking
+    const existingReport = await DamageReport.findOne({ booking: bookingId });
+    if (existingReport) {
+      return sendResponse(
+        res,
+        null,
+        "A damage report has already been submitted for this booking",
+        STATUS_CODES.CONFLICT // 409 Conflict is appropriate here
+      );
+    }
+
+    // 3. Find booking to ensure it exists and to get renter ID
+    const booking = await Booking.findById(bookingId).populate("marketplaceListingId");
     if (!booking) {
       return sendResponse(
         res,
@@ -48,10 +64,19 @@ export const createDamageReport = async (
       );
     }
 
-    // Parse numeric values safely
+    const leaserId = booking.leaser?.toString();
+    if (leaserId !== userId) {
+      return sendResponse(
+        res,
+        null,
+        "Unauthorized: Only the leaser can create a damage report for this booking",
+        STATUS_CODES.FORBIDDEN
+      );
+    }
+
     const damageAmount = Number(damagedCharges) || 0;
 
-    // Create the damage report
+    // 4. Create the damage report
     const report = await DamageReport.create({
       booking: booking._id,
       rentalText,
@@ -62,25 +87,40 @@ export const createDamageReport = async (
       status: status || "pending",
     });
 
-    // Calculate the new total price including all charges
-    const baseTotal = booking.priceDetails?.totalPrice || 0;
-    const extraTotal = booking.extraRequestCharges?.additionalCharges || 0;
-    const extendTotal = booking.extendCharges?.extendCharges || 0;
+    // 5. Update the Booking Model with damage charges
+    await Booking.findByIdAndUpdate(bookingId, {
+      $set: {
+        damagesCharges: {
+          damagedCharges: damageAmount,
+          totalPrice: damageAmount,
+        },
+      },
+    });
 
-    // Populate for response
-    const updatedBooking = await Booking.findById(bookingId)
-      .populate("marketplaceListingId")
-      .populate("renter")
-      .populate("leaser");
+    const listingName = (booking.marketplaceListingId as any)?.name || "your booking";
 
-    // Send success response
+    // 6. Send Notification to the RENTER
+    try {
+      await sendNotification(
+        booking.renter.toString(),
+        "New Damage Report Filed",
+        `A damage report has been submitted for "${listingName}". Amount: $${damageAmount.toFixed(2)}`,
+        {
+          bookingId: booking._id.toString(),
+          reportId: report._id,
+          type: "damage_report",
+          status: "pending"
+        }
+      );
+    } catch (notificationErr) {
+      console.error("Notification failed:", notificationErr);
+    }
+
+    // 7. Send success response
     sendResponse(
       res,
-      {
-        report,
-        booking: updatedBooking,
-      },
-      "Damage report submitted and booking updated successfully",
+      { report },
+      "Damage report submitted successfully",
       STATUS_CODES.CREATED
     );
   } catch (err) {
@@ -333,6 +373,156 @@ export const updateDamageReportStatus = async (
       STATUS_CODES.OK
     );
   } catch (err) {
+    next(err);
+  }
+};
+
+export const approveDamageReport = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { bookingId } = req.body;
+    const renterId = req.user?.id;
+
+    const admin = await User.findOne({ role: "admin" }).session(session);
+
+    // 1. Basic Validation
+    if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+      return sendResponse(res, null, "Invalid Booking ID", STATUS_CODES.BAD_REQUEST);
+    }
+
+    // 2. Find the Damage Report and populate the booking to check ownership/leaser
+    const damageReport = await DamageReport.findOne({ booking: bookingId })
+      .populate("booking")
+      .session(session);
+    
+    if (!damageReport) {
+      return sendResponse(res, null, "No damage report found for this booking", STATUS_CODES.NOT_FOUND);
+    }
+
+    const bookingData = damageReport.booking as any; 
+    const listingName = (bookingData.marketplaceListingId as any)?.name || "item";
+
+    // 3. Authorization: Ensure the user is the renter of this booking
+    if (bookingData.renter.toString() !== renterId) {
+      await session.abortTransaction();
+      return sendResponse(res, null, "You are not authorized to approve this damage report", STATUS_CODES.FORBIDDEN);
+    }
+
+    // 4. State Check: Prevent double approval
+    if (damageReport.status === "paid" || damageReport.status === "resolved") {
+      await session.abortTransaction();
+      return sendResponse(res, null, "This damage report has already been settled", STATUS_CODES.BAD_REQUEST);
+    }
+
+    // 5. Fetch Renter and Leaser
+    const renter = await User.findById(renterId).session(session);
+    const leaser = await User.findById(bookingData.leaser).session(session);
+
+    if (!renter) {
+      await session.abortTransaction();
+      return sendResponse(res, null, "Renter not found", STATUS_CODES.NOT_FOUND);
+    }
+
+    const amountToPay = damageReport.damagedCharges;
+
+    // 6. Wallet Balance Check
+    if (renter.wallet.balance < amountToPay) {
+      try {
+        await sendNotification(
+          renterId as string,
+          "Payment Failed: Damage Charges",
+          `Insufficient funds ($${renter.wallet.balance.toFixed(2)}) to pay for damage charges on "${listingName}".`,
+          { bookingId, type: "payment_failed" }
+        );
+      } catch (err) { console.error("Notification Error:", err); }
+
+      await session.abortTransaction();
+      return sendResponse(
+        res,
+        { currentBalance: renter.wallet.balance.toFixed(2), required: amountToPay.toFixed(2) },
+        "Insufficient wallet balance",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
+
+    // 7. PERFORM FINANCIAL OPERATIONS
+    // Deduct from Renter
+    renter.wallet.balance -= amountToPay;
+    await renter.save({ session });
+
+    // Credit to Leaser
+    if (leaser) {
+      leaser.wallet.balance += amountToPay;
+      await leaser.save({ session });
+    }
+
+    // Update Report and Booking
+    damageReport.status = "resolved"; 
+    await damageReport.save({ session });
+
+    // 8. RECORD WALLET TRANSACTIONS
+    const transactions = [
+      {
+        userId: renter._id,
+        type: "debit",
+        amount: amountToPay,
+        source: "booking", // or add "damage" to your enum if preferred
+        status: "succeeded",
+        description: `Damage charge payment for listing: ${listingName}`,
+        createdAt: new Date(),
+        requestedAt: new Date(),
+        processedAt: new Date(),
+      },
+      {
+        userId: bookingData.leaser,
+        type: "credit",
+        amount: amountToPay,
+        source: "booking",
+        status: "succeeded",
+        description: `Damage charge reimbursement for listing: ${listingName}`,
+        createdAt: new Date(),
+        requestedAt: new Date(),
+        processedAt: new Date(),
+      }
+    ];
+
+    await WalletTransaction.insertMany(transactions, { session });
+
+    // 9. Commit changes
+    await session.commitTransaction();
+    session.endSession();
+
+    // 10. Final Notifications
+    try {
+      await sendNotification(
+        renterId as string,
+        "Damage Payment Successful",
+        `$${amountToPay.toFixed(2)} deducted from wallet for damage settlement on "${listingName}".`,
+        { bookingId, status: "paid", type: "damage_report" }
+      );
+
+      if (bookingData.leaser) {
+        await sendNotification(
+          bookingData.leaser.toString(),
+          "Damage Payment Received",
+          `Renter paid $${amountToPay.toFixed(2)} for damage charges on "${listingName}".`,
+          { bookingId, type: "damage_resolved" }
+        );
+      }
+    } catch (err) { console.error("Final Notification Error:", err); }
+
+    sendResponse(res, null, "Damage report settled successfully", STATUS_CODES.OK);
+
+  } catch (err) {
+    console.error("Approval Error:", err);
+    await session.abortTransaction();
+    session.endSession();
     next(err);
   }
 };
