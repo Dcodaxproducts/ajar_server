@@ -1,12 +1,12 @@
 import express from "express";
 import {
-  approveDamageReport,
   createDamageReport,
   deleteDamageReport,
   getAllDamageReports,
   getDamageReportById,
   updateDamageReport,
   updateDamageReportStatus,
+  updateReportStatus,
 } from "../controllers/damageReport.controller";
 import upload from "../utils/multer";
 import { uploadFile, uploadFiles } from "../utils/multer";
@@ -45,9 +45,9 @@ router.patch(
 router.delete("/:id", asyncHandler(deleteDamageReport));
 
 // PATCH /api/damage-report/:id/status
-router.patch("/:id/status", useAuth, asyncHandler(updateDamageReportStatus));
+// router.patch("/:id/status", useAuth, asyncHandler(updateDamageReportStatus));
 
-// PATCH /api/damage-report/approve
-router.patch("/report/approve", useAuth, asyncHandler(approveDamageReport));
+// PATCH /api/damage-report/status
+router.patch("/damage-report/status", useAuth, asyncHandler(updateReportStatus));
 
 export default router;

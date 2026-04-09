@@ -1852,66 +1852,87 @@ export const getBookingsByUser = async (
 
     let finalBookings = paginatedBookings;
 
-    if (role === "leaser") {
-      const bookingIds = paginatedBookings.map((b: any) => b._id);
+    // Works for all roles now
+    const bookingIds = paginatedBookings.map((b: any) => b._id);
 
-      const damageReports = await DamageReport.find({
-        booking: { $in: bookingIds },
-      }).select("booking");
+    const damageReports = await DamageReport.find({
+      booking: { $in: bookingIds },
+    }).lean();
 
-      const damagedBookingIds = new Set(
-        damageReports.map((d) => String(d.booking))
-      );
+    const damageReportMap = new Map(
+      damageReports.map((d) => [String(d.booking), d])
+    );
 
-      finalBookings = paginatedBookings.map((booking: any) => ({
+    finalBookings = paginatedBookings.map((booking: any) => {
+      const report = damageReportMap.get(String(booking._id)) || null;
+      return {
         ...booking,
-        damagedReport: damagedBookingIds.has(String(booking._id)),
-      }));
-    }
+        damagedReport: report,
+        hasDamagedReport: report !== null,
+      };
+    });
 
     finalBookings = await Promise.all(
       finalBookings.map(async (booking: any) => {
         const listing = booking.marketplaceListingId as any;
-        if (listing) {
+
+        // --- 1. EXPIRY LOGIC (With Skip Filter) ---
+        // In statuses par expiry check nahi chalega
+        const skipStatuses = ["completed", "cancelled", "request_cancelled", "booking_cancelled", "expired","rejected"];
+
+        if (listing && !skipStatuses.includes(booking.status)) {
           const isExpired = isBookingExpiredForApproval(booking, listing.priceUnit);
+
           if (isExpired && booking.status !== "expired") {
             await Booking.findByIdAndUpdate(booking._id, { status: "expired" });
-            booking.status = "expired";
+            booking.status = "expired"; // Local object update taake niche same data mile
 
-            await sendNotification(
-              booking.renter?._id?.toString() ?? booking.renter?.toString(),
-              "Booking Expired",
-              `Your booking for "${listing.name}" has expired as the checkout date has already passed.`,
-              {
-                bookingId: booking._id.toString(),
-                listingId: listing._id.toString(),
-                type: "booking_expired",
-              }
-            );
+            try {
+              await sendNotification(
+                booking.renter?._id?.toString() ?? booking.renter?.toString(),
+                "Booking Expired",
+                `Your booking for "${listing.name}" has expired as the checkout date has already passed.`,
+                {
+                  bookingId: booking._id.toString(),
+                  listingId: listing._id.toString(),
+                  type: "booking_expired",
+                }
+              );
+            } catch (err) {
+              console.error("Notification failed:", err);
+            }
           }
         }
 
+        // --- 2. REVIEW & RATING LOGIC (Same as your original) ---
         const review = await Review.findOne({
           bookingId: booking._id,
           userId: user.id,
         }).lean();
 
         const listingId = booking.marketplaceListingId?._id ?? booking.marketplaceListingId;
+
         const listingBookings = await Booking.find({ marketplaceListingId: listingId })
           .select("_id")
           .lean();
+
         const listingBookingIds = listingBookings.map((b: any) => b._id);
+
         const listingReviews = await Review.find({ bookingId: { $in: listingBookingIds } })
           .select("stars")
           .lean();
+
         const totalReviews = listingReviews.length;
         const averageRating =
           totalReviews > 0
             ? listingReviews.reduce((sum: number, r: any) => sum + (r.stars || 0), 0) / totalReviews
             : 0;
 
+        // --- 3. RETURN DATA (Same structure) ---
         return {
-          ...booking,
+          // Agar booking Mongoose document hai toh .toObject() use karein, warna direct failao
+          ...(booking.toObject ? booking.toObject() : booking),
+          status: booking.status, // Updated status if expired
           isReviewSubmitted: review ? true : false,
           averageRating,
           totalReviews

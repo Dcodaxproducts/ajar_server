@@ -377,7 +377,7 @@ export const updateDamageReportStatus = async (
   }
 };
 
-export const approveDamageReport = async (
+export const updateReportStatus = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
@@ -386,52 +386,90 @@ export const approveDamageReport = async (
   session.startTransaction();
 
   try {
-    const { bookingId } = req.body;
+    const { bookingId, action } = req.body;
     const renterId = req.user?.id;
+
+    // validate action
+    if (!["approve", "reject"].includes(action)) {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(res, null, "Invalid action. Must be 'approve' or 'reject'", STATUS_CODES.BAD_REQUEST);
+    }
 
     const admin = await User.findOne({ role: "admin" }).session(session);
 
-    // 1. Basic Validation
     if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+      await session.abortTransaction();
+      session.endSession();
       return sendResponse(res, null, "Invalid Booking ID", STATUS_CODES.BAD_REQUEST);
     }
 
-    // 2. Find the Damage Report and populate the booking to check ownership/leaser
     const damageReport = await DamageReport.findOne({ booking: bookingId })
       .populate("booking")
       .session(session);
-    
+
     if (!damageReport) {
+      await session.abortTransaction();
+      session.endSession();
       return sendResponse(res, null, "No damage report found for this booking", STATUS_CODES.NOT_FOUND);
     }
 
-    const bookingData = damageReport.booking as any; 
+    const bookingData = damageReport.booking as any;
     const listingName = (bookingData.marketplaceListingId as any)?.name || "item";
 
-    // 3. Authorization: Ensure the user is the renter of this booking
     if (bookingData.renter.toString() !== renterId) {
       await session.abortTransaction();
-      return sendResponse(res, null, "You are not authorized to approve this damage report", STATUS_CODES.FORBIDDEN);
+      session.endSession();
+      return sendResponse(res, null, "You are not authorized to action this damage report", STATUS_CODES.FORBIDDEN);
     }
 
-    // 4. State Check: Prevent double approval
-    if (damageReport.status === "paid" || damageReport.status === "resolved") {
+    if (damageReport.status === "paid" || damageReport.status === "resolved" || damageReport.status === "rejected") {
       await session.abortTransaction();
+      session.endSession();
       return sendResponse(res, null, "This damage report has already been settled", STATUS_CODES.BAD_REQUEST);
     }
 
-    // 5. Fetch Renter and Leaser
+    // ================= REJECT =================
+    if (action === "reject") {
+      damageReport.status = "rejected";
+      await damageReport.save({ session });
+
+      await session.commitTransaction();
+      session.endSession();
+
+      try {
+        await sendNotification(
+          renterId as string,
+          "Damage Report Rejected",
+          `You have rejected the damage report for "${listingName}".`,
+          { bookingId, type: "damage_report", status: "rejected" }
+        );
+
+        if (bookingData.leaser) {
+          await sendNotification(
+            bookingData.leaser.toString(),
+            "Damage Report Rejected",
+            `The renter has rejected the damage report for "${listingName}".`,
+            { bookingId, type: "damage_report", status: "rejected" }
+          );
+        }
+      } catch (err) { console.error("Notification Error:", err); }
+
+      return sendResponse(res, null, "Damage report rejected successfully", STATUS_CODES.OK);
+    }
+
+    // ================= APPROVE =================
     const renter = await User.findById(renterId).session(session);
     const leaser = await User.findById(bookingData.leaser).session(session);
 
     if (!renter) {
       await session.abortTransaction();
+      session.endSession();
       return sendResponse(res, null, "Renter not found", STATUS_CODES.NOT_FOUND);
     }
 
     const amountToPay = damageReport.damagedCharges;
 
-    // 6. Wallet Balance Check
     if (renter.wallet.balance < amountToPay) {
       try {
         await sendNotification(
@@ -443,6 +481,7 @@ export const approveDamageReport = async (
       } catch (err) { console.error("Notification Error:", err); }
 
       await session.abortTransaction();
+      session.endSession();
       return sendResponse(
         res,
         { currentBalance: renter.wallet.balance.toFixed(2), required: amountToPay.toFixed(2) },
@@ -451,28 +490,23 @@ export const approveDamageReport = async (
       );
     }
 
-    // 7. PERFORM FINANCIAL OPERATIONS
-    // Deduct from Renter
     renter.wallet.balance -= amountToPay;
     await renter.save({ session });
 
-    // Credit to Leaser
     if (leaser) {
       leaser.wallet.balance += amountToPay;
       await leaser.save({ session });
     }
 
-    // Update Report and Booking
-    damageReport.status = "resolved"; 
+    damageReport.status = "resolved";
     await damageReport.save({ session });
 
-    // 8. RECORD WALLET TRANSACTIONS
     const transactions = [
       {
         userId: renter._id,
         type: "debit",
         amount: amountToPay,
-        source: "booking", // or add "damage" to your enum if preferred
+        source: "booking",
         status: "succeeded",
         description: `Damage charge payment for listing: ${listingName}`,
         createdAt: new Date(),
@@ -494,11 +528,9 @@ export const approveDamageReport = async (
 
     await WalletTransaction.insertMany(transactions, { session });
 
-    // 9. Commit changes
     await session.commitTransaction();
     session.endSession();
 
-    // 10. Final Notifications
     try {
       await sendNotification(
         renterId as string,
