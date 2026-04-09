@@ -9,6 +9,7 @@ export interface IRefundRequest extends Document {
   policy: mongoose.Types.ObjectId;
   status: "pending" | "accept" | "reject";
   note: string;
+  securityDeposit: number;
 }
 
 const refundRequestSchema = new Schema<IRefundRequest>(
@@ -32,6 +33,7 @@ const refundRequestSchema = new Schema<IRefundRequest>(
       type: Schema.Types.ObjectId,
       ref: "RefundPolicy",
     },
+    securityDeposit: Number,
     status: {
       type: String,
       enum: ["pending", "accept", "reject"],

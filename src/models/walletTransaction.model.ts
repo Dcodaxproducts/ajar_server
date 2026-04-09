@@ -7,7 +7,7 @@ export interface IWalletTransaction extends Document {
 
   amount: number;
 
-  source: "stripe" | "booking" | "refund" | "withdraw";
+  source: "stripe" | "booking" | "refund" | "withdraw" | "security_deposit_return";
 
   bankAccountId?: mongoose.Types.ObjectId;
 
@@ -35,7 +35,7 @@ const WalletTransactionSchema = new Schema<IWalletTransaction>({
 
   source: {
     type: String,
-    enum: ["stripe", "booking", "refund", "withdraw"],
+    enum: ["stripe", "booking", "refund", "withdraw", "security_deposit_return"],
     required: true,
   },
 

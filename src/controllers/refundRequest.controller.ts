@@ -246,29 +246,18 @@ export const updateRefundStatus = async (
 
   try {
     const { id } = req.params;
-
     const { status, adminNote } = req.body;
 
     if (!["pending", "accept", "reject"].includes(status)) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(
-        res,
-        null,
-        "Invalid status value",
-        STATUS_CODES.BAD_REQUEST
-      );
+      return sendResponse(res, null, "Invalid status value", STATUS_CODES.BAD_REQUEST);
     }
 
     if (status === "reject" && (!adminNote || adminNote.trim() === "")) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(
-        res,
-        null,
-        "A rejection note is required to process this request",
-        STATUS_CODES.BAD_REQUEST
-      );
+      return sendResponse(res, null, "A rejection note is required to process this request", STATUS_CODES.BAD_REQUEST);
     }
 
     const refund = await RefundRequest.findById(id)
@@ -279,36 +268,20 @@ export const updateRefundStatus = async (
     if (!refund) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(
-        res,
-        null,
-        "Refund request not found",
-        STATUS_CODES.NOT_FOUND
-      );
+      return sendResponse(res, null, "Refund request not found", STATUS_CODES.NOT_FOUND);
     }
 
     if (refund.status !== "pending") {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(
-        res,
-        null,
-        "Refund request already processed",
-        STATUS_CODES.BAD_REQUEST
-      );
+      return sendResponse(res, null, "Refund request already processed", STATUS_CODES.BAD_REQUEST);
     }
 
     const admin = await User.findOne({ role: "admin" });
-
     if (!admin) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(
-        res,
-        null,
-        "Admin not found",
-        STATUS_CODES.NOT_FOUND
-      );
+      return sendResponse(res, null, "Admin not found", STATUS_CODES.NOT_FOUND);
     }
 
     const booking = await Booking.findById(refund.booking)
@@ -320,12 +293,7 @@ export const updateRefundStatus = async (
     if (!booking) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(
-        res,
-        null,
-        "Booking not found",
-        STATUS_CODES.NOT_FOUND
-      );
+      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
     }
 
     if (adminNote) {
@@ -337,9 +305,7 @@ export const updateRefundStatus = async (
 
     const adminFee = booking.priceDetails.adminFee;
     const tax = booking.priceDetails.tax;
-
-    const listingName =
-      (booking.marketplaceListingId as any)?.name || "listing";
+    const listingName = (booking.marketplaceListingId as any)?.name || "listing";
 
     // ================= REJECT =================
     if (status === "reject") {
@@ -362,56 +328,49 @@ export const updateRefundStatus = async (
         }
       );
 
-      return sendResponse(
-        res,
-        refund,
-        "Refund request rejected",
-        STATUS_CODES.OK
-      );
+      return sendResponse(res, refund, "Refund request rejected", STATUS_CODES.OK);
     }
 
     // ================= ACCEPT =================
-    const refundAmount = refund.totalRefundAmount || 0;
-    const leaserAmount = refund.totalRefundAmount - (adminFee + tax) + (refund?.deduction || 0);
-    const adminCollection = refund?.deduction || 0;
+    const refundAmount = parseFloat(Number(refund.totalRefundAmount ?? 0).toFixed(2));
+    const securityDeposit = parseFloat(Number(refund.securityDeposit ?? 0).toFixed(2));
+    const totalRenterCredit = parseFloat((refundAmount + securityDeposit).toFixed(2));
 
-    // 1. Balance validation for Leaser (only if leaser is actually losing money)
+    const leaserAmount = parseFloat((refund.totalRefundAmount - (adminFee + tax) + (refund?.deduction || 0)).toFixed(2));
+    const adminCollection = parseFloat(Number(refund?.deduction ?? 0).toFixed(2));
+
+    // 1. Leaser balance validation
     if (leaserAmount > 0) {
       if (!leaser?.wallet || leaser.wallet.balance < leaserAmount) {
         await session.abortTransaction();
         session.endSession();
-        return sendResponse(
-          res,
-          null,
-          "Leaser has insufficient wallet balance for refund",
-          STATUS_CODES.BAD_REQUEST
-        );
+        return sendResponse(res, null, "Leaser has insufficient wallet balance for refund", STATUS_CODES.BAD_REQUEST);
       }
-      leaser.wallet.balance -= leaserAmount;
+      leaser.wallet.balance = parseFloat((leaser.wallet.balance - leaserAmount).toFixed(2));
       await leaser.save({ session });
     }
 
-    // 2. Renter Wallet Update (ONLY if amount > 0)
-    if (refundAmount > 0) {
-      renter.wallet.balance += refundAmount;
+    // 2. Renter wallet — refund + deposit
+    if (totalRenterCredit > 0) {
+      renter.wallet.balance = parseFloat((renter.wallet.balance + totalRenterCredit).toFixed(2));
       await renter.save({ session });
     }
 
-    // 3. Admin Wallet Update
-    const adminNetChange = (refund?.deduction || 0) - (adminFee + tax);
-    admin.wallet.balance += adminNetChange;
+    // 3. Admin wallet — loses (adminFee + tax) from refund + loses securityDeposit, gains deduction
+    const adminNetChange = parseFloat((adminCollection - (adminFee + tax) - securityDeposit).toFixed(2));
+    admin.wallet.balance = parseFloat((admin.wallet.balance + adminNetChange).toFixed(2));
     await admin.save({ session });
 
-    // 4. Transactions (Filtered to exclude $0 entries)
+    // 4. Transactions
     const transactions = [];
 
-    if (refundAmount > 0) {
+    if (totalRenterCredit > 0) {
       transactions.push({
         userId: renter._id,
         type: "credit",
-        amount: refundAmount.toFixed(2),
+        amount: totalRenterCredit.toFixed(2),
         source: "refund",
-        status: "succeeded"
+        status: "succeeded",
       });
     }
 
@@ -425,23 +384,34 @@ export const updateRefundStatus = async (
       });
     }
 
-    // Always log admin side for accounting
-    transactions.push(
-      {
+    // Admin — refund portion debit
+    transactions.push({
+      userId: admin._id,
+      type: "debit",
+      amount: (adminFee + tax).toFixed(2),
+      source: "refund",
+      status: "succeeded",
+    });
+
+    // Admin — deposit debit (only if deposit exists)
+    if (securityDeposit > 0) {
+      transactions.push({
         userId: admin._id,
         type: "debit",
-        amount: (adminFee + tax).toFixed(2),
-        source: "refund",
+        amount: securityDeposit.toFixed(2),
+        source: "security_deposit_return",
         status: "succeeded",
-      },
-       {
-        userId: admin._id,
-        type: "credit",
-        amount: adminCollection.toFixed(2),
-        source: "refund",
-        status: "succeeded",
-      }
-    );
+      });
+    }
+
+    // Admin — deduction collection credit
+    transactions.push({
+      userId: admin._id,
+      type: "credit",
+      amount: adminCollection.toFixed(2),
+      source: "refund",
+      status: "succeeded",
+    });
 
     await WalletTransaction.insertMany(transactions, { session });
 
@@ -452,11 +422,11 @@ export const updateRefundStatus = async (
     await session.commitTransaction();
     session.endSession();
 
-    // ================= NOTIFICATIONS (Conditional Text) =================
+    // ================= NOTIFICATIONS =================
 
-    // Renter Notification
-    const renterMsg = refundAmount > 0
-      ? `Your refund request for "${capitalizeName(listingName)}" has been approved. $${refundAmount.toFixed(2)} has been added to your wallet.`
+    // Renter
+    const renterMsg = totalRenterCredit > 0
+      ? `Your refund request for "${capitalizeName(listingName)}" has been approved. $${totalRenterCredit.toFixed(2)} has been added to your wallet${securityDeposit > 0 ? ` (includes $${securityDeposit.toFixed(2)} security deposit)` : ""}.`
       : `Your refund request for "${capitalizeName(listingName)}" has been approved (No monetary refund applicable).`;
 
     await sendNotification(
@@ -464,22 +434,23 @@ export const updateRefundStatus = async (
       "Refund Approved",
       renterMsg,
       {
-        refundId: refund?._id as string,
+        refundId: (refund._id as any).toString(),
         bookingId: booking._id.toString(),
         type: "refund",
         status: "approved",
-        creditedAmount: refundAmount.toFixed(2),
+        creditedAmount: totalRenterCredit.toFixed(2),
+        securityDepositReturned: securityDeposit.toFixed(2),
       }
     );
 
-    // Leaser Notification
+    // Leaser
     if (leaserAmount > 0) {
       await sendNotification(
         leaser._id.toString(),
         "Refund Processed",
         `A refund adjustment of $${leaserAmount.toFixed(2)} has been deducted from your wallet for "${capitalizeName(listingName)}".`,
         {
-          refundId: refund._id as string,
+          refundId: (refund._id as any).toString(),
           bookingId: booking._id.toString(),
           type: "refund",
           status: "approved",
@@ -488,41 +459,53 @@ export const updateRefundStatus = async (
       );
     }
 
-    // ================= ADMIN NOTIFICATION =================
+    // Admin — refund debit
     await sendNotification(
       admin._id as string,
       "Admin Balance Deducted",
-      `An amount of $${(adminFee + tax).toFixed(2)} has been debited from your wallet and transferred to the renter's account as part of the refund settlement for "${capitalizeName(listingName)}".`,
+      `An amount of $${(adminFee + tax).toFixed(2)} has been debited from your wallet as part of the refund settlement for "${capitalizeName(listingName)}".`,
       {
         refundId: (refund._id as any).toString(),
         bookingId: booking._id.toString(),
         type: "refund",
         status: "approved",
         debitedAmount: (adminFee + tax).toFixed(2),
-        transferredTo: "renter"
       }
     );
 
+    // Admin — deposit debit notification
+    if (securityDeposit > 0) {
+      await sendNotification(
+        admin._id as string,
+        "Security Deposit Returned",
+        `A security deposit of $${securityDeposit.toFixed(2)} has been returned to the renter for "${capitalizeName(listingName)}".`,
+        {
+          refundId: (refund._id as any).toString(),
+          bookingId: booking._id.toString(),
+          type: "security_deposit",
+          status: "approved",
+          depositReturned: securityDeposit.toFixed(2),
+        }
+      );
+    }
+
+    // Admin — deduction collection
     await sendNotification(
       admin._id as string,
       "Refund Settlement Processed",
-      `The refund for "${capitalizeName(listingName)}" has been finalized. A service deduction of $${adminCollection.toFixed(2)} has been successfully collected and added to your balance.`,
+      `The refund for "${capitalizeName(listingName)}" has been finalized. A service deduction of $${adminCollection.toFixed(2)} has been collected and added to your balance.`,
       {
         refundId: (refund._id as any).toString(),
         bookingId: booking._id.toString(),
         type: "refund",
         status: "approved",
         collectedDeduction: adminCollection.toFixed(2),
-        totalRenterRefund: refundAmount.toFixed(2),
+        totalRenterRefund: totalRenterCredit.toFixed(2),
       }
     );
 
-    return sendResponse(
-      res,
-      refund,
-      "Refund processed successfully",
-      STATUS_CODES.OK
-    );
+    return sendResponse(res, refund, "Refund processed successfully", STATUS_CODES.OK);
+
   } catch (err) {
     await session.abortTransaction();
     session.endSession();

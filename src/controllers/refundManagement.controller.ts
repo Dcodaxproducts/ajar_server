@@ -11,6 +11,9 @@ import { RefundRequest } from "../models/refundRequest.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { calculateRefund } from "../utils/calculateRefund";
+import { sendNotification } from "../utils/notifications";
+import { User } from "../models/user.model";
+import { capitalizeName } from "../utils/capitalizeName";
 
 interface AuthRequest extends Request {
   user?: {
@@ -230,6 +233,8 @@ export const createRefundRequest = asyncHandler(
     }
 
     const listing: any = bookingData.marketplaceListingId;
+    const renter: any = bookingData.renter;
+    const listingName = listing?.name || "listing";
 
     // fetch refund policy
     const policy = await RefundPolicy.findOne({
@@ -242,7 +247,8 @@ export const createRefundRequest = asyncHandler(
       return;
     }
 
-    const totalPrice = Number(bookingData.priceDetails?.totalPrice ?? 0);
+    const totalPrice = parseFloat(Number(bookingData.priceDetails?.totalPrice ?? 0).toFixed(2));
+    const securityDeposit = parseFloat(Number(bookingData.priceDetails?.securityDeposit ?? 0).toFixed(2));
     const checkInDate = new Date(bookingData.dates.checkIn);
 
     // calculateRefund handles all tier logic
@@ -265,6 +271,7 @@ export const createRefundRequest = asyncHandler(
       user: user?.id,
       deduction: result.deductedAmount,
       totalRefundAmount: result.refundAmount,
+      securityDeposit,
       policy: policy._id,
       status: "pending",
     });
@@ -273,6 +280,37 @@ export const createRefundRequest = asyncHandler(
     await Booking.findByIdAndUpdate(booking, {
       refundRequest: refundRequest._id,
     });
+
+    // ================= NOTIFICATIONS =================
+
+    // Renter — confirmation their request was received
+    await sendNotification(
+      renter._id.toString(),
+      "Refund Request Submitted",
+      `Your refund request for "${capitalizeName(listingName)}" has been submitted and is under review.`,
+      {
+        refundId: (refundRequest._id as any).toString(),
+        bookingId: booking.toString(),
+        type: "refund",
+        status: "pending",
+      }
+    );
+
+    // Admin — alert that a new refund request needs review
+    const admin = await User.findOne({ role: "admin" });
+    if (admin) {
+      await sendNotification(
+        (admin._id as any).toString(),
+        "New Refund Request",
+        `A new refund request has been submitted for "${capitalizeName(listingName)}" and requires your review.`,
+        {
+          refundId: (refundRequest._id as any).toString(),
+          bookingId: booking.toString(),
+          type: "refund",
+          status: "pending",
+        }
+      );
+    }
 
     res.status(201).json({
       success: true,
@@ -601,8 +639,9 @@ export const getRefundPreview = asyncHandler(
       data: {
         totalBookingAmount: booking.priceDetails.totalPrice,
         deductionFee: result.deductedAmount,
+        securityDeposit: booking.priceDetails.securityDeposit,
         estimatedRefund: result.refundAmount,
-        isEligible: result.refundAmount > 0,
+        isEligible: result.refundAmount > 0 || (booking.priceDetails.securityDeposit ?? 0) > 0,
         appliedTier: result.appliedTier,
         reason: result.reason,
       },

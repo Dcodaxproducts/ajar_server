@@ -11,11 +11,13 @@ import {
   updateRefundStatus,
   getRefundPreview
 } from "../controllers/refundManagement.controller";
-import { authMiddleware } from "../middlewares/auth.middleware"; 
+import { authMiddleware } from "../middlewares/auth.middleware";
+import { allowRoles } from "../middlewares/allowRoles";
 
 const router = express.Router();
 
 const useAuth = authMiddleware as any;
+const userOnly = allowRoles(["user"]) as unknown as express.RequestHandler;
 
 // for admin
 router.post("/admin", useAuth, createRefundSettings);
@@ -27,9 +29,9 @@ router.patch("/admin/:id/status", useAuth, updateRefundStatus);
 
 // for user
 router.get("/user/preview", useAuth, getRefundPreview);
-router.post("/user", useAuth, createRefundRequest);
-router.get("/user", useAuth, getMyRefundRequests);
-router.patch("/user/:id", useAuth, updateRefundRequest);
-router.delete("/user/:id", useAuth, deleteRefundRequest);
+router.post("/user", useAuth, userOnly, createRefundRequest);
+router.get("/user", useAuth, userOnly, getMyRefundRequests);
+router.patch("/user/:id", useAuth, userOnly, updateRefundRequest);
+router.delete("/user/:id", useAuth, userOnly, deleteRefundRequest);
 
 export default router;
