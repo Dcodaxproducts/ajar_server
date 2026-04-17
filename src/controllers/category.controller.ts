@@ -123,8 +123,7 @@ export const getAllCategories = async (
         page: Number(page),
         limit: Number(limit),
       },
-      `Categories fetched successfully${
-        language ? ` (locale: ${language})` : ""
+      `Categories fetched successfully${language ? ` (locale: ${language})` : ""
       }`,
       STATUS_CODES.OK
     );
@@ -191,8 +190,7 @@ export const getCategoryWithSubcategories = async (
     sendResponse(
       res,
       result,
-      `Category and its subcategories fetched successfully${
-        locale !== "en" ? ` (${locale})` : ""
+      `Category and its subcategories fetched successfully${locale !== "en" ? ` (${locale})` : ""
       }`,
       STATUS_CODES.OK
     );
@@ -217,8 +215,8 @@ export const getCategoryDetails = async (
       typeQuery === "categories"
         ? "subCategory"
         : typeQuery === "subcategory"
-        ? "category"
-        : typeQuery;
+          ? "category"
+          : typeQuery;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, "Invalid Category ID", STATUS_CODES.BAD_REQUEST);
@@ -258,8 +256,7 @@ export const getCategoryDetails = async (
       sendResponse(
         res,
         translatedSubcategories,
-        `Subcategories fetched successfully${
-          locale !== "en" ? ` (${locale})` : ""
+        `Subcategories fetched successfully${locale !== "en" ? ` (${locale})` : ""
         }`,
         STATUS_CODES.OK
       );
@@ -311,8 +308,7 @@ export const getCategoryDetails = async (
       sendResponse(
         res,
         result,
-        `Subcategory with parent category fetched successfully${
-          locale !== "en" ? ` (${locale})` : ""
+        `Subcategory with parent category fetched successfully${locale !== "en" ? ` (${locale})` : ""
         }`,
         STATUS_CODES.OK
       );
@@ -357,8 +353,7 @@ export const getCategoryDetails = async (
     sendResponse(
       res,
       result,
-      `Category details fetched successfully${
-        locale !== "en" ? ` (${locale})` : ""
+      `Category details fetched successfully${locale !== "en" ? ` (${locale})` : ""
       }`,
       STATUS_CODES.OK
     );
@@ -375,14 +370,20 @@ export const createNewCategory = async (
 ): Promise<void> => {
   try {
     const files = (req.files as { [key: string]: Express.Multer.File[] }) || {};
-    const { name, type, category, description, language = "en" } = req.body;
+    const { name, category, description, language = "en" } = req.body;
+
+    const exists = await Category.findOne({ name }).lean();
+    if (exists) {
+      sendResponse(res, null, "Category with this name already exists", STATUS_CODES.CONFLICT);
+      return;
+    }
 
     // Handle both single and multiple upload approaches
     const image = req.file
       ? `/uploads/${req.file.filename}`
       : files?.image?.[0]
-      ? `/uploads/${files.image[0].filename}`
-      : undefined;
+        ? `/uploads/${files.image[0].filename}`
+        : undefined;
 
     const thumbnail = files?.thumbnail?.[0]
       ? `/uploads/${files.thumbnail[0].filename}`
