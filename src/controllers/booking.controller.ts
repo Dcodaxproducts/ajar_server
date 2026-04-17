@@ -1878,7 +1878,7 @@ export const getBookingsByUser = async (
 
         // --- 1. EXPIRY LOGIC (With Skip Filter) ---
         // In statuses par expiry check nahi chalega
-        const skipStatuses = ["completed", "cancelled", "request_cancelled", "booking_cancelled", "expired","rejected"];
+        const skipStatuses = ["completed", "cancelled", "request_cancelled", "booking_cancelled", "expired", "rejected"];
 
         if (listing && !skipStatuses.includes(booking.status)) {
           const isExpired = isBookingExpiredForApproval(booking, listing.priceUnit);
@@ -2027,6 +2027,8 @@ export const getRenterBookingById = async (
       })
     );
 
+    const damageReport = await DamageReport.findOne({ booking: id }).lean();
+
     const result = {
       ...booking,
       extensions,
@@ -2056,7 +2058,9 @@ export const getRenterBookingById = async (
       ...result,
       isReviewSubmitted,
       totalReviews,
-      averageRating
+      averageRating,
+      damagedReport: damageReport ?? null,
+      hasDamagedReport: damageReport !== null,
     };
 
     sendResponse(

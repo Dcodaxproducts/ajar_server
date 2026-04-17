@@ -64,6 +64,15 @@ export const createDamageReport = async (
       );
     }
 
+    if(booking.status !== "completed"){
+      return sendResponse(
+        res,
+        null,
+        "Damage report can only be created for completed bookings",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
+
     const leaserId = booking.leaser?.toString();
     if (leaserId !== userId) {
       return sendResponse(
@@ -395,9 +404,7 @@ export const updateReportStatus = async (
       session.endSession();
       return sendResponse(res, null, "Invalid action. Must be 'approve' or 'reject'", STATUS_CODES.BAD_REQUEST);
     }
-
-    const admin = await User.findOne({ role: "admin" }).session(session);
-
+    
     if (!mongoose.Types.ObjectId.isValid(bookingId)) {
       await session.abortTransaction();
       session.endSession();
