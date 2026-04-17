@@ -336,8 +336,7 @@ export const updateRefundStatus = async (
     const securityDeposit = parseFloat(Number(refund.securityDeposit ?? 0).toFixed(2));
     const totalRenterCredit = parseFloat((refundAmount + securityDeposit).toFixed(2));
 
-    const leaserAmount = parseFloat((refund.totalRefundAmount - (adminFee + tax) + (refund?.deduction || 0)).toFixed(2));
-    const adminCollection = parseFloat(Number(refund?.deduction ?? 0).toFixed(2));
+    const leaserAmount = parseFloat((refund.totalRefundAmount - (adminFee + tax)).toFixed(2));
 
     // 1. Leaser balance validation
     if (leaserAmount > 0) {
@@ -357,8 +356,8 @@ export const updateRefundStatus = async (
     }
 
     // 3. Admin wallet — loses (adminFee + tax) from refund + loses securityDeposit, gains deduction
-    const adminNetChange = parseFloat((adminCollection - (adminFee + tax) - securityDeposit).toFixed(2));
-    admin.wallet.balance = parseFloat((admin.wallet.balance + adminNetChange).toFixed(2));
+    const adminNetChange = parseFloat(((adminFee + tax) + securityDeposit).toFixed(2));
+    admin.wallet.balance = parseFloat((admin.wallet.balance - adminNetChange).toFixed(2));
     await admin.save({ session });
 
     // 4. Transactions
@@ -403,15 +402,6 @@ export const updateRefundStatus = async (
         status: "succeeded",
       });
     }
-
-    // Admin — deduction collection credit
-    transactions.push({
-      userId: admin._id,
-      type: "credit",
-      amount: adminCollection.toFixed(2),
-      source: "refund",
-      status: "succeeded",
-    });
 
     await WalletTransaction.insertMany(transactions, { session });
 
@@ -488,21 +478,6 @@ export const updateRefundStatus = async (
         }
       );
     }
-
-    // Admin — deduction collection
-    await sendNotification(
-      admin._id as string,
-      "Refund Settlement Processed",
-      `The refund for "${capitalizeName(listingName)}" has been finalized. A service deduction of $${adminCollection.toFixed(2)} has been collected and added to your balance.`,
-      {
-        refundId: (refund._id as any).toString(),
-        bookingId: booking._id.toString(),
-        type: "refund",
-        status: "approved",
-        collectedDeduction: adminCollection.toFixed(2),
-        totalRenterRefund: totalRenterCredit.toFixed(2),
-      }
-    );
 
     return sendResponse(res, refund, "Refund processed successfully", STATUS_CODES.OK);
 
