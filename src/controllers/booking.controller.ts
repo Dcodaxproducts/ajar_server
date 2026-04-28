@@ -155,12 +155,21 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       }
 
       // --- EXTENSION ALLOWED CHECK ---
-      // If the rental policy explicitly disallows extensions, reject early
-      if (rentalPolicy && rentalPolicy.extensionAllowed === false) {
-        return res.status(400).json({ message: "Extensions are not allowed for this listing's zone policy" });
-      }
+      const allExtensions = await Booking.find({
+        previousBookingId: existingActiveBooking._id,
+      }).sort({ "dates.checkOut": -1 }).limit(1);
 
-      const extensionStartDate = new Date(existingActiveBooking.dates.checkOut);
+      const allExtensionIds = await Booking.find({
+        previousBookingId: existingActiveBooking._id,
+      }).distinct("_id");
+
+      const excludeIds = [existingActiveBooking._id, ...allExtensionIds];
+
+      const latestCheckOut = allExtensions.length > 0
+        ? allExtensions[0].dates.checkOut
+        : existingActiveBooking.dates.checkOut;
+
+      const extensionStartDate = new Date(latestCheckOut);
       const extensionEndDate = new Date(extensionDate);
 
       if (extensionEndDate <= extensionStartDate) {
@@ -170,7 +179,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       }
 
       // --- RENTAL DURATION LIMITS CHECK (EXTENSION) ---
-      // Validate the extension period alone against the duration limits
       const extensionDurationError = validateRentalDuration(
         extensionStartDate,
         extensionEndDate,
@@ -180,11 +188,12 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         return res.status(400).json({ message: extensionDurationError });
       }
       console.log({ extensionStartDate, extensionEndDate })
+
       const isAvailableForExtend = await isBookingDateAvailable(
         listingId,
         extensionStartDate,
         extensionEndDate,
-        existingActiveBooking._id
+        excludeIds
       );
 
       if (!isAvailableForExtend) {
@@ -635,7 +644,7 @@ export const updateBookingStatus = async (
 
   try {
     const { id } = req.params;
-    const { status, additionalCharges, isExtendApproval } = req.body;
+    const { status, additionalCharges, isExtendApproval, childBookingId } = req.body;
     const user = (req as any).user;
     const userId = user.id || user._id;
 
@@ -692,10 +701,62 @@ export const updateBookingStatus = async (
 
     // ========== EXTENSION APPROVAL LOGIC ==========
     if (isExtendApproval) {
-      const childBooking = await Booking.findOne({
-        previousBookingId: id,
-        status: "pending",
-      }).session(session);
+      // Inside isExtendApproval block, add rejected case
+      if (status === "rejected") {
+        if (!isLeaser) {
+          await session.abortTransaction();
+          session.endSession();
+          return sendResponse(res, null, "Only leaser can reject the extension", STATUS_CODES.FORBIDDEN);
+        }
+
+        const childBooking = childBookingId
+          ? await Booking.findOne({ _id: childBookingId, previousBookingId: id, status: "pending" }).session(session)
+          : await Booking.findOne({ previousBookingId: id, status: "pending" }).sort({ createdAt: -1 }).session(session);
+
+        if (!childBooking) {
+          await session.abortTransaction();
+          session.endSession();
+          return sendResponse(res, null, "No pending extension found", STATUS_CODES.BAD_REQUEST);
+        }
+
+        childBooking.status = "rejected";
+        await childBooking.save({ session });
+
+        await session.commitTransaction();
+        session.endSession();
+
+        try {
+          await sendNotification(
+            renterId,
+            "Extension Rejected",
+            `Your extension request for "${listingName}" has been rejected.`,
+            {
+              bookingId: childBooking._id.toString(),
+              type: "extension",
+              status: "rejected",
+            }
+          );
+
+          await sendNotification(
+            leaserId,
+            "Extension Rejected",
+            `You have rejected the extension request for "${listingName}".`,
+            {
+              bookingId: childBooking._id.toString(),
+              type: "extension",
+              status: "rejected",
+            }
+          );
+        } catch (err) {
+          console.error("Failed to notify renter about extension rejection:", err);
+        }
+
+        return sendResponse(res, childBooking, "Extension rejected successfully", STATUS_CODES.OK);
+      }
+      
+      const childBooking = childBookingId
+        ? await Booking.findOne({ _id: childBookingId, previousBookingId: id, status: "pending" }).session(session)
+        : await Booking.findOne({ previousBookingId: id, status: "pending" }).sort({ createdAt: -1 }).session(session);
 
       if (!childBooking) {
         await session.abortTransaction();
@@ -1462,6 +1523,7 @@ export const getAllBookings = async (
     const subCategory = req.query.subCategory as string | undefined; // ✅
     const checkIn = req.query.checkIn as string | undefined;         // ✅
     const checkOut = req.query.checkOut as string | undefined;       // ✅
+    const search = req.query.search as string | undefined
 
     const status = req.query.status as
       | "pending"
@@ -1473,6 +1535,17 @@ export const getAllBookings = async (
       | undefined;
 
     const filter: any = {};
+
+    if (search) {
+      // 1. Find all users whose name matches the search string
+      const matchingUsers = await User.find({
+        name: { $regex: search, $options: "i" },
+      }).distinct("_id");
+
+      // 2. Filter bookings where the leaser is one of those users
+      filter.leaser = { $in: matchingUsers };
+    }
+
     if (
       status &&
       ["pending", "approved", "in_progress", "rejected", "completed", "request_cancelled", "booking_cancelled", "expired"].includes(
@@ -1836,7 +1909,7 @@ export const getBookingsByUser = async (
             priceDetails: childWithPayment.priceDetails ?? null,
             pricingMeta: childWithPayment.pricingMeta ?? null,
             extraRequestCharges: childWithPayment.extraRequestCharges ?? null,
-            paymentStatus: childWithPayment.paymentStatus ?? null,
+            status: childWithPayment.status ?? null,
           });
         }
       })
@@ -2022,7 +2095,7 @@ export const getRenterBookingById = async (
           priceDetails: childWithPayment.priceDetails ?? null,
           pricingMeta: childWithPayment.pricingMeta ?? null,
           extraRequestCharges: childWithPayment.extraRequestCharges ?? null,
-          paymentStatus: childWithPayment.paymentStatus ?? null,
+          status: childWithPayment.status ?? null,
         };
       })
     );

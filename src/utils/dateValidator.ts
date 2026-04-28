@@ -5,12 +5,16 @@ export const isBookingDateAvailable = async (
   listingId: mongoose.Types.ObjectId,
   newCheckIn: Date,
   newCheckOut: Date,
-  excludeBookingId?: mongoose.Types.ObjectId
+  excludeBookingId?: mongoose.Types.ObjectId | mongoose.Types.ObjectId[]
 ): Promise<boolean> => {
+  const excludeArray = excludeBookingId
+    ? Array.isArray(excludeBookingId) ? excludeBookingId : [excludeBookingId]
+    : [];
+
   const overlappingBooking = await Booking.findOne({
     marketplaceListingId: listingId,
     status: { $in: ["approved", "pending"] },
-    _id: { $ne: excludeBookingId },
+    ...(excludeArray.length > 0 && { _id: { $nin: excludeArray } }),
     $or: [
       {
         "dates.checkIn": { $lte: newCheckOut },
@@ -19,7 +23,7 @@ export const isBookingDateAvailable = async (
     ],
   });
 
-  return !overlappingBooking; // true if no overlap
+  return !overlappingBooking;
 };
 
 export const isBookingExpiredForApproval = (

@@ -491,9 +491,15 @@ export const getAllMarketplaceListings = async (
       recent,
       minPrice,
       maxPrice,
+      search
     } = req.query;
 
     const filter: any = {};
+
+    if (search) {
+      filter.name = { $regex: search, $options: "i" };
+    }
+
 
     /* ---------------- ROLE BASED FILTERS ---------------- */
     if (req.user) {
