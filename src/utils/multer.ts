@@ -59,4 +59,20 @@ const uploadRelaxed = multer({
 // Any field, any file
 export const uploadAny = uploadRelaxed.any();
 
+const uploadPdf = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+  },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === "application/pdf") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF files are allowed"));
+    }
+  },
+});
+
+export const uploadPdfFile = (fieldName: string) => uploadPdf.single(fieldName);
+
 export default upload;

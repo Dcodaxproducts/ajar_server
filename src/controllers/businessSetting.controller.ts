@@ -11,6 +11,7 @@ const allowedPageNames = [
   "socialLogins",
   "recaptcha",
   "firebase",
+  "termsAndConditions"
 ];
 
 // CREATE only if not exists
@@ -68,14 +69,27 @@ export const updateOrCreateBusinessSetting = async (
 ) => {
   try {
     const { pageName } = req.params;
+
+    const uploadedFile = req.file;
+    if (uploadedFile) {
+      req.body.pageSettings = {
+        ...req.body.pageSettings,
+        fileUrl: `/uploads/${uploadedFile.filename}`,
+      };
+    } else {
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      const thumbnail = files?.thumbnail?.[0];
+      const icon = files?.icon?.[0];
+      if (thumbnail) req.body.pageSettings = { ...req.body.pageSettings, thumbnail: `/uploads/${thumbnail.filename}` };
+      if (icon) req.body.pageSettings = { ...req.body.pageSettings, icon: `/uploads/${icon.filename}` };
+    }
+
     const { pageSettings, languages } = req.body;
 
     if (!allowedPageNames.includes(pageName)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid pageName. Allowed values are: ${allowedPageNames.join(
-          ", "
-        )}`,
+        message: `Invalid pageName. Allowed values are: ${allowedPageNames.join(", ")}`,
       });
     }
 
@@ -83,7 +97,6 @@ export const updateOrCreateBusinessSetting = async (
 
     let result;
     if (existing) {
-      // Merge old and new pageSettings
       result = await BusinessSetting.findOneAndUpdate(
         { pageName },
         {
@@ -98,12 +111,7 @@ export const updateOrCreateBusinessSetting = async (
         data: result,
       });
     } else {
-      // Create new if not found
-      result = await BusinessSetting.create({
-        pageName,
-        pageSettings,
-        languages,
-      });
+      result = await BusinessSetting.create({ pageName, pageSettings, languages });
       return res.status(201).json({
         success: true,
         message: "Business setting created successfully (via PATCH)",

@@ -5,7 +5,7 @@ import {
   getBusinessSettingByPage,
   updateOrCreateBusinessSetting,
 } from "../controllers/businessSetting.controller";
-import upload, { uploadFiles } from "../utils/multer";
+import upload, { uploadFiles, uploadPdfFile } from "../utils/multer";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 import { BusinessSetting } from "../models/businessSetting.model";
 
@@ -26,7 +26,14 @@ router.post(
 
 router.patch(
   "/:pageName",
-  uploadFiles(["thumbnail", "icon"]),
+  (req, res, next) => {
+    // If pageName is termsAndConditions → use PDF upload
+    if (req.params.pageName === "termsAndConditions") {
+      return uploadPdfFile("fileUrl")(req, res, next);
+    }
+    // Otherwise → use existing image upload
+    return uploadFiles(["thumbnail", "icon"])(req, res, next);
+  },
   asyncHandler(languageTranslationMiddleware(BusinessSetting)),
   asyncHandler(updateOrCreateBusinessSetting)
 );

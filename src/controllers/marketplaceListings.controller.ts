@@ -500,8 +500,7 @@ export const getAllMarketplaceListings = async (
       filter.name = { $regex: search, $options: "i" };
     }
 
-
-    /* ---------------- ROLE BASED FILTERS ---------------- */
+    /* ---------------- ROLE BASED FILTERS (unchanged) ---------------- */
     if (req.user) {
       if (req.user.role === "admin") {
         if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
@@ -527,7 +526,7 @@ export const getAllMarketplaceListings = async (
       }
     }
 
-    /* ---------------- CATEGORY FILTERS ---------------- */
+    /* ---------------- CATEGORY FILTERS (unchanged) ---------------- */
     if (subCategory && mongoose.Types.ObjectId.isValid(String(subCategory))) {
       filter.subCategory = new mongoose.Types.ObjectId(String(subCategory));
     }
@@ -539,51 +538,111 @@ export const getAllMarketplaceListings = async (
       filter.subCategory = { $in: subCategoryIds };
     }
 
-    /* ---------------- PRICE FILTER ---------------- */
+    /* ---------------- PRICE FILTER (unchanged) ---------------- */
     if (minPrice || maxPrice) {
       filter.price = {};
       if (minPrice) filter.price.$gte = Number(minPrice);
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
 
-    /* ---------------- AGGREGATION ---------------- */
-    const pipeline: any[] = [
-      { $match: filter },
+    /* ------------- AGGREGATION PIPELINE (corrected with sub‑pipelines) ------------- */
+    const pipeline: any[] = [{ $match: filter }];
 
-      // **SORT LATEST FIRST**
-      { $sort: { createdAt: -1 } },
+    // 1. Sorting (must be before pagination)
+    if (recent === "true") {
+      pipeline.push({ $sort: { createdAt: -1 } });
+    } else {
+      pipeline.push({ $sort: { createdAt: -1 } }); // default latest first
+    }
 
+    // 2. Populate subCategory + its category (exactly like .populate("subCategory", "name languages category").populate("category", "name"))
+    pipeline.push(
       {
         $lookup: {
-          from: "categories",
-          localField: "subCategory",
-          foreignField: "_id",
+          from: "categories", // SubCategory collection
+          let: { subCatId: "$subCategory" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$_id", "$$subCatId"] } } },
+            {
+              $lookup: {
+                from: "categories", // Category collection (same physical collection, different docs)
+                localField: "category",
+                foreignField: "_id",
+                as: "category",
+              },
+            },
+            { $unwind: { path: "$category", preserveNullAndEmptyArrays: true } },
+            {
+              $project: {
+                _id: 1,
+                name: 1,
+                languages: 1,
+                category: { _id: 1, name: 1 },
+              },
+            },
+          ],
           as: "subCategory",
         },
       },
-      { $unwind: "$subCategory" },
+      { $unwind: { path: "$subCategory", preserveNullAndEmptyArrays: true } }
+    );
 
+    // 3. Populate leaser (only name, email, profilePicture)
+    pipeline.push(
       {
         $lookup: {
           from: "users",
-          localField: "leaser",
-          foreignField: "_id",
+          let: { leaserId: "$leaser" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$_id", "$$leaserId"] } } },
+            {
+              $project: {
+                _id: 1,
+                name: 1,
+                email: 1,
+                profilePicture: 1,
+              },
+            },
+          ],
           as: "leaser",
         },
       },
-      { $unwind: "$leaser" },
+      { $unwind: { path: "$leaser", preserveNullAndEmptyArrays: true } }
+    );
 
+    // 4. Populate zone + its rentalPolicies
+    pipeline.push(
       {
         $lookup: {
           from: "zones",
-          localField: "zone",
-          foreignField: "_id",
+          let: { zoneId: "$zone" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$_id", "$$zoneId"] } } },
+            {
+              $lookup: {
+                from: "rentalpolicies",
+                localField: "rentalPolicies",
+                foreignField: "_id",
+                as: "rentalPolicies",
+              },
+            },
+            {
+              $project: {
+                _id: 1,
+                name: 1,
+                polygons: 1,
+                rentalPolicies: 1,
+              },
+            },
+          ],
           as: "zone",
         },
       },
-      { $unwind: "$zone" },
+      { $unwind: { path: "$zone", preserveNullAndEmptyArrays: true } }
+    );
 
-      /* ---------------- BOOKINGS & REVIEWS ---------------- */
+    // 5. Bookings & reviews (for averageRating and totalReviews)
+    pipeline.push(
       {
         $lookup: {
           from: "bookings",
@@ -605,9 +664,11 @@ export const getAllMarketplaceListings = async (
           averageRating: { $avg: "$reviews.stars" },
           totalReviews: { $size: "$reviews" },
         },
-      },
+      }
+    );
 
-      /* ---------------- FORM LOOKUP ---------------- */
+    // 6. Form lookup (for userDocuments, leaserDocuments, admin fee & tax)
+    pipeline.push(
       {
         $lookup: {
           from: "forms",
@@ -634,8 +695,6 @@ export const getAllMarketplaceListings = async (
           as: "form",
         },
       },
-
-      /* ---------------- ADMIN FEE & TAX (SAME AS BOOKING) ---------------- */
       {
         $addFields: {
           userDocuments: {
@@ -644,58 +703,69 @@ export const getAllMarketplaceListings = async (
           leaserDocuments: {
             $ifNull: [{ $arrayElemAt: ["$form.leaserDocuments", 0] }, []],
           },
-
-          // Extract setting once
           _setting: { $arrayElemAt: ["$form.setting", 0] },
         },
       },
       {
         $addFields: {
           adminFee: {
-            $multiply: [
-              "$price",
-              {
-                $divide: [
+            $cond: {
+              if: { $ifNull: ["$_setting", false] },
+              then: {
+                $multiply: [
+                  "$price",
                   {
-                    $add: [
-                      "$_setting.renterCommission.value",
-                      "$_setting.leaserCommission.value",
+                    $divide: [
+                      {
+                        $add: [
+                          "$_setting.renterCommission.value",
+                          "$_setting.leaserCommission.value",
+                        ],
+                      },
+                      100,
                     ],
                   },
-                  100,
                 ],
               },
-            ],
+              else: 0,
+            },
           },
-        },
-      },
-      {
-        $addFields: {
           tax: {
-            $multiply: [
-              { $add: ["$price", "$adminFee"] },
-              { $divide: ["$_setting.tax", 100] },
-            ],
+            $cond: {
+              if: { $ifNull: ["$_setting", false] },
+              then: {
+                $multiply: [
+                  { $add: ["$price", "$adminFee"] },
+                  { $divide: ["$_setting.tax", 100] },
+                ],
+              },
+              else: null,
+            },
           },
         },
+      }
+    );
+
+    // 7. Final cleanup – remove temporary fields
+    pipeline.push({
+      $project: {
+        bookings: 0,
+        reviews: 0,
+        form: 0,
+        _setting: 0,
       },
+    });
 
-      /* ---------------- CLEANUP ---------------- */
-      { $project: { form: 0, _setting: 0 } },
+    // 8. Pagination
+    pipeline.push(
       { $skip: (Number(page) - 1) * Number(limit) },
-      { $limit: Number(limit) },
-    ];
-
-    if (recent === "true") pipeline.push({ $sort: { createdAt: -1 } });
-
-    const listings = await MarketplaceListing.aggregate(pipeline).session(
-      session
-    );
-    const total = await MarketplaceListing.countDocuments(filter).session(
-      session
+      { $limit: Number(limit) }
     );
 
-    /* ---------------- LANGUAGE HANDLING ---------------- */
+    const listings = await MarketplaceListing.aggregate(pipeline).session(session);
+    const total = await MarketplaceListing.countDocuments(filter).session(session);
+
+    /* ---------------- LANGUAGE HANDLING (unchanged) ---------------- */
     const final = listings.map((obj: any) => {
       const listingLang = obj.languages?.find((l: any) => l.locale === locale);
       if (listingLang?.translations) {
@@ -1073,7 +1143,7 @@ export const getMarketplaceListingById = async (
         }
       }
 
-      // Sync local 'doc' object so Admin sees updated flags immediately
+      // Sync local 'doc' object so response shows updated flags immediately
       doc.documents.forEach((d: any) => {
         const dDate = d.expiryDate ? new Date(d.expiryDate) : null;
         if (dDate) {
@@ -1086,6 +1156,31 @@ export const getMarketplaceListingById = async (
       });
     }
     // --- END OPTIMIZED LOGIC ---
+
+    // --- FETCH BOOKINGS (same as leaser version) ---
+    const bookings = await Booking.find({ marketplaceListingId: id })
+      .select("dates status")
+      .session(session)
+      .lean();
+
+    const bookingIds = bookings.map((b) => b._id);
+    doc.bookings = bookings;
+
+    // --- FETCH REVIEWS WITH USER DETAILS (same as leaser version) ---
+    const reviews = await Review.find({ bookingId: { $in: bookingIds } })
+      .populate("userId", "name email profilePicture")
+      .session(session)
+      .lean();
+
+    const totalReviews = reviews.length;
+    const averageRating =
+      totalReviews > 0
+        ? reviews.reduce((sum, r) => sum + (r.stars || 0), 0) / totalReviews
+        : 0;
+
+    doc.reviews = reviews;
+    doc.averageRating = Number(averageRating.toFixed(2));
+    doc.totalReviews = totalReviews;
 
     const zoneId =
       typeof doc.zone === "object" ? (doc.zone as any)._id : doc.zone;
@@ -1160,27 +1255,6 @@ export const getMarketplaceListingById = async (
       }
       delete subCategoryObj.languages;
     }
-
-    const bookings = await Booking.find({ marketplaceListingId: id })
-      .select("_id")
-      .session(session)
-      .lean();
-
-    const bookingIds = bookings.map((b) => b._id);
-
-    const reviews = await Review.find({ bookingId: { $in: bookingIds } })
-      .select("stars")
-      .session(session)
-      .lean();
-
-    const totalReviews = reviews.length;
-    const averageRating =
-      totalReviews > 0
-        ? reviews.reduce((sum, r) => sum + (r.stars || 0), 0) / totalReviews
-        : 0;
-
-    (doc as any).averageRating = averageRating;
-    (doc as any).totalReviews = totalReviews;
 
     await session.commitTransaction();
     session.endSession();

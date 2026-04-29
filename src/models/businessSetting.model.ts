@@ -25,6 +25,7 @@ const BusinessSettingSchema = new Schema<IBusinessSetting>(
         "socialLogins",
         "recaptcha",
         "firebase",
+        "termsAndConditions"
       ],
       unique: true,
     },
