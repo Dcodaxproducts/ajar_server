@@ -5,11 +5,9 @@ import {
   getAllDamageReports,
   getDamageReportById,
   updateDamageReport,
-  updateDamageReportStatus,
-  updateReportStatus,
+  updateDamageReportStatus
 } from "../controllers/damageReport.controller";
-import upload from "../utils/multer";
-import { uploadFile, uploadFiles } from "../utils/multer";
+import { uploadFiles } from "../utils/multer";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
 const router = express.Router();
@@ -45,9 +43,6 @@ router.patch(
 router.delete("/:id", asyncHandler(deleteDamageReport));
 
 // PATCH /api/damage-report/:id/status
-// router.patch("/:id/status", useAuth, asyncHandler(updateDamageReportStatus));
-
-// PATCH /api/damage-report/status
-router.patch("/damage-report/status", useAuth, asyncHandler(updateReportStatus));
+router.patch("/:id/status", useAuth, asyncHandler(updateDamageReportStatus));
 
 export default router;

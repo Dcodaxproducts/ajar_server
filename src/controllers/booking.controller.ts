@@ -25,6 +25,7 @@ import { DamageReport } from "../models/damageReport.model";
 import { RefundRequest } from "../models/refundRequest.model";
 import { Zone } from "../models/zone.model";
 import { IRentalDuration, IRentalPolicies } from "../models/rentalPolicy.model";
+import { checkAndUpdateBookingExpiry } from "../utils/bookingExpiry";
 
 //NEW HELPER — detects date-only strings (YYYY-MM-DD)
 const isDateOnly = (value: string) => {
@@ -753,7 +754,7 @@ export const updateBookingStatus = async (
 
         return sendResponse(res, childBooking, "Extension rejected successfully", STATUS_CODES.OK);
       }
-      
+
       const childBooking = childBookingId
         ? await Booking.findOne({ _id: childBookingId, previousBookingId: id, status: "pending" }).session(session)
         : await Booking.findOne({ previousBookingId: id, status: "pending" }).sort({ createdAt: -1 }).session(session);
@@ -1202,11 +1203,14 @@ export const updateBookingStatus = async (
     // AFTER
     if (finalStatus === "completed") {
       updateFields["bookingDates.returnDate"] = new Date();
+      updateFields["_depositRefunded"] = 0;
 
-      // ✅ Refund security deposit back to renter
+      const isDamageReportSubmitted = await DamageReport.findOne({ booking: parentBooking._id });
+
+      // ✅ Refund security deposit back to renter ONLY if no damage report
       const depositAmount = parentBooking.priceDetails?.securityDeposit || 0;
 
-      if (depositAmount > 0) {
+      if (depositAmount > 0 && !isDamageReportSubmitted) {
         const renter = parentBooking.renter as any;
         const renterId = renter?._id?.toString() || renter?.toString();
 
@@ -1253,7 +1257,6 @@ export const updateBookingStatus = async (
           { session }
         );
 
-        // ✅ Store deposit amount on updateFields so notifications below can use it
         updateFields["_depositRefunded"] = depositAmount;
       }
     }
@@ -1411,10 +1414,13 @@ export const updateBookingStatus = async (
         renterMsg = `Your booking for "${listingName}" has been rejected.`;
         // AFTER
       } else if (finalStatus === "completed") {
-        const refundedDeposit = finalBooking.priceDetails?.securityDeposit || 0;
+        const refundedDeposit = updateFields["_depositRefunded"] || 0;
+
         renterMsg = refundedDeposit > 0
           ? `The booking for "${listingName}" has been completed. Your security deposit of $${refundedDeposit.toFixed(2)} has been refunded to your wallet.`
-          : `The booking for "${listingName}" has been completed.`;
+          : depositAmount > 0
+            ? `The booking for "${listingName}" has been completed. Your security deposit of $${depositAmount.toFixed(2)} is currently on hold pending the damage report review. You will be notified once the report is resolved.`
+            : `The booking for "${listingName}" has been completed.`;
 
         // ✅ Send dedicated deposit refund notification
         if (refundedDeposit > 0) {
@@ -1422,6 +1428,19 @@ export const updateBookingStatus = async (
             renterId,
             "Security Deposit Refunded",
             `Your security deposit of $${refundedDeposit.toFixed(2)} for "${listingName}" has been returned to your wallet.`,
+            {
+              bookingId: finalBooking._id?.toString(),
+              listingId,
+              type: "booking",
+              status: "completed",
+              refundedAmount: refundedDeposit,
+            }
+          );
+
+          await sendNotification(
+            leaserId,
+            "Booking Completed",
+            `The booking for "${listingName}" has been completed.`,
             {
               bookingId: finalBooking._id?.toString(),
               listingId,
@@ -1444,6 +1463,7 @@ export const updateBookingStatus = async (
             }
           );
         }
+
       } else if (finalStatus === "request_cancelled") {
         renterMsg = `Your booking for "${listingName}" has been cancelled.`;
       } else if (finalStatus === "booking_cancelled") {
@@ -1460,12 +1480,28 @@ export const updateBookingStatus = async (
         notificationTitle = `Booking ${finalStatus.charAt(0).toUpperCase() + finalStatus.slice(1)}`;
       }
 
+      const isDamageReportSubmitted = await DamageReport.findOne({ booking: parentBooking._id });
+
       await sendNotification(renterId, notificationTitle, renterMsg, {
         bookingId: finalBooking._id?.toString(),
         listingId,
         type: "booking",
         status: finalStatus,
       });
+
+      if (isDamageReportSubmitted && depositAmount > 0) {
+        await sendNotification(
+          leaserId,
+          "Booking Completed",
+          `The booking for "${listingName}" is completed. Since a damage report was submitted, the security deposit is currently held in escrow for review.`,
+          {
+            bookingId: finalBooking._id?.toString(),
+            listingId,
+            type: "booking",
+            status: "completed",
+          }
+        );
+      }
 
       // ========== LEASER NOTIFICATIONS FOR CANCELLATION ==========
       if (finalStatus === "request_cancelled" || finalStatus === "booking_cancelled") {
@@ -1949,6 +1985,8 @@ export const getBookingsByUser = async (
       finalBookings.map(async (booking: any) => {
         const listing = booking.marketplaceListingId as any;
 
+        await checkAndUpdateBookingExpiry(booking)
+
         // --- 1. EXPIRY LOGIC (With Skip Filter) ---
         // In statuses par expiry check nahi chalega
         const skipStatuses = ["completed", "cancelled", "request_cancelled", "booking_cancelled", "expired", "rejected"];
@@ -2283,7 +2321,6 @@ export const updateBooking = async (
   next: NextFunction
 ) => {
   try {
-    console.log("hello");
     const { id } = req.params;
     const user = (req as any).user;
 

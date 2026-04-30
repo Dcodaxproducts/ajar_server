@@ -413,9 +413,15 @@ export const getUserDetails = async (
 
         const hasExpiredDoc = user.documents?.some((d: any) => d.status === "expired");
 
+        const allDocsValid = user.documents?.every((d: any) => d.status !== "expired");
+
         if (hasExpiredDoc && user.status !== "inactive") {
           needsSave = true;
           user.status = "inactive";
+        }
+        else if (allDocsValid && user.status === "inactive") {
+          needsSave = true;
+          user.status = "active";
         }
 
         if (needsSave) {

@@ -7,7 +7,7 @@ export interface IDamageReport extends Document {
   damagedCharges: number;
   attachments: string[];
   user: mongoose.Types.ObjectId;
-  status: "pending" | "approved" | "paid" | "rejected" | "resolved";
+  status: "pending" | "approved" | "rejected";
 }
 
 const DamageReportSchema = new Schema<IDamageReport>(
@@ -40,7 +40,7 @@ const DamageReportSchema = new Schema<IDamageReport>(
     },
     status: {
       type: String,
-      enum: ["pending", "resolved","rejected"],
+      enum: ["pending", "approved", "rejected"],
       default: "pending",
     },
   },

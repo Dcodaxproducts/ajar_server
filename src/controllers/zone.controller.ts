@@ -1,10 +1,8 @@
 import { Request, Response, NextFunction } from "express";
-import { IZone, Zone } from "../models/zone.model";
+import { Zone } from "../models/zone.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import mongoose, { Types } from "mongoose";
-import deleteFile from "../utils/deleteFile";
-import path from "path";
 import { SubCategory } from "../models/category.model";
 import { paginateQuery } from "../utils/paginate";
 import { Form } from "../models/form.model";
@@ -217,6 +215,8 @@ export const createZone = async (
       polygons: rawPolygons,
       languages,
       subCategories: rawSubCategoryIds,
+      bookingExpiryEnabled,
+      expiryTimeMinutes,
     } = req.body;
 
     console.log("Creating zone with data:", req.body);
@@ -322,6 +322,8 @@ export const createZone = async (
       polygons: geoJsonPolygons,
       languages,
       subCategories,
+      bookingExpiryEnabled,
+      expiryTimeMinutes,
     });
 
     await newZone.save();
@@ -475,6 +477,8 @@ export const updateZone = async (
       polygons: rawPolygons,
       languages,
       subCategories: rawSubCategoryIds,
+      bookingExpiryEnabled,
+      expiryTimeMinutes,
     } = req.body;
 
     //  Check if name is provided and not the same as existing name
@@ -583,6 +587,8 @@ export const updateZone = async (
     existingZone.polygons = polygons;
     existingZone.languages = languages || existingZone.languages;
     existingZone.subCategories = subCategories;
+    if (bookingExpiryEnabled !== undefined) existingZone.bookingExpiryEnabled = bookingExpiryEnabled;
+    if (expiryTimeMinutes !== undefined) existingZone.expiryTimeMinutes = expiryTimeMinutes;
 
     await existingZone.save();
 

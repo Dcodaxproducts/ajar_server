@@ -18,6 +18,8 @@ export interface IZone extends Document {
   };
   // Reference to the new RentalPolicy Model
   rentalPolicies: mongoose.Types.ObjectId | IRentalPolicies;
+  bookingExpiryEnabled?: boolean;
+  expiryTimeMinutes?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,6 +54,8 @@ const ZoneSchema = new Schema<IZone>(
     languages: { type: [ZoneLanguageSchema], default: [] },
     // Reference update
     rentalPolicies: { type: mongoose.Schema.Types.ObjectId, ref: "RentalPolicy" },
+    bookingExpiryEnabled: { type: Boolean, default: false },
+    expiryTimeMinutes: { type: Number, default: 15 },
   },
   { timestamps: true }
 );
