@@ -118,8 +118,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       const limitRule = rentalPolicy.rentalDurationLimits.find(
         (l) => l.appliesToPriceUnit === priceUnit
       );
-      if (!limitRule) return null; // No rule for this price unit — allow
-      console.log({ limitRule })
+      if (!limitRule) return null;
 
       const diffMs = checkOut.getTime() - checkIn.getTime();
       const diffHours = diffMs / (1000 * 60 * 60);
@@ -153,6 +152,19 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     if (existingActiveBooking) {
       if (!extensionDate) {
         return res.status(400).json({ message: "You have an active booking for this listing. Please provide an extension date to extend your rental period." });
+      }
+
+      const lastExtension = await Booking.findOne({
+        previousBookingId: existingActiveBooking._id,
+      }).populate("previousBookingId").sort({ createdAt: -1 });
+
+      console.log("lastExtension status:", lastExtension?.status);
+      console.log("previousBookingId status:", (lastExtension?.previousBookingId as any)?.status);
+
+      if (lastExtension && lastExtension.status !== "approved") {
+        return res.status(400).json({
+          message: "Your previous extension request must be approved before submitting a new one.",
+        });
       }
 
       // --- EXTENSION ALLOWED CHECK ---
@@ -702,7 +714,6 @@ export const updateBookingStatus = async (
 
     // ========== EXTENSION APPROVAL LOGIC ==========
     if (isExtendApproval) {
-      // Inside isExtendApproval block, add rejected case
       if (status === "rejected") {
         if (!isLeaser) {
           await session.abortTransaction();

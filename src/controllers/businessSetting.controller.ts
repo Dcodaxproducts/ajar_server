@@ -11,7 +11,8 @@ const allowedPageNames = [
   "socialLogins",
   "recaptcha",
   "firebase",
-  "termsAndConditions"
+  "termsAndConditions",
+  "privacyPolicy"
 ];
 
 // CREATE only if not exists
