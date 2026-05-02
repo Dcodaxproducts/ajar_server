@@ -149,8 +149,7 @@ const BookingSchema = new Schema<IBooking>(
     },
     rentalPolicyId: {
       type: Schema.Types.ObjectId,
-      ref: "RentalPolicy",
-      required: true,
+      ref: "RentalPolicy"
     },
   },
   { timestamps: true }

@@ -152,7 +152,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
     if (existingActiveBooking) {
       if (!extensionDate) {
-        return res.status(400).json({ message: "Extension date is required" });
+        return res.status(400).json({ message: "You have an active booking for this listing. Please provide an extension date to extend your rental period." });
       }
 
       // --- EXTENSION ALLOWED CHECK ---
