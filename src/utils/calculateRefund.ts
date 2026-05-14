@@ -1,5 +1,3 @@
-// utils/refund.calculator.ts
-
 import { differenceInCalendarDays } from "date-fns";
 import { IRefundPolicy, ICancellationTier } from "../models/refundPolicy.model";
 
@@ -14,7 +12,7 @@ export function calculateRefund(
   totalPrice: number,
   checkInDate: Date,
   policy: IRefundPolicy,
-  now: Date = new Date()  // injectable so you can unit test with a fixed date
+  now: Date = new Date() 
 ): RefundResult {
 
   // policy-level kill switch

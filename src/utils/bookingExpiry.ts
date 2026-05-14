@@ -6,7 +6,6 @@ export const checkAndUpdateBookingExpiry = async (booking: any): Promise<any> =>
   if (booking.status !== "pending") return booking;
 
   const zone = await Zone.findById(booking?.marketplaceListingId?.zone?._id).lean();
-  console.log("zone", zone);
   if (!zone?.bookingExpiryEnabled) return booking;
 
   const expiryMinutes = zone.expiryTimeMinutes ?? 15;

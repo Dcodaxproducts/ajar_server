@@ -16,7 +16,7 @@ import {
 } from "../controllers/marketplaceListings.controller";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
-import { uploadAny, uploadFiles } from "../utils/multer";
+import { uploadAny } from "../utils/multer";
 import { optionalAuth } from "../middlewares/optionalAuthMiddleware";
 
 const router = express.Router();

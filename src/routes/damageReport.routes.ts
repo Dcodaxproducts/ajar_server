@@ -9,6 +9,7 @@ import {
 } from "../controllers/damageReport.controller";
 import { uploadFiles } from "../utils/multer";
 import { authMiddleware } from "../middlewares/auth.middleware";
+import { allowRoles } from "../middlewares/allowRoles";
 
 const router = express.Router();
 function asyncHandler(fn: any) {
@@ -18,19 +19,22 @@ function asyncHandler(fn: any) {
 }
 
 const useAuth = authMiddleware as any;
+const adminOnly = allowRoles(["admin"]) as unknown as express.RequestHandler;
+const userOnly = allowRoles(["user"]) as unknown as express.RequestHandler;
 
 router.post(
   "/",
   uploadFiles(["attachments"]),
   useAuth,
+  userOnly,
   asyncHandler(createDamageReport)
 );
 
 // Read all
-router.get("/", useAuth, asyncHandler(getAllDamageReports));
+router.get("/", useAuth, adminOnly, asyncHandler(getAllDamageReports));
 
 // Read by ID
-router.get("/:id", asyncHandler(getDamageReportById));
+router.get("/:id", useAuth, adminOnly, asyncHandler(getDamageReportById));
 
 // Update
 router.patch(
@@ -43,6 +47,6 @@ router.patch(
 router.delete("/:id", asyncHandler(deleteDamageReport));
 
 // PATCH /api/damage-report/:id/status
-router.patch("/:id/status", useAuth, asyncHandler(updateDamageReportStatus));
+router.patch("/:id/status", useAuth, adminOnly, asyncHandler(updateDamageReportStatus));
 
 export default router;

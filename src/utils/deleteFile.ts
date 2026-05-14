@@ -1,5 +1,4 @@
 import fs from "fs";
-import path from "path";
 
 const deleteFile = (filePath: string) => {
   fs.unlink(filePath, (err) => {

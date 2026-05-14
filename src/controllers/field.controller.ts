@@ -86,33 +86,57 @@ export const getAllFieldsWithoutPagination = async (
       queryFilter.type = { $in: ["select", "radio"] };
     }
 
-    const fields = await Field.find(queryFilter);
+    // 1. Añadimos la población profunda (deep populate)
+    const fields = await Field.find(queryFilter).populate({
+      path: "conditional.dependsOn",
+      populate: {
+        path: "conditional.dependsOn",
+        populate: {
+          path: "conditional.dependsOn",
+          populate: {
+            path: "conditional.dependsOn",
+            populate: {
+              path: "conditional.dependsOn",
+            },
+          },
+        },
+      },
+    });
 
     let filteredData = fields;
 
     if (locale) {
+      // 2. Función interna para localizar recursivamente los campos dependientes
+      const localizeField = (item: any) => {
+        if (!item) return item;
+
+        // Convertir a objeto plano si es un documento de Mongoose
+        const itemObj = typeof item.toObject === 'function' ? item.toObject() : item;
+
+        const matchedLang = itemObj.languages?.find(
+          (lang: any) => lang.locale === locale
+        );
+
+        if (matchedLang && matchedLang.translations) {
+          itemObj.name = matchedLang.translations.name || itemObj.name;
+          itemObj.label = matchedLang.translations.label || itemObj.label;
+          itemObj.placeholder = matchedLang.translations.placeholder || itemObj.placeholder;
+        }
+
+        // Localizar el dependsOn anidado si existe
+        if (itemObj.conditional?.dependsOn) {
+          itemObj.conditional.dependsOn = localizeField(itemObj.conditional.dependsOn);
+        }
+
+        delete itemObj.languages;
+        return itemObj;
+      };
+
       filteredData = fields
         .filter((field: any) =>
           field.languages?.some((lang: any) => lang.locale === locale)
         )
-        .map((field: any) => {
-          const matchedLang = field.languages.find(
-            (lang: any) => lang.locale === locale
-          );
-
-          const fieldObj = field.toObject();
-
-          if (matchedLang?.translations) {
-            fieldObj.name = matchedLang.translations.name || fieldObj.name;
-            fieldObj.label = matchedLang.translations.label || fieldObj.label;
-            fieldObj.placeholder =
-              matchedLang.translations.placeholder || fieldObj.placeholder;
-          }
-
-          delete fieldObj.languages;
-
-          return fieldObj;
-        });
+        .map((field: any) => localizeField(field));
     }
 
     sendResponse(

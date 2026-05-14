@@ -409,6 +409,7 @@ export const getFormByZoneAndSubCategory = async (
   try {
     const { zone, subCategory } = req.query;
     const lang = (req.query.language || "en").toString().toLowerCase();
+    const isAdmin = req.query.isAdmin === "true";
 
     if (!zone || !subCategory) {
       sendResponse(res, null, "zone and subCategory are required", STATUS_CODES.BAD_REQUEST);
@@ -495,9 +496,11 @@ export const getFormByZoneAndSubCategory = async (
         .filter(Boolean)
     );
 
-    const filteredFields = allLocalizedFields.filter(
-      (field) => !dependsOnIds.has(field._id.toString())
-    );
+    const filteredFields = isAdmin
+      ? allLocalizedFields 
+      : allLocalizedFields.filter(
+        (field) => !dependsOnIds.has(field._id.toString())
+      );
 
     // ✅ ADDED: Enrich userDocuments & leaserDocuments (same pattern as getMarketplaceListingByIdforLeaser)
     const rawUserDocs: string[] = form.userDocuments || [];

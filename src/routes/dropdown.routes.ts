@@ -7,14 +7,19 @@ import {
   removeValueFromDropdown,
   deleteDropdown,
 } from "../controllers/dropdown.controller";
+import { authMiddleware } from "../middlewares/auth.middleware";
+import { allowRoles } from "../middlewares/allowRoles";
 
 const router = express.Router();
 
-router.get("/", getAllDropdowns);
-router.get("/:name", getDropdownByName);
-router.post("/", createDropdown);
-router.post("/:name/value", addValueToDropdown);
-router.delete("/:name/value/:value", removeValueFromDropdown);
-router.delete("/:name", deleteDropdown);
+const useAuth = authMiddleware as any;
+const adminOnly = allowRoles(["admin"]) as unknown as express.RequestHandler;
+
+router.get("/", useAuth, adminOnly, getAllDropdowns);
+router.get("/:name", useAuth, adminOnly, getDropdownByName);
+router.post("/", useAuth, adminOnly, createDropdown);
+router.post("/:name/value", useAuth, adminOnly, addValueToDropdown);
+router.delete("/:name/value/:value", useAuth, adminOnly, removeValueFromDropdown);
+router.delete("/:name", useAuth, adminOnly, deleteDropdown);
 
 export default router;

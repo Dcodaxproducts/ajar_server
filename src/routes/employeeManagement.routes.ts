@@ -21,6 +21,7 @@ import { Category } from "../models/category.model";
 import { Field } from "../models/field.model";
 import { STATUS_CODES } from "../config/constants";
 import { sendResponse } from "../utils/response";
+import { allowRoles } from "../middlewares/allowRoles";
 
 const router = express.Router();
 
@@ -38,22 +39,26 @@ const wrapTranslationMiddleware = (model: any) => {
 };
 
 const useAuth = authMiddleware as any;
+const adminOnly = allowRoles(["admin"]) as unknown as express.RequestHandler;
 
 // EMPLOYEE ROUTES (Admin only)
 router.get(
   "/",
   useAuth,
+  adminOnly,
   asyncHandler(employeeController.getAllEmployees)
 );
 router.get(
   "/:id",
   useAuth,
+  adminOnly,
   asyncHandler(employeeController.getEmployeeById)
 );
 
 router.post(
   "/",
   useAuth,
+  adminOnly,
   // upload.array("images", 5),
   upload.fields([
     { name: "images", maxCount: 5 },
@@ -65,6 +70,7 @@ router.post(
 router.patch(
   "/:id",
   useAuth,
+  adminOnly,
   upload.fields([
     { name: "images", maxCount: 5 },
     { name: "profileImage", maxCount: 1 },
@@ -76,6 +82,7 @@ router.patch(
 router.delete(
   "/:id",
   useAuth,
+  adminOnly,
   asyncHandler(employeeController.deleteEmployee)
 );
 

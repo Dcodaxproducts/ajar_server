@@ -7,6 +7,7 @@ import {
   getUserFavourites,
   removeFavourite,
 } from "../controllers/toggleFavouriteController";
+import { allowRoles } from "../middlewares/allowRoles";
 
 const router = express.Router();
 
@@ -17,19 +18,21 @@ function asyncHandler(fn: any) {
 }
 
 const useAuth = authMiddleware as any;
+const userOnly = allowRoles(["user"]) as unknown as express.RequestHandler;
 
 // Add to favorites
-router.post("/", useAuth, asyncHandler(addFavourite));
+router.post("/", useAuth, userOnly, asyncHandler(addFavourite));
 
 // Remove from favorites
-router.patch("/", useAuth, asyncHandler(removeFavourite));
+router.patch("/", useAuth, userOnly, asyncHandler(removeFavourite));
 
-router.get("/", useAuth, asyncHandler(getAllFavourites));
+router.get("/", useAuth, userOnly, asyncHandler(getAllFavourites));
 
 // Get user's favorites
 router.get(
   "/:userId/favourites",
   useAuth,
+  userOnly,
   asyncHandler(getUserFavourites)
 );
 
@@ -37,6 +40,7 @@ router.get(
 router.get(
   "/:userId/is-favourites",
   useAuth,
+  userOnly,
   asyncHandler(checkIsFavourited)
 );
 

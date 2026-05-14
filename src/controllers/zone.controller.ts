@@ -9,27 +9,7 @@ import { Form } from "../models/form.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { RefundManagement } from "../models/refundManagement.model";
 import { RefundPolicy } from "../models/refundPolicy.model";
-
-// helper for polygon check
-const isPointInPolygon = (
-  point: { lat: number; lng: number },
-  polygon: { lat: number; lng: number }[]
-): boolean => {
-  let inside = false;
-  const { lat, lng } = point;
-
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].lng,
-      yi = polygon[i].lat;
-    const xj = polygon[j].lng,
-      yj = polygon[j].lat;
-
-    const intersect =
-      yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
-};
+import { isPointInPolygon } from "../utils/geo";
 
 export const getAllZones = async (
   req: Request,
@@ -340,6 +320,7 @@ export const createZone = async (
     next(error);
   }
 };
+
 // export const createZone = async (
 //   req: Request,
 //   res: Response,

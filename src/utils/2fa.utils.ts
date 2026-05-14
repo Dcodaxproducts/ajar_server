@@ -9,15 +9,7 @@ import crypto from "crypto";
 const ENCRYPTION_KEY = process.env.TWOFA_ENC_KEY || "".trim(); // 32 bytes hex/base64
 const IV_LENGTH = 16;
 
-console.log("TWOFA_ENC_KEY:", process.env.TWOFA_ENC_KEY);
-console.log("ENCRYPTION_KEY:", ENCRYPTION_KEY);
-
-console.log("Key length in bytes:", Buffer.from(ENCRYPTION_KEY, 'hex').length);
-
 export function encrypt(text: string): string {
-  console.log("TWOFA_ENC_KEY:", process.env.TWOFA_ENC_KEY);
-console.log("ENCRYPTION_KEY:", ENCRYPTION_KEY);
-
   if (!ENCRYPTION_KEY) throw new Error("TWOFA_ENC_KEY not set");
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv("aes-256-cbc", Buffer.from(ENCRYPTION_KEY, 'hex'), iv);

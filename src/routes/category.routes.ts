@@ -14,7 +14,7 @@ import {
   updateCategory,
   updateCategoryThumbnail,
 } from "../controllers/category.controller";
-import { Category, SubCategory } from "../models/category.model";
+import { Category } from "../models/category.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 
 const router = express.Router();
