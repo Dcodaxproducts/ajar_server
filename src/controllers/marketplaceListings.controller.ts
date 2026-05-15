@@ -501,8 +501,10 @@ export const getAllMarketplaceListings = async (
     }
 
     /* ---------------- ROLE BASED FILTERS (unchanged) ---------------- */
+    const adminRoles = ["admin", "staff"];
+    
     if (req.user) {
-      if (req.user.role === "admin") {
+      if (adminRoles.includes(req.user.role)) {
         if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
           filter.zone = new mongoose.Types.ObjectId(String(zone));
         }

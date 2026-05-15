@@ -3,6 +3,11 @@ import { AuthRequest } from "./auth.middleware";
 import { STATUS_CODES } from "../config/constants";
 import { sendResponse } from "../utils/response";
 
+// When a role is allowed, its mapped roles are also auto-allowed
+const SUPER_ROLES: Record<string, string[]> = {
+  admin: ["staff"],
+};
+
 export const allowRoles = (roles: string | string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
     try {
@@ -17,8 +22,14 @@ export const allowRoles = (roles: string | string[]) => {
       }
 
       const allowedRoles = Array.isArray(roles) ? roles : [roles];
+      const allAllowedRoles = [
+        ...new Set([
+          ...allowedRoles,
+          ...allowedRoles.flatMap((role) => SUPER_ROLES[role] ?? []),
+        ]),
+      ];
 
-      if (!allowedRoles.includes(req.user.role)) {
+      if (!allAllowedRoles.includes(req.user.role)) {
         sendResponse(
           res,
           null,

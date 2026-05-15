@@ -108,7 +108,7 @@ const UserSchema: Schema<IUser> = new Schema(
     status: {
       type: String,
       enum: ["active", "inactive", "blocked", "unblocked"],
-      default: "active",
+      default: "inactive",
     },
     documents: [UserDocumentSchema],
     fcmToken: { type: String, default: "" },

@@ -114,6 +114,16 @@ export const loginUser = async (
         return;
       }
 
+      if (employee.status === "blocked") {
+        sendResponse(
+          res,
+          { code: "EMPLOYEE_BLOCKED" },
+          "Your account has been blocked. Please contact support.",
+          STATUS_CODES.FORBIDDEN
+        );
+        return;
+      }
+
       if (employee.password !== password) {
         sendResponse(
           res,
@@ -533,6 +543,7 @@ export const verifyOtp = async (
 
     // Mark OTP as verified
     user.otp.isVerified = true;
+    user.status = "active";
     await user.save();
 
     const accessToken = generateAccessToken({ id: user._id, role: user.role });
@@ -793,14 +804,13 @@ export const getAllUsersWithStats = async (
     const filteredTotal = await User.countDocuments(userFilter);
 
     // Global user statistics
-    const totalUsers = await User.countDocuments();
-    const totalAdmins = await User.countDocuments({ role: "admin" });
+    const totalUsers = await User.countDocuments({ role: "user" });
 
-    const totalActiveUsers = await User.countDocuments({ status: "active" });
+    const totalActiveUsers = await User.countDocuments({ status: "active", role: "user" });
     const totalInactiveUsers = await User.countDocuments({
-      status: "inactive",
+      status: "inactive", role: "user"
     });
-    const totalBlockedUsers = await User.countDocuments({ status: "blocked" });
+    const totalBlockedUsers = await User.countDocuments({ status: "blocked", role: "user" });
 
     sendResponse(
       res,
@@ -813,7 +823,6 @@ export const getAllUsersWithStats = async (
         },
         stats: {
           totalUsers,
-          totalAdmins,
           totalActiveUsers,
           totalInactiveUsers,
           totalBlockedUsers,
@@ -994,7 +1003,7 @@ export const getDashboardStats = async (
       bookingCount,
       pendingDocumentUsers
     ] = await Promise.all([
-      User.countDocuments(),
+      User.countDocuments({ role: "user" }),
       User.countDocuments({ role: "admin" }),
       User.countDocuments({ role: "user" }),
       Booking.countDocuments(),
