@@ -2,6 +2,7 @@ import { Server as SocketIOServer, Socket } from "socket.io";
 import { UserSocketHelpers } from "../index";
 import { Conversation } from "../../models/conversation.model";
 import { Message } from "../../models/message.model";
+import { sendNotification } from "../../utils/notifications";
 
 
 const registerMessageEvents = (
@@ -18,7 +19,7 @@ const registerMessageEvents = (
     return activeChats.get(userId)?.has(chatId) || false;
   };
 
-   // CHANGED: Helper to send unread count for a chat
+  // CHANGED: Helper to send unread count for a chat
   const emitUnreadCount = async (receiverId: string, chatId: string) => {
     const count = await Message.countDocuments({
       chatId,
@@ -90,7 +91,7 @@ const registerMessageEvents = (
 
       const readAt = new Date();
 
-        //COUNT READ MESSAGES
+      //COUNT READ MESSAGES
       let readCount = 0;
 
 
@@ -99,7 +100,7 @@ const registerMessageEvents = (
         message.seen = true; // CHANGED: mark as seen
         await message.save();
 
-         readCount++; // increase count
+        readCount++; // increase count
 
         // Notify sender that message was read
         helpers.getIO().to(`user:${message.sender._id}`).emit("message:read", {
@@ -112,9 +113,9 @@ const registerMessageEvents = (
       emitUnreadCount(userId, chatId);
 
       //Final log
-    if (readCount > 0) {
-      console.log(`User ${userId} read ${readCount} messages in chat ${chatId}`);
-    }
+      if (readCount > 0) {
+        console.log(`User ${userId} read ${readCount} messages in chat ${chatId}`);
+      }
 
     } catch (error) {
       console.error("Error marking messages as delivered/read:", error);
@@ -123,10 +124,10 @@ const registerMessageEvents = (
 
   socket.on(
     "message:send",
-    async (data: { text: string; chatId: string; receiver: string;  attachments?: string[]; }) => {
+    async (data: { text: string; chatId: string; receiver: string; attachments?: string[]; }) => {
       console.log("Message send event received:", data);
       try {
-        const { text, chatId, receiver, attachments  } = data;
+        const { text, chatId, receiver, attachments } = data;
 
         // Create message in database
         const message = new Message({
@@ -159,8 +160,19 @@ const registerMessageEvents = (
           .to(`user:${receiverId}`)
           .emit("message:received", message);
 
+        // ✅ Send push notification ONLY if receiver is offline
+        if (!helpers.isUserOnline(receiverId)) {
+          const senderName = (message.sender as any)?.name || "Someone";
+          await sendNotification(
+            receiverId,
+            "New Message",
+            `${senderName}: ${text}`,
+            { chatId, type: "system" }
+          ).catch((err: any) => console.error("Notification failed:", err));
+        }
 
-           // CHANGED: Emit updated unread count for receiver
+
+        // CHANGED: Emit updated unread count for receiver
         emitUnreadCount(receiverId, chatId);
 
 
@@ -260,7 +272,7 @@ const registerMessageEvents = (
           readAt: message.readAt,
         });
 
-          // CHANGED: Update unread count for this chat
+        // CHANGED: Update unread count for this chat
         emitUnreadCount(userId, message.chatId.toString());
 
       }
