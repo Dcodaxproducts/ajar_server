@@ -247,7 +247,7 @@ export const createRefundRequest = asyncHandler(
       return;
     }
 
-    const totalPrice = parseFloat(Number(bookingData.priceDetails?.totalPrice ?? 0).toFixed(2));
+    const totalPrice = parseFloat(Number(bookingData.priceDetails?.price ?? 0).toFixed(2));
     const securityDeposit = parseFloat(Number(bookingData.priceDetails?.securityDeposit ?? 0).toFixed(2));
     const checkInDate = new Date(bookingData.dates.checkIn);
 
@@ -629,19 +629,28 @@ export const getRefundPreview = asyncHandler(
 
     // use the pure calculator — no logic lives in the controller
     const result = calculateRefund(
-      booking.priceDetails.totalPrice,
+      booking.priceDetails.price,
       new Date(booking.dates.checkIn),
       policy
     );
+
+    const adminFee = booking.priceDetails.adminFee ?? 0;
+    const tax = booking.priceDetails.tax ?? 0;
+    const securityDeposit = booking.priceDetails.securityDeposit ?? 0;
+
+    // estimatedRefund = refundable base + adminFee + tax (all returned to renter)
+    const estimatedRefund = parseFloat((result.refundAmount + adminFee + tax).toFixed(2));
+    const totalToWallet = parseFloat((estimatedRefund + securityDeposit).toFixed(2));
 
     res.status(200).json({
       success: true,
       data: {
         totalBookingAmount: booking.priceDetails.totalPrice,
         deductionFee: result.deductedAmount,
-        securityDeposit: booking.priceDetails.securityDeposit,
-        estimatedRefund: result.refundAmount,
-        isEligible: result.refundAmount > 0 || (booking.priceDetails.securityDeposit ?? 0) > 0,
+        securityDeposit,
+        estimatedRefund,
+        totalToWallet,
+        isEligible: totalToWallet > 0,
         appliedTier: result.appliedTier,
         reason: result.reason,
       },

@@ -334,9 +334,9 @@ export const updateRefundStatus = async (
     // ================= ACCEPT =================
     const refundAmount = parseFloat(Number(refund.totalRefundAmount ?? 0).toFixed(2));
     const securityDeposit = parseFloat(Number(refund.securityDeposit ?? 0).toFixed(2));
-    const totalRenterCredit = parseFloat((refundAmount + securityDeposit).toFixed(2));
 
-    const leaserAmount = parseFloat((refund.totalRefundAmount - (adminFee + tax)).toFixed(2));
+    const totalRenterCredit = parseFloat((refundAmount + adminFee + tax + securityDeposit).toFixed(2));
+    const leaserAmount = parseFloat((refund.totalRefundAmount).toFixed(2));
 
     // 1. Leaser balance validation
     if (leaserAmount > 0) {
@@ -347,6 +347,16 @@ export const updateRefundStatus = async (
       }
       leaser.wallet.balance = parseFloat((leaser.wallet.balance - leaserAmount).toFixed(2));
       await leaser.save({ session });
+    }
+
+    if (securityDeposit > 0) {
+      if (admin.wallet.balance < securityDeposit) {
+        await session.abortTransaction();
+        session.endSession();
+        return sendResponse(res, null, "Admin has insufficient wallet balance to return security deposit", STATUS_CODES.BAD_REQUEST);
+      }
+      admin.wallet.balance = parseFloat((admin.wallet.balance - securityDeposit).toFixed(2));
+      await admin.save({ session });
     }
 
     // 2. Renter wallet — refund + deposit
