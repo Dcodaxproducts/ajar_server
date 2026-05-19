@@ -183,12 +183,34 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         : existingActiveBooking.dates.checkOut;
 
       const extensionStartDate = new Date(latestCheckOut);
-      const extensionEndDate = new Date(extensionDate);
 
-      if (extensionEndDate <= extensionStartDate) {
-        return res.status(400).json({
-          message: "Extension date must be after previous checkout date",
-        });
+      // For hourly: extensionDate comes as full ISO with local offset — parse as-is
+      // For date-only (day/month/year): set to end of day so full day is included
+      let extensionEndDate: Date;
+      if (isDateOnly(extensionDate)) {
+        extensionEndDate = new Date(extensionDate);
+        extensionEndDate.setUTCHours(23, 59, 59, 999);
+      } else {
+        extensionEndDate = new Date(extensionDate); // hourly — full ISO, no adjustment
+      }
+
+      // For hourly: allow extension from same checkout time onwards (minimum 1 hour after)
+      // For other units: end date must simply be after start date
+      const isHourlyUnit = listing.priceUnit === "hour";
+
+      if (isHourlyUnit) {
+        const minAllowedEnd = new Date(extensionStartDate.getTime() + 60 * 60 * 1000); // +1 hour
+        if (extensionEndDate < minAllowedEnd) {
+          return res.status(400).json({
+            message: "Hourly extension must be at least 1 hour after current checkout.",
+          });
+        }
+      } else {
+        if (extensionEndDate <= extensionStartDate) {
+          return res.status(400).json({
+            message: "Extension date must be after previous checkout date.",
+          });
+        }
       }
 
       // --- RENTAL DURATION LIMITS CHECK (EXTENSION) ---
@@ -200,7 +222,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       if (extensionDurationError) {
         return res.status(400).json({ message: extensionDurationError });
       }
-      console.log({ extensionStartDate, extensionEndDate })
 
       const isAvailableForExtend = await isBookingDateAvailable(
         listingId,
@@ -227,11 +248,10 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
       const priceDetails = {
         price: priceBreakdown.basePrice,
-        adminFee: priceBreakdown.adminFee,
-        tax: priceBreakdown.tax,
-        // Extensions do NOT charge a new deposit — deposit was already held on original booking
+        adminFee: 0,
+        tax: 0,
         securityDeposit: 0,
-        totalPrice: priceBreakdown.totalPrice,
+        totalPrice: priceBreakdown.basePrice,
       };
 
       if (renter.wallet.balance < priceDetails.totalPrice) {
@@ -1950,7 +1970,8 @@ export const getBookingsByUser = async (
           parent.extensions.push({
             _id: childWithPayment._id?.toString?.() ?? childWithPayment._id,
             name: `Extension ${extensionCount}`,
-            extensionDate: childWithPayment.dates?.checkOut ?? null,
+            extensionDate: childWithPayment.extensionRequestedDate ?? childWithPayment.dates?.checkOut ?? null,  // ✅ correct
+            extensionRequestedDate: childWithPayment.extensionRequestedDate ?? null,  //
             handover: childWithPayment.bookingDates?.handover ?? null,
             returnDate: childWithPayment.bookingDates?.returnDate ?? null,
             priceDetails: childWithPayment.priceDetails ?? null,
@@ -2000,7 +2021,7 @@ export const getBookingsByUser = async (
 
         // --- 1. EXPIRY LOGIC (With Skip Filter) ---
         // In statuses par expiry check nahi chalega
-        const skipStatuses = ["completed", "cancelled", "request_cancelled", "booking_cancelled", "expired", "rejected"];
+        const skipStatuses = ["completed", "cancelled", "request_cancelled", "booking_cancelled", "expired", "rejected", "in_progress"];
 
         if (listing && !skipStatuses.includes(booking.status)) {
           const isExpired = isBookingExpiredForApproval(booking, listing.priceUnit);
