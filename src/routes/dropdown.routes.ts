@@ -16,7 +16,7 @@ const useAuth = authMiddleware as any;
 const adminOnly = allowRoles(["admin"]) as unknown as express.RequestHandler;
 
 router.get("/", useAuth, adminOnly, getAllDropdowns);
-router.get("/:name", useAuth, adminOnly, getDropdownByName);
+router.get("/:name", useAuth, getDropdownByName);
 router.post("/", useAuth, adminOnly, createDropdown);
 router.post("/:name/value", useAuth, adminOnly, addValueToDropdown);
 router.delete("/:name/value/:value", useAuth, adminOnly, removeValueFromDropdown);
