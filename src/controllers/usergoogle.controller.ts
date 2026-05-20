@@ -4,6 +4,7 @@ import { FRONTEND_URL, JWT_EXPIRES_IN, JWT_SECRET } from "../config/config";
 import { IUser, User } from "../models/user.model";
 import { OAuth2Client } from "google-auth-library";
 import crypto from "crypto";
+import { generateAccessToken } from "../utils/jwt.utils";
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID_NEXT);
 
@@ -23,8 +24,8 @@ export const googleCallback: RequestHandler = async (req, res) => {
 
     //match the same payload structure used in your login controller
     const payload = {
-      id: user._id,       
-      role: user.role,   
+      id: user._id,
+      role: user.role,
     };
 
     //identical signing method to your generateAccessToken
@@ -94,7 +95,7 @@ export const nextAuthGoogleLogin: RequestHandler = async (req, res) => {
         profileImage: googlePayload.picture,
         authProvider: "google",
         password: crypto.randomBytes(32).toString("hex"),
-        status : "active"
+        status: "active"
       });
     }
 
@@ -102,11 +103,11 @@ export const nextAuthGoogleLogin: RequestHandler = async (req, res) => {
       throw new Error("JWT_SECRET must be a defined string");
     }
 
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      JWT_SECRET,
-      { expiresIn: (JWT_EXPIRES_IN as jwt.SignOptions["expiresIn"]) || "1d" }
-    );
+    const token = generateAccessToken({
+      id: user._id,
+      role: user.role,
+      twoFactorVerified: true,
+    });
 
     res.json({ data: { token } });
   } catch (error: any) {
