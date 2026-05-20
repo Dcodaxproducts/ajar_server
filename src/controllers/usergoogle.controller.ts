@@ -1,8 +1,9 @@
-import { Request, Response, RequestHandler } from "express";
+import { RequestHandler } from "express";
 import jwt from "jsonwebtoken";
 import { FRONTEND_URL, JWT_EXPIRES_IN, JWT_SECRET } from "../config/config";
 import { IUser, User } from "../models/user.model";
 import { OAuth2Client } from "google-auth-library";
+import crypto from "crypto";
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID_NEXT);
 
@@ -92,6 +93,7 @@ export const nextAuthGoogleLogin: RequestHandler = async (req, res) => {
         name: googlePayload.name,
         profileImage: googlePayload.picture,
         authProvider: "google",
+        password: crypto.randomBytes(32).toString("hex")
       });
     }
 
