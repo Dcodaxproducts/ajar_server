@@ -1,6 +1,6 @@
 import express from "express";
 import passport from "passport";
-import { googleCallback, verifyToken } from "../controllers/usergoogle.controller";
+import { googleCallback, nextAuthGoogleLogin, verifyToken } from "../controllers/usergoogle.controller";
 
 const router = express.Router();
 
@@ -16,5 +16,7 @@ router.get(
 
 // Step 3: Verify JWT token
 router.get("/verify", verifyToken);
+
+router.post("/google/nextauth", nextAuthGoogleLogin);
 
 export default router;
