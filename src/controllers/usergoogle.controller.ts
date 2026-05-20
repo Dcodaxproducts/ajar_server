@@ -75,7 +75,7 @@ export const nextAuthGoogleLogin: RequestHandler = async (req, res) => {
     // Verify the Google token
     const ticket = await googleClient.verifyIdToken({
       idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
+      audience: process.env.GOOGLE_CLIENT_ID_NEXT,
     });
 
     const googlePayload = ticket.getPayload();
