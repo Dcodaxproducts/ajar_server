@@ -93,7 +93,8 @@ export const nextAuthGoogleLogin: RequestHandler = async (req, res) => {
         name: googlePayload.name,
         profileImage: googlePayload.picture,
         authProvider: "google",
-        password: crypto.randomBytes(32).toString("hex")
+        password: crypto.randomBytes(32).toString("hex"),
+        status : "active"
       });
     }
 
