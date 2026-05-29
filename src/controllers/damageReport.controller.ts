@@ -402,6 +402,18 @@ export const updateDamageReportStatus = async (
       }
 
       const depositAmount = bookingData?.priceDetails?.securityDeposit || 0;
+      
+      if (damagedCharges > depositAmount) {
+        await session.abortTransaction();
+        session.endSession();
+        return sendResponse(
+          res,
+          null,
+          `Insufficient security deposit. Damage charges ($${damagedCharges.toFixed(2)}) exceed the renter's security deposit ($${depositAmount.toFixed(2)})`,
+          STATUS_CODES.BAD_REQUEST
+        );
+      }
+
       const remainingDeposit = depositAmount - damagedCharges;
 
       // Check admin wallet has enough for full deposit

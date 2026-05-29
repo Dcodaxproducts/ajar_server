@@ -1659,8 +1659,14 @@ export const getAllBookings = async (
       }
     }
 
+    const parentFilter = {
+      ...filter,
+      previousBookingId: null,
+    };
+
     // everything below is unchanged
-    const baseQuery = Booking.find(filter)
+    const baseQuery = Booking.find(parentFilter)
+      .sort({ createdAt: -1 })
       .populate({
         path: "marketplaceListingId",
         populate: {
@@ -1674,6 +1680,43 @@ export const getAllBookings = async (
       });
 
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
+
+    const bookingObjects = data.map((booking: any) =>
+      booking?.toObject ? booking.toObject() : booking
+    );
+
+    const parentIds = bookingObjects.map((booking: any) => booking._id);
+    const childBookings = await Booking.find({
+      previousBookingId: { $in: parentIds },
+    }).lean();
+
+    const bookingsMap: Record<string, any> = {};
+    bookingObjects.forEach((booking: any) => {
+      bookingsMap[booking._id.toString()] = { ...booking, extensions: [] };
+    });
+
+    childBookings.forEach((child: any) => {
+      if (!child.previousBookingId) return;
+
+      const parent = bookingsMap[child.previousBookingId.toString()];
+      if (!parent) return;
+
+      const extensionCount = parent.extensions.length + 1;
+      parent.extensions.push({
+        _id: child._id?.toString?.() ?? child._id,
+        name: `Extension ${extensionCount}`,
+        extensionDate: child.extensionRequestedDate ?? child.dates?.checkOut ?? null,
+        extensionRequestedDate: child.extensionRequestedDate ?? null,
+        handover: child.bookingDates?.handover ?? null,
+        returnDate: child.bookingDates?.returnDate ?? null,
+        priceDetails: child.priceDetails ?? null,
+        pricingMeta: child.pricingMeta ?? null,
+        extraRequestCharges: child.extraRequestCharges ?? null,
+        status: child.status ?? null,
+      });
+    });
+
+    const bookingsWithExtensions = Object.values(bookingsMap);
 
     const now = new Date();
     const oneMonthAgo = new Date();
@@ -1707,7 +1750,7 @@ export const getAllBookings = async (
       statusCode: STATUS_CODES.OK,
       message: "Bookings retrieved successfully",
       data: {
-        bookings: data,
+        bookings: bookingsWithExtensions,
         total,
         page,
         limit,
@@ -2405,16 +2448,251 @@ export const deleteBooking = async (
   res: Response,
   next: NextFunction
 ) => {
+  const session = await mongoose.startSession();
+
   try {
+    const user = (req as AuthRequest).user;
     const { id } = req.params;
-    const deleted = await Booking.findByIdAndDelete(id);
-    if (!deleted) {
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    session.startTransaction();
+
+    const booking = await Booking.findById(id)
+      .populate("renter", "wallet email name fcmToken")
+      .populate("leaser", "wallet email name fcmToken")
+      .populate("marketplaceListingId", "name")
+      .session(session);
+
+    if (!booking) {
+      await session.abortTransaction();
       sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
       return;
     }
-    sendResponse(res, deleted, "Booking deleted", STATUS_CODES.OK);
+
+    const childBookings = await Booking.find({ previousBookingId: booking._id })
+      .session(session)
+      .lean();
+
+    const childBookingIds = childBookings.map((child: any) => child._id);
+
+    const shouldRefundRenter =
+      user?.role === "admin" &&
+      ["approved", "in_progress"].includes(booking.status);
+
+    let refundedAmount = 0;
+    let leaserDebitedAmount = 0;
+    let adminDebitedAmount = 0;
+    let adminId = "";
+
+    if (shouldRefundRenter) {
+      const renter = booking.renter as any;
+      const leaser = booking.leaser as any;
+      const admin = await User.findOne({ role: "admin" }).session(session);
+
+      if (!renter?.wallet) {
+        await session.abortTransaction();
+        sendResponse(res, null, "Renter wallet not found", STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+
+      if (!leaser?.wallet) {
+        await session.abortTransaction();
+        sendResponse(res, null, "Leaser wallet not found", STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+
+      if (!admin?.wallet) {
+        await session.abortTransaction();
+        sendResponse(res, null, "Admin wallet not found", STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+
+      const bookingPrice = Number(booking.priceDetails?.price) || 0;
+      const adminFee = Number(booking.priceDetails?.adminFee) || 0;
+      const tax = Number(booking.priceDetails?.tax) || 0;
+      const securityDeposit = Number(booking.priceDetails?.securityDeposit) || 0;
+      const extraCharges = Number(booking.extraRequestCharges?.additionalCharges) || 0;
+      const extensionCharges = Number(booking.extendCharges?.extendCharges) || 0;
+      const childExtensionCharges = childBookings.reduce((total: number, child: any) => {
+        if (!["approved", "in_progress"].includes(child.status)) return total;
+
+        return total +
+          (Number(child.priceDetails?.price) || 0) +
+          (Number(child.extraRequestCharges?.additionalCharges) || 0) +
+          (Number(child.extendCharges?.extendCharges) || 0);
+      }, 0);
+
+      leaserDebitedAmount = Number(
+        (bookingPrice + extraCharges + extensionCharges + childExtensionCharges).toFixed(2)
+      );
+      adminDebitedAmount = Number((adminFee + tax + securityDeposit).toFixed(2));
+      refundedAmount = Number((leaserDebitedAmount + adminDebitedAmount).toFixed(2));
+
+      if (leaser.wallet.balance < leaserDebitedAmount) {
+        await session.abortTransaction();
+        sendResponse(res, null, "Leaser has insufficient wallet balance for booking reversal", STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+
+      if (admin.wallet.balance < adminDebitedAmount) {
+        await session.abortTransaction();
+        sendResponse(res, null, "Admin has insufficient wallet balance for booking reversal", STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+
+      if (refundedAmount > 0) {
+        renter.wallet.balance = Number(
+          (Number(renter.wallet.balance || 0) + refundedAmount).toFixed(2)
+        );
+        leaser.wallet.balance = Number(
+          (Number(leaser.wallet.balance || 0) - leaserDebitedAmount).toFixed(2)
+        );
+        admin.wallet.balance = Number(
+          (Number(admin.wallet.balance || 0) - adminDebitedAmount).toFixed(2)
+        );
+
+        await renter.save({ session });
+        await leaser.save({ session });
+        await admin.save({ session });
+
+        await WalletTransaction.create(
+          [
+            {
+              userId: renter._id,
+              type: "credit",
+              amount: refundedAmount,
+              source: "refund",
+              status: "succeeded",
+              description: "Full refund for booking deleted by admin",
+              createdAt: new Date(),
+              requestedAt: new Date(),
+              processedAt: new Date(),
+            },
+            {
+              userId: leaser._id,
+              type: "debit",
+              amount: leaserDebitedAmount,
+              source: "refund",
+              status: "succeeded",
+              description: "Leaser payout reversed for booking deleted by admin",
+              createdAt: new Date(),
+              requestedAt: new Date(),
+              processedAt: new Date(),
+            },
+            {
+              userId: admin._id,
+              type: "debit",
+              amount: adminDebitedAmount,
+              source: "refund",
+              status: "succeeded",
+              description: "Admin fee, tax, and security deposit reversed for booking deleted by admin",
+              createdAt: new Date(),
+              requestedAt: new Date(),
+              processedAt: new Date(),
+            },
+          ],
+          { session, ordered: true }
+        );
+      }
+
+      adminId = (admin._id as Types.ObjectId).toString();
+    }
+
+    await Booking.deleteMany({
+      $or: [
+        { _id: booking._id },
+        { previousBookingId: booking._id },
+      ],
+    }).session(session);
+
+    await session.commitTransaction();
+
+    try {
+      const renter = booking.renter as any;
+      const leaser = booking.leaser as any;
+      const listing = booking.marketplaceListingId as any;
+      const listingName = listing?.name || "your booking";
+      const bookingId = booking._id.toString();
+      const listingId = listing?._id?.toString() || booking.marketplaceListingId?.toString();
+
+      if (renter?._id) {
+        await sendNotification(
+          renter._id.toString(),
+          "Booking Deleted",
+          refundedAmount > 0
+            ? `Your booking for "${listingName}" has been deleted by admin. $${refundedAmount.toFixed(2)} has been refunded to your wallet.`
+            : `Your booking for "${listingName}" has been deleted by admin.`,
+          {
+            bookingId,
+            listingId,
+            type: "booking",
+            status: "booking_deleted",
+            refundedAmount,
+            deletedChildBookingIds: childBookingIds.map((childId: any) => childId.toString()),
+          }
+        );
+      }
+
+      if (leaser?._id) {
+        await sendNotification(
+          leaser._id.toString(),
+          "Booking Deleted",
+          leaserDebitedAmount > 0
+            ? `The booking for "${listingName}" has been deleted by admin. $${leaserDebitedAmount.toFixed(2)} has been reversed from your wallet.`
+            : `The booking for "${listingName}" has been deleted by admin.`,
+          {
+            bookingId,
+            listingId,
+            type: "booking",
+            status: "booking_deleted",
+            debitedAmount: leaserDebitedAmount,
+            deletedChildBookingIds: childBookingIds.map((childId: any) => childId.toString()),
+          }
+        );
+      }
+
+      if (adminId) {
+        await sendNotification(
+          adminId,
+          "Booking Deleted by Admin",
+          `The booking for "${listingName}" has been successfully deleted. A refund of $${refundedAmount.toFixed(2)} was issued to the renter, $${leaserDebitedAmount.toFixed(2)} was reversed from the leaser, and $${adminDebitedAmount.toFixed(2)} was reversed from the admin account.`,
+          {
+            bookingId,
+            listingId,
+            type: "booking",
+            status: "booking_deleted",
+            refundedAmount,
+            leaserDebitedAmount,
+            adminDebitedAmount,
+            deletedChildBookingIds: childBookingIds.map((childId: any) => childId.toString()),
+          }
+        );
+      }
+    } catch (err) {
+      console.error("Failed to notify users about deleted booking:", err);
+    }
+
+    sendResponse(
+      res,
+      {
+        deletedBookingId: booking._id,
+        deletedChildBookingIds: childBookingIds,
+        refundedAmount,
+        leaserDebitedAmount,
+        adminDebitedAmount,
+      },
+      "Booking deleted",
+      STATUS_CODES.OK
+    );
   } catch (err) {
+    await session.abortTransaction();
     next(err);
+  } finally {
+    session.endSession();
   }
 };
 
