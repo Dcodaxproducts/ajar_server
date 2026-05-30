@@ -444,11 +444,11 @@ export const updateDamageReportStatus = async (
       }
 
       // Set security deposit to 0 on booking since fully settled
-      await Booking.findByIdAndUpdate(
-        bookingData._id,
-        { $set: { "priceDetails.securityDeposit": 0 } },
-        { session }
-      );
+      // await Booking.findByIdAndUpdate(
+      //   bookingData._id,
+      //   { $set: { "priceDetails.securityDeposit": 0 } },
+      //   { session }
+      // );
 
       // Record wallet transactions
       const walletTxns: any[] = [

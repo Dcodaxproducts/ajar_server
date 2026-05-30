@@ -371,7 +371,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       // Include security deposit from zone's rental policy (0 if not required)
       securityDeposit: securityDepositAmount,
       // Total = booking price + security deposit
-      totalPrice: priceBreakdown.totalPrice + securityDepositAmount,
+      totalPrice: priceBreakdown.totalPrice,
     };
 
     // --- WALLET BALANCE CHECK (includes security deposit in required amount) ---
