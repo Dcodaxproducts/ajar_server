@@ -38,7 +38,7 @@ export interface IRentalPolicies extends Document {
 const SecurityDepositRulesSchema = new Schema<ISecurityDepositRules>(
   {
     depositRequired: { type: Boolean, default: false },
-    depositAmount: { type: Number, default: 100 },
+    depositAmount: { type: Number, default: 0 },
     depositConditions: { type: String, default: "" },
   },
   { _id: false }
