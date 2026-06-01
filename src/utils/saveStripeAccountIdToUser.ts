@@ -13,7 +13,6 @@ export const saveStripeAccountIdToUser = async (
 
         return user;
     } catch (err) {
-        console.error("Error saving Stripe account ID:", err);
         throw err;
     }
 };

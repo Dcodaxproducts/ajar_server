@@ -92,8 +92,6 @@ export const createPaymentIntentForVendor = async (
   try {
     const applicationFeeAmount = Math.round(amount * (applicationFee / 100));
 
-    console.log({ applicationFeeAmount });
-
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency,

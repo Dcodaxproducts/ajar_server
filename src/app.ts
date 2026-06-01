@@ -48,7 +48,6 @@ app.get("/uploads/:filename", (req: Request, res: Response) => {
 
   res.sendFile(filePath, (err) => {
     if (err) {
-      console.error("Error sending file:", err);
       res.status(404).send("File not found");
     }
   });
@@ -63,13 +62,11 @@ app.use("/api", routes);
 
 // Root
 app.get("/", (req: Request, res: Response) => {
-  console.log(`HTTP Version: ${req.httpVersion}`);
   res.send("Server with Google OAuth + MongoDB + JWT is running...");
 });
 
 // Root
 app.get("/", (req: Request, res: Response) => {
-  console.log(`HTTP Version: ${req.httpVersion}`);
   res.send("server is running .... ");
 });
 

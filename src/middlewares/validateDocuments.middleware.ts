@@ -40,8 +40,6 @@ export const validateDocuments =
         .filter((f: any) => f.type === "document")
         .map((f: any) => f.name);
 
-      console.log("Required document fields:", requiredDocs);
-
       if (context === "listing") {
         // Parse documents if sent as JSON string
         if (typeof documents === "string") {
@@ -59,15 +57,11 @@ export const validateDocuments =
           req.body.documents = [];
         }
 
-        console.log("Documents sent in request body:", documents);
-
         const uploadedDocs = documents.map((doc: { name: string }) => doc.name);
-        console.log("Uploaded documents names:", uploadedDocs);
 
         const missingDocs = requiredDocs.filter((doc) => !uploadedDocs.includes(doc));
 
         if (missingDocs.length > 0) {
-          console.log("Missing documents:", missingDocs);
            res.status(400).json({
             success: false,
             message: "Missing required documents",

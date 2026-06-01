@@ -38,8 +38,6 @@ export const getDropdownByName = async (
       return;
     }
 
-    console.log(dropdown);
-
     sendResponse(
       res,
       dropdown,

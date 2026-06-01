@@ -37,7 +37,6 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     const requiredFields = ["name", "subTitle", "price", "priceUnit"];
     for (const field of requiredFields) {
       if (!normalisedBody[field]) {
-        console.log(`Missing required body field: ${field}`);
         return res.status(400).json({
           success: false,
           message: `${field} is required`,
@@ -152,7 +151,6 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       }
 
       if (field.validation?.required && (value === undefined || value === "")) {
-        console.log(`Missing required field: ${field.label}`);
         return res.status(400).json({
           success: false,
           message: `${field.label} is required`,
@@ -177,7 +175,6 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     });
 
     await listing.save();
-    console.log("Listing created successfully with ID:", listing._id);
 
     // Notify all admins about new listing
     const admins = await User.find({ role: "admin" }).lean();
@@ -1474,7 +1471,6 @@ export const cleanupAllOrphanedListings = async (
       if (!zoneExists || !subCategoryExists) {
         await MarketplaceListing.findByIdAndDelete(listingId).session(session);
         deletedCount++;
-        console.log(`Deleted orphaned listing: ${listingId}`);
       }
     }
 

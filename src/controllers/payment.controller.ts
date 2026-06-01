@@ -16,7 +16,6 @@ export const createBookingPayment = async (req: AuthRequest, res: Response) => {
     const userData = req?.user;
 
     if (bookingId) {
-      console.log(" [PAYMENT INIT] Booking ID:", bookingId);
 
       if (!mongoose.Types.ObjectId.isValid(bookingId)) {
         return res.status(400).json({ message: "Invalid booking ID" });
@@ -37,9 +36,6 @@ export const createBookingPayment = async (req: AuthRequest, res: Response) => {
       // FIX: Price is already calculated in booking controller
       const amount = booking.priceDetails.totalPrice;
       const amountInCents = Math.round(amount * 100);
-
-      console.log("Charging EXACT booking total:", amount);
-
 
       if (!amount || amountInCents < 50) {
         return res.status(400).json({
@@ -141,7 +137,6 @@ export const stripeWebhook = async (req: Request, res: Response) => {
       const userId = account.metadata?.userId;
 
       if (userId && account.details_submitted) {
-        console.log("Onboarding Complete for User:", userId);
         await User.findByIdAndUpdate(userId, {
           "stripe.connectedAccountId": account.id,
         });
@@ -167,7 +162,6 @@ export const stripeWebhook = async (req: Request, res: Response) => {
 
       // PAYMENT SUCCESS
       if (event.type === "payment_intent.succeeded") {
-        console.log("Payment confirmed by Stripe");
 
         booking.status = "approved";
         await booking.save();
@@ -177,8 +171,6 @@ export const stripeWebhook = async (req: Request, res: Response) => {
           { status: "succeeded" },
           { new: true }
         );
-
-        console.log("updated")
 
         // Notifications
         if (renter?._id) {
@@ -203,8 +195,6 @@ export const stripeWebhook = async (req: Request, res: Response) => {
 
       //  PAYMENT FAILED
       else if (event.type === "payment_intent.payment_failed") {
-        console.log(" Payment failed");
-
         await Payment.findOneAndUpdate(
           { paymentIntentId: paymentIntent.id },
           { status: "failed" }
@@ -226,7 +216,6 @@ export const stripeWebhook = async (req: Request, res: Response) => {
 
       // PAYMENT SUCCESS
       if (event.type === "payment_intent.succeeded") {
-        console.log("Payment confirmed by Stripe");
 
         const amountInDollars = paymentIntent.amount / 100;
 
@@ -346,8 +335,6 @@ export const verifyPayment = async (req: AuthRequest, res: Response) => {
 
     // ===== SUCCESS =====
     if (intent.status === "succeeded") {
-      console.log("Payment confirmed - Updating from API");
-
       const amountInDollars = intent.amount / 100;
 
       // ✅ CRITICAL: First update user wallet, THEN update transaction

@@ -38,7 +38,6 @@ const registerMessageEvents = (
       activeChats.set(userId, new Set());
     }
     activeChats.get(userId)!.add(data.chatId);
-    console.log(`User ${userId} joined chat ${data.chatId}`);
 
     // Mark all messages in this chat as delivered and read
     markMessagesAsDeliveredAndRead(userId, data.chatId, helpers);
@@ -48,7 +47,6 @@ const registerMessageEvents = (
   socket.on("chat:leave", (data: { chatId: string }) => {
     if (activeChats.has(userId)) {
       activeChats.get(userId)!.delete(data.chatId);
-      console.log(`User ${userId} left chat ${data.chatId}`);
     }
   });
 

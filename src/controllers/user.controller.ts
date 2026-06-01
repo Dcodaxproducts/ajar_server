@@ -939,7 +939,6 @@ export const updateUserProfile = async (
 
     sendResponse(res, userWithoutPassword, "Profile updated successfully", STATUS_CODES.OK);
   } catch (error) {
-    console.log(error)
     next(error);
   }
 };
@@ -1425,7 +1424,6 @@ export const googleLogin = async (
 
     //  Verify Firebase token with Admin SDK
     const decodedToken = await admin.auth().verifyIdToken(idToken);
-    console.log("Firebase decoded token:", decodedToken);
 
     const { email, name, picture, uid } = decodedToken;
 
@@ -1483,8 +1481,6 @@ export const googleLogin = async (
       id: user._id,
       role: user.role,
     });
-
-    console.log("Access Token:", accessToken);
 
     sendResponse(
       res,
@@ -1815,7 +1811,6 @@ export const addBankAccount = async (req: AuthRequest, res: Response) => {
       201
     );
   } catch (error) {
-    console.log(error);
     return sendResponse(res, null, "Server error", 500);
   }
 };

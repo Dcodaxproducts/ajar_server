@@ -649,17 +649,11 @@ const cascadeDeleteSubCategory = async (
 ) => {
   const id = new mongoose.Types.ObjectId(subCategoryId);
 
-  console.log(`Cascading delete for subCategory: ${id}`);
-
   try {
     // 1. First delete Marketplace listings (most important)
     const listingDeleteResult = await MarketplaceListing.deleteMany({
       subCategory: id,
     }).session(session);
-
-    console.log(
-      `Deleted ${listingDeleteResult.deletedCount} marketplace listings`
-    );
 
     // Verify deletion by checking if any listings remain
     const remainingListings = await MarketplaceListing.countDocuments({
@@ -675,29 +669,20 @@ const cascadeDeleteSubCategory = async (
       const forceDeleteResult = await MarketplaceListing.deleteMany({
         subCategory: id,
       }).session(session);
-
-      console.log(
-        `Force deleted ${forceDeleteResult.deletedCount} additional listings`
-      );
     }
 
     // 2. Delete other related records
     const formDeleteResult = await Form.deleteMany({
       subCategory: id,
     }).session(session);
-    console.log(`Deleted ${formDeleteResult.deletedCount} forms`);
 
     const refundMgmtResult = await RefundManagement.deleteMany({
       subCategory: id,
     }).session(session);
-    console.log(
-      `Deleted ${refundMgmtResult.deletedCount} refund management records`
-    );
 
     const refundPolicyResult = await RefundPolicy.deleteMany({
       subCategory: id,
     }).session(session);
-    console.log(`Deleted ${refundPolicyResult.deletedCount} refund policies`);
 
     // 3. Pull from Zones
     const zoneUpdateResult = await Zone.updateMany(
@@ -705,9 +690,7 @@ const cascadeDeleteSubCategory = async (
       { $pull: { subCategories: id } },
       { session }
     );
-    console.log(`Updated ${zoneUpdateResult.modifiedCount} zones`);
   } catch (error) {
-    console.error("Error during cascade delete:", error);
     throw error;
   }
 };

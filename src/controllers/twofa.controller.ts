@@ -28,7 +28,6 @@ export const enable2FA_Flag = async (req: any, res: Response) => {
 
     sendResponse(res, { twoFactor: user.twoFactor }, "2FA flag enabled. Please complete setup.", 200);
   } catch (err) {
-    console.log(err);
     sendResponse(res, null, "Server error", 500);
   }
 };
@@ -73,7 +72,6 @@ export const enable2FA_Start = async (req: any, res: Response) => {
       200
     );
   } catch (err) {
-    console.log(err);
     sendResponse(res, null, "Server error", 500);
   }
 };
@@ -165,7 +163,6 @@ export const verify2FA = async (req: any, res: Response) => {
     );
 
   } catch (err) {
-    console.log(err);
     sendResponse(res, null, "Server error", 500);
   }
 };

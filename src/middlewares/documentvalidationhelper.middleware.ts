@@ -15,7 +15,6 @@ export const validateDocuments = async (
       (d) => d.name.toLowerCase() === docName.toLowerCase()
     );
     if (!doc || !doc.filesUrl || doc.filesUrl.length === 0) {
-      console.log(`Missing or empty document: ${docName}`);
       missingDocuments.push(docName);
     }
   }

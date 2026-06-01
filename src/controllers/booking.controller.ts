@@ -158,9 +158,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         previousBookingId: existingActiveBooking._id,
       }).populate("previousBookingId").sort({ createdAt: -1 });
 
-      console.log("lastExtension status:", lastExtension?.status);
-      console.log("previousBookingId status:", (lastExtension?.previousBookingId as any)?.status);
-
       if (lastExtension && lastExtension.status !== "approved") {
         return res.status(400).json({
           message: "Your previous extension request must be approved before submitting a new one.",

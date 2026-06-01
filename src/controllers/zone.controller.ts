@@ -199,8 +199,6 @@ export const createZone = async (
       expiryTimeMinutes,
     } = req.body;
 
-    console.log("Creating zone with data:", req.body);
-
     const existingZone = await Zone.findOne({
       name: { $regex: `^${name.trim()}$`, $options: "i" },
     });
@@ -220,8 +218,6 @@ export const createZone = async (
     if (rawPolygons) {
       const parsedPolygons =
         typeof rawPolygons === "string" ? JSON.parse(rawPolygons) : rawPolygons;
-
-      console.log("Parsed polygons:", parsedPolygons);
 
       // Convert from [{lat, lng}] to GeoJSON coordinates [lng, lat]
       geoJsonPolygons = {
@@ -244,8 +240,6 @@ export const createZone = async (
           return [coords];
         })
       };
-
-      console.log("Converted to GeoJSON:", JSON.stringify(geoJsonPolygons, null, 2));
     }
 
     let subCategories: string[] = [];
@@ -255,10 +249,7 @@ export const createZone = async (
           ? JSON.parse(rawSubCategoryIds)
           : rawSubCategoryIds;
 
-      console.log("Parsed subCategory IDs:", parsedIds);
-
       if (!Array.isArray(parsedIds)) {
-        console.warn("subCategories is not an array:", parsedIds);
         sendResponse(
           res,
           null,
@@ -277,9 +268,6 @@ export const createZone = async (
       const invalidIds = parsedIds.filter(
         (id: string) => !validIds.includes(id)
       );
-
-      console.log("Valid subCategory IDs:", validIds);
-      console.warn("Invalid subCategory IDs:", invalidIds);
 
       if (invalidIds.length > 0) {
         sendResponse(
@@ -307,7 +295,6 @@ export const createZone = async (
     });
 
     await newZone.save();
-    console.log("Zone created:", newZone);
 
     sendResponse(
       res,
@@ -316,7 +303,6 @@ export const createZone = async (
       STATUS_CODES.CREATED
     );
   } catch (error) {
-    console.error("Error creating zone:", error);
     next(error);
   }
 };

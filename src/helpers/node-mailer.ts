@@ -41,7 +41,6 @@ export const sendEmail = async ({
   subject: string;
   content: string;
 }) => {
-  console.log({ to });
   try {
     const transporter = await createNodeMailerTransporter();
 
@@ -65,7 +64,6 @@ export const sendEmail = async ({
     const info = await transporter.sendMail(mailOptions);
     return info.response;
   } catch (error) {
-    console.error("Error sending email:", error);
     return (error as any).response;
   }
 };

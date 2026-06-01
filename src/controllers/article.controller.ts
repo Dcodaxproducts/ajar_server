@@ -37,7 +37,6 @@ export const createArticle = async (req: AuthRequest, res: Response) => {
 
     sendResponse(res, article, "Article created successfully");
   } catch (error) {
-    console.error(error);
     sendResponse(
       res,
       null,
@@ -71,7 +70,6 @@ export const updateArticle = async (req: AuthRequest, res: Response) => {
     await article.save();
     sendResponse(res, article, "Article updated successfully");
   } catch (error) {
-    console.error(error);
     sendResponse(
       res,
       null,
@@ -113,7 +111,6 @@ export const getAllArticles = async (req: Request, res: Response) => {
       "Retrieved successfully"
     );
   } catch (error) {
-    console.error(error);
     sendResponse(
       res,
       null,
@@ -135,7 +132,6 @@ export const getArticleById = async (req: Request, res: Response) => {
 
     sendResponse(res, article, "Retrieved successfully");
   } catch (error) {
-    console.error(error);
     sendResponse(
       res,
       null,
@@ -167,7 +163,6 @@ export const deleteArticle = async (req: Request, res: Response) => {
 
     sendResponse(res, article, "Deleted successfully");
   } catch (error) {
-    console.error(error);
     sendResponse(
       res,
       null,
@@ -214,7 +209,6 @@ export const searchArticles = async (req: Request, res: Response) => {
       "Search results retrieved successfully"
     );
   } catch (error) {
-    console.error(error);
     sendResponse(
       res,
       null,

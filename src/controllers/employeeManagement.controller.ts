@@ -13,9 +13,6 @@ export const createEmployee = async (
   next: NextFunction
 ) => {
   try {
-    console.log("Incoming request body:", req.body);
-    console.log("Incoming files:", req.files);
-
     const {
       name,
       email,
@@ -27,8 +24,6 @@ export const createEmployee = async (
       languages,
     } = req.body;
 
-    console.log("Extracted fields:", { name, email, phone, allowAccess });
-
     const existingEmail = await Employee.findOne({ email });
     if (existingEmail) {
       console.warn("Email already exists:", email);
@@ -38,10 +33,8 @@ export const createEmployee = async (
 
     // Validate allowAccess as Role ObjectId
     if (allowAccess) {
-      console.log("Checking Role ID:", allowAccess);
       const roleExists = await Role.findById(allowAccess).lean();
       if (!roleExists) {
-        console.error("Invalid Role ID:", allowAccess);
         sendResponse(
           res,
           null,
@@ -56,8 +49,6 @@ export const createEmployee = async (
       | { [fieldname: string]: { filename: string }[] }
       | undefined;
 
-    console.log("📸 Multer processed files:", files);
-
     const images = Array.isArray(files?.images)
       ? files!.images.map((file) => `/uploads/${file.filename}`)
       : [];
@@ -65,9 +56,6 @@ export const createEmployee = async (
     const profileImage = files?.profileImage?.[0]
       ? `/uploads/${files.profileImage[0].filename}`
       : undefined;
-
-    console.log("Final images:", images);
-    console.log("Final profileImage:", profileImage);
 
     const newEmployee = new Employee({
       name,
@@ -83,7 +71,6 @@ export const createEmployee = async (
     });
 
     await newEmployee.save();
-    console.log("Employee saved successfully:", newEmployee._id);
 
     sendResponse(
       res,
@@ -92,7 +79,6 @@ export const createEmployee = async (
       STATUS_CODES.CREATED
     );
   } catch (error) {
-    console.error("Error in createEmployee:", error);
     next(error);
   }
 };

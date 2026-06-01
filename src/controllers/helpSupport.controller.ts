@@ -28,7 +28,6 @@ export const createHelpSupport = async (req: AuthRequest, res: Response) => {
 
     sendResponse(res, ticket, "Created successfully");
   } catch (error) {
-    console.error(error);
     sendResponse(
       res,
       null,
@@ -69,7 +68,6 @@ export const updateHelpSupportStatus = async (
 
     sendResponse(res, ticket, "Status updated successfully");
   } catch (error) {
-    console.error(error);
     sendResponse(
       res,
       null,
@@ -108,7 +106,6 @@ export const getMyHelpSupportTickets = async (
       "Retrieved successfully"
     );
   } catch (error) {
-    console.error(error);
     sendResponse(
       res,
       null,
@@ -134,7 +131,6 @@ export const getHelpSupportById = async (req: AuthRequest, res: Response) => {
 
     sendResponse(res, ticket, "Retrieved successfully");
   } catch (error) {
-    console.error(error);
     sendResponse(
       res,
       null,
@@ -160,7 +156,6 @@ export const deleteHelpSupportById = async (
 
     sendResponse(res, ticket, "Deleted successfully");
   } catch (error) {
-    console.error(error);
     sendResponse(
       res,
       null,
