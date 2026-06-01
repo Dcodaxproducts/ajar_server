@@ -55,7 +55,7 @@ export const createNewForm = async (
     const userFieldIds = fields.map((id: string) => new mongoose.Types.ObjectId(id));
 
     // 3. Required system fields
-    const requiredFieldNames = ["name", "subTitle", "description", "price", "priceUnit", "rentalImages"];
+    const requiredFieldNames = ["name", "subTitle", "description", "price", "priceUnit", "rentalImages", "location"];
     const requiredFields = await Field.find({ name: { $in: requiredFieldNames } });
 
     if (requiredFields.length !== requiredFieldNames.length) {
@@ -497,7 +497,7 @@ export const getFormByZoneAndSubCategory = async (
     );
 
     const filteredFields = isAdmin
-      ? allLocalizedFields 
+      ? allLocalizedFields
       : allLocalizedFields.filter(
         (field) => !dependsOnIds.has(field._id.toString())
       );
