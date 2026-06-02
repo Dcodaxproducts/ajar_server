@@ -137,13 +137,25 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       }
     }
 
+    // Safe parser function helper
+    const safeParse = (data: any) => {
+      if (typeof data === "string") {
+        try {
+          return JSON.parse(data);
+        } catch (e) {
+          return data;
+        }
+      }
+      return data;
+    };
+
     // Validate dynamic fields from form
     const fields = (form as any).fields as any[];
     const requestData: any = {};
 
     for (const field of fields) {
       const fieldName = toCamelCase(field.name);
-      const value = normalisedBody[fieldName];
+      let value = normalisedBody[fieldName];
 
       // Skip document-type fields (file uploads handled above)
       if (field.type === "document") {
@@ -155,6 +167,11 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
           success: false,
           message: `${field.label} is required`,
         });
+      }
+
+      // Automatically check and parse if it's one of our target 3 fields
+      if (["location", "unavailability", "dynamicPricing"].includes(fieldName)) {
+        value = safeParse(value);
       }
 
       if (value !== undefined) requestData[fieldName] = value;
