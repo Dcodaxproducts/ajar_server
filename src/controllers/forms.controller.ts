@@ -24,6 +24,10 @@ export const createNewForm = async (
       setting,
       userDocuments,
       leaserDocuments,
+      // Destructure only these 3 fields
+      location,
+      unavailability,
+      dynamicPricing,
     } = req.body;
 
     if (!name || !description) {
@@ -55,7 +59,7 @@ export const createNewForm = async (
     const userFieldIds = fields.map((id: string) => new mongoose.Types.ObjectId(id));
 
     // 3. Required system fields
-    const requiredFieldNames = ["name", "subTitle", "description", "price", "priceUnit", "rentalImages", "location"];
+    const requiredFieldNames = ["name", "subTitle", "description", "price", "priceUnit", "rentalImages", "location","unavailability","dynamicPricing"];
     const requiredFields = await Field.find({ name: { $in: requiredFieldNames } });
 
     if (requiredFields.length !== requiredFieldNames.length) {
@@ -77,6 +81,18 @@ export const createNewForm = async (
       new Map(allFieldIds.map((id) => [id.toString(), id])).values()
     );
 
+    // Safe parser function helper
+    const safeParse = (data: any) => {
+      if (typeof data === "string") {
+        try {
+          return JSON.parse(data);
+        } catch (e) {
+          return data;
+        }
+      }
+      return data;
+    };
+
     const form = new Form({
       name,
       description,
@@ -87,6 +103,10 @@ export const createNewForm = async (
       setting,
       userDocuments,
       leaserDocuments,
+      // Parsed 3 fields saved here
+      location: safeParse(location),
+      unavailability: safeParse(unavailability),
+      dynamicPricing: safeParse(dynamicPricing),
     });
 
     await form.save();
@@ -117,7 +137,6 @@ export const createNewForm = async (
     next(error);
   }
 };
-
 // export const createNewForm = async (
 //   req: Request,
 //   res: Response,
@@ -137,77 +156,52 @@ export const createNewForm = async (
 //     } = req.body;
 
 //     if (!name || !description) {
-//       sendResponse(
-//         res,
-//         null,
-//         "Form name and description are required",
-//         STATUS_CODES.BAD_REQUEST
-//       );
-//       return;
+//       sendResponse(res, null, "Form name and description are required", STATUS_CODES.BAD_REQUEST);
+//       return
 //     }
 
-//     if (
-//       !mongoose.Types.ObjectId.isValid(subCategory) ||
-//       !mongoose.Types.ObjectId.isValid(zone) ||
-//       !Array.isArray(fields) ||
-//       !fields.every((id: string) => mongoose.Types.ObjectId.isValid(id))
-//     ) {
-//       sendResponse(
-//         res,
-//         null,
-//         "Invalid subCategoryId, zoneId, or fieldsIds",
-//         STATUS_CODES.BAD_REQUEST
-//       );
-//       return;
+//     // Validate IDs
+//     if (!mongoose.Types.ObjectId.isValid(subCategory) || !mongoose.Types.ObjectId.isValid(zone)) {
+//       sendResponse(res, null, "Invalid subCategoryId or zoneId", STATUS_CODES.BAD_REQUEST);
+//       return
 //     }
 
-//     const subCategoryExists = await SubCategory.findById(subCategory);
-//     if (!subCategoryExists) {
-//       sendResponse(res, null, "SubCategory not found", STATUS_CODES.NOT_FOUND);
-//       return;
+//     // 1. Check Uniqueness
+//     const formAlreadyExists = await Form.findOne({ subCategory, zone });
+//     if (formAlreadyExists) {
+//       sendResponse(res, null, "Form already exists for this zone and sub-category", STATUS_CODES.CONFLICT);
+//       return
 //     }
 
-//     const validUserFields = await Field.find({ _id: { $in: fields } });
-
-//     if (validUserFields.length !== fields.length) {
-//       sendResponse(res, null, "Some fields are invalid", STATUS_CODES.BAD_REQUEST);
-//       return;
+//     // 2. Validate User Selected Fields & Maintain Order
+//     const validUserFieldsRaw = await Field.find({ _id: { $in: fields } });
+//     if (validUserFieldsRaw.length !== fields.length) {
+//       sendResponse(res, null, "Some selected fields are invalid", STATUS_CODES.BAD_REQUEST);
+//       return
 //     }
 
-//     const requiredFieldNames = [
-//       "name",
-//       "subTitle",
-//       "description",
-//       "price",
-//       "priceUnit",
-//       "rentalImages",
-//     ];
+//     // Map IDs to maintain the exact order sent by frontend
+//     const userFieldIds = fields.map((id: string) => new mongoose.Types.ObjectId(id));
 
-//     const requiredFields = await Field.find({
-//       name: { $in: requiredFieldNames },
-//     });
+//     // 3. Required system fields
+//     const requiredFieldNames = ["name", "subTitle", "description", "price", "priceUnit", "rentalImages", "location","unavailability","dynamicPricing"];
+//     const requiredFields = await Field.find({ name: { $in: requiredFieldNames } });
 
 //     if (requiredFields.length !== requiredFieldNames.length) {
-//       const found = requiredFields.map((f) => f.name);
-//       const missing = requiredFieldNames.filter((n) => !found.includes(n));
-
-//       sendResponse(
-//         res,
-//         null,
-//         `Required fields missing in database: ${missing.join(", ")}`,
-//         STATUS_CODES.BAD_REQUEST
-//       );
-//       return;
+//       sendResponse(res, null, "Required system fields missing in database", STATUS_CODES.BAD_REQUEST);
+//       return
 //     }
 
+//     // 4. Fixed fields
 //     const fixedFields = await Field.find({ isFixed: true });
 
 //     const allFieldIds: mongoose.Types.ObjectId[] = [
 //       ...requiredFields.map((f) => f._id as mongoose.Types.ObjectId),
 //       ...fixedFields.map((f) => f._id as mongoose.Types.ObjectId),
-//       ...validUserFields.map((f) => f._id as mongoose.Types.ObjectId),
+//       ...userFieldIds,
 //     ];
 
+//     // Deduplicate just in case
 //     const uniqueFieldIds = Array.from(
 //       new Map(allFieldIds.map((id) => [id.toString(), id])).values()
 //     );
@@ -226,7 +220,28 @@ export const createNewForm = async (
 
 //     await form.save();
 
-//     sendResponse(res, form, "Form created successfully", STATUS_CODES.CREATED);
+//     // 5. Return populated response (5 levels deep)
+//     const populatedForm = await Form.findById(form._id)
+//       .populate("zone")
+//       .populate("subCategory")
+//       .populate({
+//         path: "fields",
+//         populate: {
+//           path: "conditional.dependsOn",
+//           populate: {
+//             path: "conditional.dependsOn",
+//             populate: {
+//               path: "conditional.dependsOn",
+//               populate: {
+//                 path: "conditional.dependsOn",
+//                 populate: { path: "conditional.dependsOn" } // 5 Levels
+//               }
+//             }
+//           }
+//         },
+//       });
+
+//     sendResponse(res, populatedForm, "Form created successfully", STATUS_CODES.CREATED);
 //   } catch (error) {
 //     next(error);
 //   }
