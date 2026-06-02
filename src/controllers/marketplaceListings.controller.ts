@@ -516,7 +516,7 @@ export const getAllMarketplaceListings = async (
 
     /* ---------------- ROLE BASED FILTERS (unchanged) ---------------- */
     const adminRoles = ["admin", "staff"];
-    
+
     if (req.user) {
       if (adminRoles.includes(req.user.role)) {
         if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
@@ -1297,8 +1297,9 @@ export const getListingBookedDates = async (
       return;
     }
 
+    // UPDATED: Added "unavailability" field in select query
     const listing = await MarketplaceListing.findById(id)
-      .select("_id priceUnit")
+      .select("_id priceUnit unavailability")
       .lean();
 
     if (!listing) {
@@ -1329,6 +1330,27 @@ export const getListingBookedDates = async (
     })
       .select("dates -_id")
       .lean();
+
+    // NEW: Safe parsing logic for listing unavailability dates array
+    let listingUnavailableDates: string[] = [];
+    if (listing.unavailability) {
+      if (typeof listing.unavailability === "string") {
+        try {
+          listingUnavailableDates = JSON.parse(listing.unavailability);
+        } catch (e) {
+          listingUnavailableDates = [];
+        }
+      } else if (Array.isArray(listing.unavailability)) {
+        listingUnavailableDates = listing.unavailability;
+      }
+    }
+
+    // Filter unavailability dates that fall strictly within the requested range
+    const startStr = rangeStart.toISOString().split("T")[0];
+    const endStr = rangeEnd.toISOString().split("T")[0];
+    const filteredUnavailableDates = listingUnavailableDates.filter(
+      (d) => d >= startStr && d <= endStr
+    );
 
     // ================================================================
     // CASE 1: HOUR-BASED — return blocked time slots per date
@@ -1394,6 +1416,18 @@ export const getListingBookedDates = async (
         }
       }
 
+      // NEW: Inject unavailability dates from listing as fully blocked hours (00:00 to 23:59)
+      for (const unAvDate of filteredUnavailableDates) {
+        if (!blockedSlotsMap[unAvDate]) {
+          blockedSlotsMap[unAvDate] = [];
+        }
+        // Check if full block is already there, if not push it
+        const alreadyFull = blockedSlotsMap[unAvDate].some(s => s.from === "00:00" && s.to === "23:59");
+        if (!alreadyFull) {
+          blockedSlotsMap[unAvDate].push({ from: "00:00", to: "23:59" });
+        }
+      }
+
       const blockedSlots = Object.entries(blockedSlotsMap).map(
         ([date, slots]) => ({ date, slots })
       );
@@ -1439,6 +1473,9 @@ export const getListingBookedDates = async (
         current.setUTCDate(current.getUTCDate() + 1);
       }
     }
+
+    // NEW: Merge filtered unavailable dates array straight into booked dates array
+    blockedDates.push(...filteredUnavailableDates);
 
     const uniqueBlockedDates = [...new Set(blockedDates)].sort();
 
@@ -1663,12 +1700,28 @@ export const updateMarketplaceListing = async (
       }
     }
 
+    const safeParse = (data: any) => {
+      if (typeof data === "string") {
+        try {
+          return JSON.parse(data);
+        } catch (e) {
+          return data;
+        }
+      }
+      return data;
+    };
+
     // Filter body for allowed fields
     const allowedUpdates = Object.keys(existingListing.toObject());
     const filteredBody: any = {};
     for (const key of Object.keys(req.body)) {
       if (allowedUpdates.includes(key)) {
         filteredBody[key] = req.body[key];
+      }
+    }
+    for (const field of ["location", "unavailability", "dynamicPricing"]) {
+      if (filteredBody[field] !== undefined) {
+        filteredBody[field] = safeParse(filteredBody[field]);
       }
     }
 
