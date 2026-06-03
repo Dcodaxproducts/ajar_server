@@ -382,65 +382,6 @@ export const getUserDetails = async (
     if (hasRole("admin") || hasRole("user")) {
       user = await User.findById(userId).select("-password").lean();
 
-      if (hasRole("user") && user) {
-        const now = new Date();
-        const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-        let needsSave = false;
-
-        user.documents = await Promise.all(
-          (user.documents ?? []).map(async (d: any) => {
-            if (d.expiryDate && new Date(d.expiryDate) < now && d.status !== "expired") {
-              needsSave = true;
-              await sendNotification(
-                userId,
-                "Document Expired",
-                `Your document "${d.name}" has expired. Please renew it to restore your account access.`,
-                { type: "system" }
-              );
-              return { ...d, status: "expired" };
-            }
-
-            // ✅ Send 7-day reminder once
-            if (
-              d.expiryDate &&
-              new Date(d.expiryDate) > now &&
-              new Date(d.expiryDate) <= sevenDaysLater &&
-              !d.reminderSent
-            ) {
-              await sendNotification(
-                userId,
-                "Document Expiring Soon",
-                `Your document "${d.name}" will expire in 7 days. Please renew it to avoid account suspension.`,
-                { type: "system" }
-              );
-              needsSave = true;
-              return { ...d, reminderSent: true };
-            }
-
-            return d;
-          })
-        );
-
-        const hasExpiredDoc = user.documents?.some((d: any) => d.status === "expired");
-
-        const allDocsValid = user.documents?.every((d: any) => d.status !== "expired");
-
-        if (hasExpiredDoc && user.status !== "inactive") {
-          needsSave = true;
-          user.status = "inactive";
-        }
-        else if (allDocsValid && user.status === "inactive") {
-          needsSave = true;
-          user.status = "active";
-        }
-
-        if (needsSave) {
-          await User.findByIdAndUpdate(userId, {
-            status: user.status,
-            documents: user.documents,
-          });
-        }
-      }
     } else if (hasRole("staff")) {
       user = await Employee.findById(userId)
         .populate({ path: "allowAccess", select: "-__v" })
@@ -743,6 +684,14 @@ const paginateQuery = async <T>(
   return { data, total, page, limit };
 };
 
+const activateUserIfDocumentsValid = (user: any) => {
+  const hasExpiredDoc = user.documents?.some((d: any) => d.status === "expired");
+
+  if (!hasExpiredDoc && user.status === "inactive") {
+    user.status = "active";
+  }
+};
+
 export const getAllUsersWithStats = async (
   req: AuthRequest,
   res: Response,
@@ -850,6 +799,7 @@ export const updateUserProfile = async (
     }
 
     const updates: any = { ...req.body };
+    let documentsChanged = false;
 
     const user = await User.findById(userId);
 
@@ -897,6 +847,7 @@ export const updateUserProfile = async (
           existingDoc.fileUrl = fileUrl;
           existingDoc.status = resolvedStatus;
           existingDoc.reason = undefined;
+          documentsChanged = true;
         } else {
           // Fresh document
           user.documents.push({
@@ -904,6 +855,7 @@ export const updateUserProfile = async (
             fileUrl,
             status: resolvedStatus,
           });
+          documentsChanged = true;
         }
       }
     }
@@ -928,11 +880,16 @@ export const updateUserProfile = async (
         const doc = user.documents.find((d) => d.name === fieldName);
         if (doc) {
           doc.expiryDate = new Date(expiryDate);
+          documentsChanged = true;
         }
       }
     }
 
     Object.assign(user, updates);
+
+    if (documentsChanged) {
+      activateUserIfDocumentsValid(user);
+    }
 
     const updatedUser = await user.save();
     const { password, ...userWithoutPassword } = updatedUser.toObject();
@@ -1345,11 +1302,9 @@ export const removeUserDocument = async (req: AuthRequest, res: Response, next: 
     }
 
     // ✅ Remove the entire document subdoc by name
-    await User.findByIdAndUpdate(
-      userId,
-      { $pull: { documents: { name: fileUrl } } },
-      { new: true }
-    );
+    user.documents = user.documents.filter((d) => d.name !== fileUrl) as any;
+    activateUserIfDocumentsValid(user);
+    await user.save();
 
     res.status(200).json({
       success: true,

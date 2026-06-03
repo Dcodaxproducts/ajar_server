@@ -52,9 +52,18 @@ const normalizeBookingDates = (checkInRaw: string, checkOutRaw: string) => {
 export const createBooking = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user as { id: string; role: string };
-    if (!user) return res.status(401).json({ message: "Unauthorised" });
-
     const { marketplaceListingId, dates, extensionDate, ...bookingData } = req.body;
+
+    const renter = await User.findById(user.id);
+    if (!renter) {
+      return res.status(404).json({ message: "Renter not found" });
+    }
+
+    if (renter.status === "inactive" || renter.status === "blocked") {
+      return res.status(403).json({
+        message: `Your account is ${renter.status}. You cannot create a booking.`
+      });
+    }
 
     if (!mongoose.Types.ObjectId.isValid(marketplaceListingId)) {
       return res.status(400).json({ message: "Invalid Marketplace Listing ID" });
@@ -73,11 +82,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     // Prepare rates
     const adminCommissionRate = (form.setting.renterCommission.value + form.setting.leaserCommission.value) / 100;
     const taxRate = form.setting.tax / 100;
-
-    const renter = await User.findById(user.id);
-    if (!renter) {
-      return res.status(404).json({ message: "Renter not found" });
-    }
 
     // --- SECURITY DEPOSIT + RENTAL POLICY FETCH ---
     // Fetch the zone to get the linked RentalPolicy
