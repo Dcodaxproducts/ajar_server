@@ -22,7 +22,6 @@ import { calculateBookingPrice } from "../utils/calculateBookingPrice";
 import { Payment } from "../models/payment.model";
 import { WalletTransaction } from "../models/walletTransaction.model";
 import { DamageReport } from "../models/damageReport.model";
-import { RefundRequest } from "../models/refundRequest.model";
 import { Zone } from "../models/zone.model";
 import { IRentalDuration, IRentalPolicies } from "../models/rentalPolicy.model";
 import { checkAndUpdateBookingExpiry } from "../utils/bookingExpiry";
@@ -49,7 +48,6 @@ const normalizeBookingDates = (checkInRaw: string, checkOutRaw: string) => {
   return { checkIn, checkOut };
 };
 
-// createBooking
 // createBooking
 export const createBooking = async (req: AuthRequest, res: Response) => {
   try {
@@ -241,6 +239,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         checkOut: extensionEndDate,
         adminCommissionRate,
         taxRate,
+        dynamicPricing: listing?.dynamicPricing,
       });
 
       const priceDetails = {
@@ -359,6 +358,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       checkOut: checkOutDate,
       adminCommissionRate,
       taxRate,
+      dynamicPricing: listing.dynamicPricing
     });
 
     const priceDetails = {
