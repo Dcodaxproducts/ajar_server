@@ -1914,7 +1914,7 @@ export const getBookingById = async (
           priceDetails: childWithPayment.priceDetails ?? null,
           pricingMeta: childWithPayment.pricingMeta ?? null,
           extraRequestCharges: childWithPayment.extraRequestCharges ?? null,
-          paymentStatus: childWithPayment.paymentStatus ?? null,
+          status: childWithPayment.status ?? null,
         };
       })
     );
