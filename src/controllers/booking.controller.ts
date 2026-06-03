@@ -138,167 +138,201 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       return null; // Valid
     };
 
-    /* ---------------------------------------------------------
-       EXTENSION LOGIC
-    --------------------------------------------------------- */
-    const existingActiveBooking = await Booking.findOne({
-      renter: user.id,
-      marketplaceListingId: listingId,
-      "bookingDates.handover": { $ne: null },
-      $or: [
-        { "bookingDates.returnDate": { $exists: false } },
-        { "bookingDates.returnDate": null },
-      ],
-    });
-
-    if (existingActiveBooking) {
-      if (!extensionDate) {
-        return res.status(400).json({ message: "You have an active booking for this listing. Please provide an extension date to extend your rental period." });
-      }
-
-      const lastExtension = await Booking.findOne({
-        previousBookingId: existingActiveBooking._id,
-      }).populate("previousBookingId").sort({ createdAt: -1 });
-
-      if (lastExtension && lastExtension.status !== "approved") {
-        return res.status(400).json({
-          message: "Your previous extension request must be approved before submitting a new one.",
-        });
-      }
-
-      // --- EXTENSION ALLOWED CHECK ---
-      const allExtensions = await Booking.find({
-        previousBookingId: existingActiveBooking._id,
-      }).sort({ "dates.checkOut": -1 }).limit(1);
-
-      const allExtensionIds = await Booking.find({
-        previousBookingId: existingActiveBooking._id,
-      }).distinct("_id");
-
-      const excludeIds = [existingActiveBooking._id, ...allExtensionIds];
-
-      const latestCheckOut = allExtensions.length > 0
-        ? allExtensions[0].dates.checkOut
-        : existingActiveBooking.dates.checkOut;
-
-      const extensionStartDate = new Date(latestCheckOut);
-
-      // For hourly: extensionDate comes as full ISO with local offset — parse as-is
-      // For date-only (day/month/year): set to end of day so full day is included
-      let extensionEndDate: Date;
-      if (isDateOnly(extensionDate)) {
-        extensionEndDate = new Date(extensionDate);
-        extensionEndDate.setUTCHours(23, 59, 59, 999);
-      } else {
-        extensionEndDate = new Date(extensionDate); // hourly — full ISO, no adjustment
-      }
-
-      // For hourly: allow extension from same checkout time onwards (minimum 1 hour after)
-      // For other units: end date must simply be after start date
-      const isHourlyUnit = listing.priceUnit === "hour";
-
-      if (isHourlyUnit) {
-        const minAllowedEnd = new Date(extensionStartDate.getTime() + 60 * 60 * 1000); // +1 hour
-        if (extensionEndDate < minAllowedEnd) {
-          return res.status(400).json({
-            message: "Hourly extension must be at least 1 hour after current checkout.",
-          });
-        }
-      } else {
-        if (extensionEndDate <= extensionStartDate) {
-          return res.status(400).json({
-            message: "Extension date must be after previous checkout date.",
-          });
-        }
-      }
-
-      // --- RENTAL DURATION LIMITS CHECK (EXTENSION) ---
-      const extensionDurationError = validateRentalDuration(
-        extensionStartDate,
-        extensionEndDate,
-        listing.priceUnit as PriceUnit
-      );
-      if (extensionDurationError) {
-        return res.status(400).json({ message: extensionDurationError });
-      }
-
-      const isAvailableForExtend = await isBookingDateAvailable(
-        listingId,
-        extensionStartDate,
-        extensionEndDate,
-        excludeIds
-      );
-
-      if (!isAvailableForExtend) {
-        return res.status(400).json({
-          message: "Listing is not available for the selected extension period",
-        });
-      }
-
-      // FIX: Use the shared utility for consistent calculation
-      const priceBreakdown = calculateBookingPrice({
-        basePrice: listing.price,
-        unit: listing.priceUnit,
-        checkIn: extensionStartDate,
-        checkOut: extensionEndDate,
-        adminCommissionRate,
-        taxRate,
-        dynamicPricing: listing?.dynamicPricing,
-      });
-
-      const priceDetails = {
-        price: priceBreakdown.basePrice,
-        adminFee: 0,
-        tax: 0,
-        securityDeposit: 0,
-        totalPrice: priceBreakdown.basePrice,
-      };
-
-      if (renter.wallet.balance < priceDetails.totalPrice) {
-        return res.status(400).json({
-          message: "Insufficient wallet balance to request extension. Please add funds.",
-          requiredBalance: priceDetails.totalPrice,
-          currentBalance: renter.wallet.balance,
-        });
-      }
-
-      const extendedBooking = await Booking.create({
-        ...bookingData,
-        dates: {
-          checkIn: existingActiveBooking.dates.checkIn,
-          checkOut: extensionEndDate,
-        },
+/* ---------------------------------------------------------
+         EXTENSION LOGIC
+      --------------------------------------------------------- */
+      const existingActiveBooking = await Booking.findOne({
         renter: user.id,
-        leaser: leaserId,
         marketplaceListingId: listingId,
-        status: "pending",
-        priceDetails,
-        pricingMeta: {
-          priceFromListing: listing.price,
-          unit: listing.priceUnit,
-          duration: priceBreakdown.duration,
-        },
-        isExtend: false,
-        previousBookingId: existingActiveBooking._id,
-        extensionRequestedDate: extensionEndDate,
-        rentalPolicyId: rentalPolicy?._id, // Store which policy was active at time of booking
+        "bookingDates.handover": { $ne: null },
+        $or: [
+          { "bookingDates.returnDate": { $exists: false } },
+          { "bookingDates.returnDate": null },
+        ],
       });
 
-      try {
-        await sendNotification(
-          leaserId.toString(),
-          "New Extension Request",
-          `Renter requested an extension for listing "${listing.name}".`,
-          { bookingId: extendedBooking._id.toString(), listingId: listing._id.toString(), type: "extension", status: "pending" }
+      if (existingActiveBooking) {
+        if (!extensionDate) {
+          return res.status(400).json({ message: "You have an active booking for this listing. Please provide an extension date to extend your rental period." });
+        }
+
+        const lastExtension = await Booking.findOne({
+          previousBookingId: existingActiveBooking._id,
+        }).populate("previousBookingId").sort({ createdAt: -1 });
+
+        if (lastExtension && lastExtension.status !== "approved") {
+          return res.status(400).json({
+            message: "Your previous extension request must be approved before submitting a new one.",
+          });
+        }
+
+        // --- EXTENSION ALLOWED CHECK ---
+        const allExtensions = await Booking.find({
+          previousBookingId: existingActiveBooking._id,
+        }).sort({ "dates.checkOut": -1 }).limit(1);
+
+        const allExtensionIds = await Booking.find({
+          previousBookingId: existingActiveBooking._id,
+        }).distinct("_id");
+
+        const excludeIds = [existingActiveBooking._id, ...allExtensionIds];
+
+        const latestCheckOut = allExtensions.length > 0
+          ? allExtensions[0].dates.checkOut
+          : existingActiveBooking.dates.checkOut;
+
+        const extensionStartDate = new Date(latestCheckOut);
+
+        // For hourly: extensionDate comes as full ISO with local offset — parse as-is
+        // For date-only (day/month/year): set to end of day so full day is included
+        let extensionEndDate: Date;
+        if (isDateOnly(extensionDate)) {
+          extensionEndDate = new Date(extensionDate);
+          extensionEndDate.setUTCHours(23, 59, 59, 999);
+        } else {
+          extensionEndDate = new Date(extensionDate); // hourly — full ISO, no adjustment
+        }
+
+        // For hourly: allow extension from same checkout time onwards (minimum 1 hour after)
+        // For other units: end date must simply be after start date
+        const isHourlyUnit = listing.priceUnit === "hour";
+
+        if (isHourlyUnit) {
+          const minAllowedEnd = new Date(extensionStartDate.getTime() + 60 * 60 * 1000); // +1 hour
+          if (extensionEndDate < minAllowedEnd) {
+            return res.status(400).json({
+              message: "Hourly extension must be at least 1 hour after current checkout.",
+            });
+          }
+        } else {
+          if (extensionEndDate <= extensionStartDate) {
+            return res.status(400).json({
+              message: "Extension date must be after previous checkout date.",
+            });
+          }
+        }
+
+        // --- RENTAL DURATION LIMITS CHECK (EXTENSION) ---
+        const extensionDurationError = validateRentalDuration(
+          extensionStartDate,
+          extensionEndDate,
+          listing.priceUnit as PriceUnit
         );
-      } catch (err) { console.error(err); }
+        if (extensionDurationError) {
+          return res.status(400).json({ message: extensionDurationError });
+        }
 
-      return res.status(201).json({
-        message: "Extension request created successfully",
-        booking: extendedBooking,
-        priceBreakdown,
-      });
-    }
+        const isAvailableForExtend = await isBookingDateAvailable(
+          listingId,
+          extensionStartDate,
+          extensionEndDate,
+          excludeIds
+        );
+
+        if (!isAvailableForExtend) {
+          return res.status(400).json({
+            message: "Listing is not available for the selected extension period",
+          });
+        }
+
+        // =========================================================================
+        // FIXED FOR EXTENSIONS: Align lookup progression with advanced frontend indexing
+        // =========================================================================
+        let priceBreakdown;
+        if (!isHourlyUnit) {
+          // Clone timestamps so we do not mutate parameters used to save the model
+          const calculationStart = new Date(extensionStartDate);
+          const calculationEnd = new Date(extensionEndDate);
+
+          // Shift progression offset boundaries forward by exactly 1 calendar step to
+          // mirror how the UI loop pre-advances dates prior to checking dynamic keys
+          if (listing.priceUnit === "day") {
+            calculationStart.setUTCDate(calculationStart.getUTCDate() + 1);
+            calculationEnd.setUTCDate(calculationEnd.getUTCDate() + 1);
+          } else if (listing.priceUnit === "month") {
+            calculationStart.setUTCMonth(calculationStart.getUTCMonth() + 1);
+            calculationEnd.setUTCMonth(calculationEnd.getUTCMonth() + 1);
+          } else if (listing.priceUnit === "year") {
+            calculationStart.setUTCFullYear(calculationStart.getUTCFullYear() + 1);
+            calculationEnd.setUTCFullYear(calculationEnd.getUTCFullYear() + 1);
+          }
+
+          priceBreakdown = calculateBookingPrice({
+            basePrice: listing.price,
+            unit: listing.priceUnit,
+            checkIn: calculationStart,
+            checkOut: calculationEnd,
+            adminCommissionRate,
+            taxRate,
+            dynamicPricing: listing?.dynamicPricing,
+          });
+        } else {
+          // Hourly execution paths track standard linear millisecond updates cleanly
+          priceBreakdown = calculateBookingPrice({
+            basePrice: listing.price,
+            unit: listing.priceUnit,
+            checkIn: extensionStartDate,
+            checkOut: extensionEndDate,
+            adminCommissionRate,
+            taxRate,
+            dynamicPricing: listing?.dynamicPricing,
+          });
+        }
+        // =========================================================================
+
+        const priceDetails = {
+          price: priceBreakdown.basePrice,
+          adminFee: 0,
+          tax: 0,
+          securityDeposit: 0,
+          totalPrice: priceBreakdown.basePrice,
+        };
+
+        if (renter.wallet.balance < priceDetails.totalPrice) {
+          return res.status(400).json({
+            message: "Insufficient wallet balance to request extension. Please add funds.",
+            requiredBalance: priceDetails.totalPrice,
+            currentBalance: renter.wallet.balance,
+          });
+        }
+
+        const extendedBooking = await Booking.create({
+          ...bookingData,
+          dates: {
+            checkIn: existingActiveBooking.dates.checkIn,
+            checkOut: extensionEndDate,
+          },
+          renter: user.id,
+          leaser: leaserId,
+          marketplaceListingId: listingId,
+          status: "pending",
+          priceDetails,
+          pricingMeta: {
+            priceFromListing: listing.price,
+            unit: listing.priceUnit,
+            duration: priceBreakdown.duration,
+          },
+          isExtend: false,
+          previousBookingId: existingActiveBooking._id,
+          extensionRequestedDate: extensionEndDate,
+          rentalPolicyId: rentalPolicy?._id,
+        });
+
+        try {
+          await sendNotification(
+            leaserId.toString(),
+            "New Extension Request",
+            `Renter requested an extension for listing "${listing.name}".`,
+            { bookingId: extendedBooking._id.toString(), listingId: listing._id.toString(), type: "extension", status: "pending" }
+          );
+        } catch (err) { console.error(err); }
+
+        return res.status(201).json({
+          message: "Extension request created successfully",
+          booking: extendedBooking,
+          priceBreakdown,
+        });
+      }
 
     /* ---------------------------------------------------------
        NEW BOOKING LOGIC
