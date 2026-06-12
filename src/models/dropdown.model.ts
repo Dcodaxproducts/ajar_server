@@ -1,6 +1,7 @@
 import mongoose, { Document, Schema } from "mongoose";
 
 interface IDropdownValue {
+  _id?: mongoose.Types.ObjectId;
   name: string;
   value: string;
   // Added new toggles
@@ -23,7 +24,7 @@ const DropdownValueSchema = new Schema<IDropdownValue>(
     hasExpiry: { type: Boolean, default: false },
     autoApproval: { type: Boolean, default: false },
   },
-  { _id: false }
+  { _id: true }
 ); 
 
 const DropdownSchema = new Schema<IDropdown>(

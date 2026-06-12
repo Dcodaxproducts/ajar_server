@@ -4,6 +4,8 @@ import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { Form } from "../models/form.model";
 
+const allowedDocumentTypes = ["leaserDocuments", "renterDocuments", "userDocuments"];
+
 // GET All Dropdowns
 export const getAllDropdowns = async (
   req: Request,
@@ -98,7 +100,6 @@ export const addValueToDropdown = async (
     }
 
     // Define the allowed dropdown names for these extra features
-    const allowedDocumentTypes = ["leaserDocuments", "renterDocuments","userDocuments"];
     const isDocumentType = allowedDocumentTypes.includes(name);
 
     // Prepare the new value object
@@ -117,6 +118,73 @@ export const addValueToDropdown = async (
     await dropdown.save();
 
     sendResponse(res, dropdown, "Value added successfully", STATUS_CODES.OK);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// UPDATE document dropdown value settings
+export const updateDropdownValueSettings = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { name } = req.params;
+    const { _id, hasExpiry, autoApproval } = req.body;
+
+    if (!allowedDocumentTypes.includes(name)) {
+      sendResponse(
+        res,
+        null,
+        "Only document dropdown settings can be updated",
+        STATUS_CODES.BAD_REQUEST
+      );
+      return;
+    }
+
+    if (!_id) {
+      sendResponse(res, null, "_id is required", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    const updateFields: Record<string, boolean> = {};
+
+    if (typeof hasExpiry === "boolean") {
+      updateFields["values.$.hasExpiry"] = hasExpiry;
+    }
+
+    if (typeof autoApproval === "boolean") {
+      updateFields["values.$.autoApproval"] = autoApproval;
+    }
+
+    if (!Object.keys(updateFields).length) {
+      sendResponse(
+        res,
+        null,
+        "hasExpiry or autoApproval is required",
+        STATUS_CODES.BAD_REQUEST
+      );
+      return;
+    }
+
+    const dropdown = await Dropdown.findOneAndUpdate(
+      { name, "values._id": _id },
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    );
+
+    if (!dropdown) {
+      sendResponse(res, null, "Dropdown value not found", STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    sendResponse(
+      res,
+      dropdown,
+      "Dropdown value settings updated successfully",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }

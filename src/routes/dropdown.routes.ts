@@ -4,6 +4,7 @@ import {
   getDropdownByName,
   createDropdown,
   addValueToDropdown,
+  updateDropdownValueSettings,
   removeValueFromDropdown,
   deleteDropdown,
 } from "../controllers/dropdown.controller";
@@ -19,6 +20,7 @@ router.get("/", useAuth, adminOnly, getAllDropdowns);
 router.get("/:name", useAuth, getDropdownByName);
 router.post("/", useAuth, adminOnly, createDropdown);
 router.post("/:name/value", useAuth, adminOnly, addValueToDropdown);
+router.patch("/:name/value", useAuth, adminOnly, updateDropdownValueSettings);
 router.delete("/:name/value/:value", useAuth, adminOnly, removeValueFromDropdown);
 router.delete("/:name", useAuth, adminOnly, deleteDropdown);
 
