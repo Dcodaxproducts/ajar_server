@@ -2795,6 +2795,16 @@ export const submitBookingPin = async (
       const checkInStr = checkIn.toISOString().split("T")[0];
       const checkOutStr = checkOut.toISOString().split("T")[0];
 
+      console.log({
+        unit: booking.pricingMeta.unit,
+        timezone,
+        nowUTC: now.toISOString(),
+        nowInZone: nowInZone.toISOString(),
+        todayStr,
+        checkInStr,
+        checkOutStr,
+      });
+
       if (todayStr < checkInStr) {
         return sendResponse(res, null,
           "PIN submission not allowed before the check-in date.",
