@@ -6,6 +6,7 @@ export interface ISecurityDepositRules {
   depositRequired: boolean;
   depositAmount: number;
   depositConditions: string;
+  disputeWindowDays: number;
 }
 
 export interface IDamageLiabilityTerms {
@@ -27,6 +28,8 @@ export interface IRentalDurationLimits {
 
 // Interface for the standalone document
 export interface IRentalPolicies extends Document {
+  zone: mongoose.Types.ObjectId;
+  subCategory: mongoose.Types.ObjectId;
   securityDepositRules: ISecurityDepositRules;
   damageLiabilityTerms: IDamageLiabilityTerms;
   rentalDurationLimits: IRentalDurationLimits[];
@@ -40,6 +43,7 @@ const SecurityDepositRulesSchema = new Schema<ISecurityDepositRules>(
     depositRequired: { type: Boolean, default: false },
     depositAmount: { type: Number, default: 0 },
     depositConditions: { type: String, default: "" },
+    disputeWindowDays: { type: Number, default: 7, min: 0 },
   },
   { _id: false }
 );
@@ -80,12 +84,25 @@ const RentalDurationLimitsSchema = new Schema<IRentalDurationLimits>(
 
 const RentalPoliciesSchema = new Schema<IRentalPolicies>(
   {
+    zone: { type: Schema.Types.ObjectId, ref: "Zone", required: true },
+    subCategory: { type: Schema.Types.ObjectId, ref: "subCategory", required: true },
     securityDepositRules: { type: SecurityDepositRulesSchema, default: {} },
     damageLiabilityTerms: { type: DamageLiabilityTermsSchema, default: {} },
     rentalDurationLimits: { type: [RentalDurationLimitsSchema], default: [] },
     extensionAllowed: { type: Boolean, default: true },
   },
   { timestamps: true }
+);
+
+RentalPoliciesSchema.index(
+  { zone: 1, subCategory: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      zone: { $exists: true },
+      subCategory: { $exists: true },
+    },
+  }
 );
 
 export const RentalPolicy = mongoose.model<IRentalPolicies>("RentalPolicy", RentalPoliciesSchema);

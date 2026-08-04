@@ -1,6 +1,7 @@
 import { Booking } from "../models/booking.model";
 import { Zone } from "../models/zone.model";
-import { sendNotification } from "./notifications";
+import { notificationQueue } from "../queues/notification.queue";
+import { releaseBookingPaymentHold } from "./bookingStripePayments";
 
 export const checkAndUpdateBookingExpiry = async (booking: any): Promise<any> => {
   if (booking.status !== "pending") return booking;
@@ -14,6 +15,7 @@ export const checkAndUpdateBookingExpiry = async (booking: any): Promise<any> =>
   );
 
   if (new Date() > expiryTime) {
+    await releaseBookingPaymentHold(booking._id);
     await Booking.findByIdAndUpdate(booking._id, { status: "expired" });
     booking.status = "expired";
 
@@ -25,28 +27,28 @@ export const checkAndUpdateBookingExpiry = async (booking: any): Promise<any> =>
       const listingId = booking.marketplaceListingId?._id?.toString() ?? booking.marketplaceListingId?.toString();
 
       // Renter — they're waiting for approval
-      await sendNotification(
-        renterId,
-        "Booking Request Expired",
-        `Your booking request for "${listingName}" has expired as it was not approved by the leaser in time.`,
-        {
+      await notificationQueue.add("booking-request-expired", {
+        userId: renterId,
+        title: "Booking Request Expired",
+        message: `Your booking request for "${listingName}" has expired as it was not approved by the leaser in time.`,
+        data: {
           bookingId: booking._id.toString(),
           listingId,
           type: "booking_expired",
-        }
-      );
+        },
+      });
 
       // Leaser — they failed to respond
-      await sendNotification(
-        leaserId,
-        "Booking Request Expired",
-        `A booking request for "${listingName}" has expired because you did not approve or reject it in time.`,
-        {
+      await notificationQueue.add("booking-request-expired", {
+        userId: leaserId,
+        title: "Booking Request Expired",
+        message: `A booking request for "${listingName}" has expired because you did not approve or reject it in time.`,
+        data: {
           bookingId: booking._id.toString(),
           listingId,
           type: "booking_expired",
-        }
-      );
+        },
+      });
     } catch (err) {
       console.error("Expiry notification failed:", err);
     }

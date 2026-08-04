@@ -2,7 +2,7 @@ import { Server as SocketIOServer, Socket } from "socket.io";
 import { UserSocketHelpers } from "../index";
 import { Conversation } from "../../models/conversation.model";
 import { Message } from "../../models/message.model";
-import { sendNotification } from "../../utils/notifications";
+import { notificationQueue } from "../../queues/notification.queue";
 
 
 const registerMessageEvents = (
@@ -161,13 +161,14 @@ const registerMessageEvents = (
         // ✅ Send push notification ONLY if receiver is offline
         if (!helpers.isUserOnline(receiverId)) {
           const senderName = (message.sender as any)?.name || "Someone";
-          await sendNotification(
-            receiverId,
-            "New Message",
-            `${senderName}: ${text}`,
-            { chatId, type: "system" }
-          ).catch((err: any) => console.error("Notification failed:", err));
+          await notificationQueue.add("new-message", {
+            userId: receiverId,
+            title: "New Message",
+            message: `${senderName}: ${text}`,
+            data: { chatId, type: "system" },
+          });
         }
+
 
 
         // CHANGED: Emit updated unread count for receiver

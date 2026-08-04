@@ -8,6 +8,9 @@ export interface IDamageReport extends Document {
   attachments: string[];
   user: mongoose.Types.ObjectId;
   status: "pending" | "approved" | "rejected";
+  resolvedBy?: mongoose.Types.ObjectId;
+  resolvedAt?: Date;
+  adminNote?: string;
 }
 
 const DamageReportSchema = new Schema<IDamageReport>(
@@ -43,9 +46,23 @@ const DamageReportSchema = new Schema<IDamageReport>(
       enum: ["pending", "approved", "rejected"],
       default: "pending",
     },
+    resolvedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+    },
+    resolvedAt: {
+      type: Date,
+    },
+    adminNote: {
+      type: String,
+      default: "",
+    },
   },
   { timestamps: true }
 );
+
+DamageReportSchema.index({ booking: 1 });
+DamageReportSchema.index({ status: 1, createdAt: -1 });
 
 export const DamageReport = model<IDamageReport>(
   "DamageReport",

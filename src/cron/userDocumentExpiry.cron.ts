@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import { User } from "../models/user.model";
-import { sendNotification } from "../utils/notifications";
+import { notificationQueue } from "../queues/notification.queue";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SEVEN_DAYS_MS = 7 * DAY_MS;
@@ -38,12 +38,12 @@ export const processUserDocumentExpiry = async () => {
           needsSave = true;
           expiredDocNames.push(document.name);
 
-          await sendNotification(
-            user._id.toString(),
-            "Document Expired",
-            `Your document "${document.name}" has expired. Please renew it to restore your account access.`,
-            { type: "system" }
-          );
+          await notificationQueue.add("user-document-expired", {
+            userId: user._id.toString(),
+            title: "Document Expired",
+            message: `Your document "${document.name}" has expired. Please renew it to restore your account access.`,
+            data: { type: "system" },
+          });
 
           return { ...document, status: "expired" };
         }
@@ -52,12 +52,12 @@ export const processUserDocumentExpiry = async () => {
           needsSave = true;
           expiringSoonDocNames.push(document.name);
 
-          await sendNotification(
-            user._id.toString(),
-            "Document Expiring Soon",
-            `Your document "${document.name}" will expire in 7 days. Please renew it to avoid account suspension.`,
-            { type: "system" }
-          );
+          await notificationQueue.add("user-document-expiring-soon", {
+            userId: user._id.toString(),
+            title: "Document Expiring Soon",
+            message: `Your document "${document.name}" will expire in 7 days. Please renew it to avoid account suspension.`,
+            data: { type: "system" },
+          });
 
           return { ...document, reminderSent: true };
         }

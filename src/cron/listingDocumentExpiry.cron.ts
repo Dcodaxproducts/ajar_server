@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
-import { sendNotification } from "../utils/notifications";
+import { notificationQueue } from "../queues/notification.queue";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SEVEN_DAYS_MS = 7 * DAY_MS;
@@ -70,12 +70,12 @@ export const processListingDocumentExpiry = async () => {
         `[ListingDocumentExpiryCron] Sending expired notification for listing ${listing._id}`
       );
 
-      await sendNotification(
-        leaserId,
-        "Listing Action Required: Document Expired",
-        `Your listing "${listing.name}" is now pending because documents have expired: ${expiredDocNames.join(", ")}`,
-        { listingId: listing._id.toString(), type: "listing_expired" }
-      );
+      await notificationQueue.add("listing-document-expired", {
+        userId: leaserId,
+        title: "Listing Action Required: Document Expired",
+        message: `Your listing "${listing.name}" is now pending because documents have expired: ${expiredDocNames.join(", ")}`,
+        data: { listingId: listing._id.toString(), type: "listing_expired" },
+      });
     }
 
     if (expiringSoonDocNames.length > 0 && leaserId) {
@@ -83,12 +83,12 @@ export const processListingDocumentExpiry = async () => {
         `[ListingDocumentExpiryCron] Sending expiring soon notification for listing ${listing._id}`
       );
 
-      await sendNotification(
-        leaserId,
-        "Urgent: Document Expiring Soon",
-        `Documents for your listing "${listing.name}" will expire in 7 days: ${expiringSoonDocNames.join(", ")}. Please update them to keep your listing active.`,
-        { listingId: listing._id.toString(), type: "listing_warning" }
-      );
+      await notificationQueue.add("listing-document-expiring-soon", {
+        userId: leaserId,
+        title: "Urgent: Document Expiring Soon",
+        message: `Documents for your listing "${listing.name}" will expire in 7 days: ${expiringSoonDocNames.join(", ")}. Please update them to keep your listing active.`,
+        data: { listingId: listing._id.toString(), type: "listing_warning" },
+      });
     }
   }
 

@@ -1,4 +1,5 @@
 import { Booking } from "../models/booking.model";
+import { Payment } from "../models/payment.model";
 import mongoose from "mongoose";
 
 export const isBookingDateAvailable = async (
@@ -11,7 +12,7 @@ export const isBookingDateAvailable = async (
     ? Array.isArray(excludeBookingId) ? excludeBookingId : [excludeBookingId]
     : [];
 
-  const overlappingBooking = await Booking.findOne({
+  const overlappingBookings = await Booking.find({
     marketplaceListingId: listingId,
     status: { $in: ["approved", "pending"] },
     ...(excludeArray.length > 0 && { _id: { $nin: excludeArray } }),
@@ -21,9 +22,20 @@ export const isBookingDateAvailable = async (
         "dates.checkOut": { $gte: newCheckIn },
       },
     ],
+  }).select("_id status");
+
+  if (!overlappingBookings.length) return true;
+
+  const approvedOverlap = overlappingBookings.some((booking) => booking.status === "approved");
+  if (approvedOverlap) return false;
+
+  const pendingIds = overlappingBookings.map((booking) => booking._id);
+  const heldPayment = await Payment.exists({
+    bookingId: { $in: pendingIds },
+    status: "held",
   });
 
-  return !overlappingBooking;
+  return !heldPayment;
 };
 
 export const isBookingExpiredForApproval = (

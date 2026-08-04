@@ -5,8 +5,25 @@ export interface IPayment extends Document {
   userId: mongoose.Types.ObjectId;
   amount: number;
   currency: string;
-  status: "pending" | "succeeded" | "failed";
-  paymentIntentId: string;
+  type: "booking" | "extension" | "damage" | "payout";
+  status:
+    | "requires_payment"
+    | "held"
+    | "captured"
+    | "cancelled"
+    | "refunded"
+    | "partially_refunded"
+    | "payout_pending"
+    | "paid_out"
+    | "failed";
+  paymentIntentId?: string;
+  refundId?: string;
+  transferId?: string;
+  payoutId?: string;
+  capturedAt?: Date;
+  refundedAt?: Date;
+  payoutAvailableAt?: Date;
+  paidOutAt?: Date;
   method: string;
   createdAt: Date;
 }
@@ -17,8 +34,34 @@ const PaymentSchema = new Schema<IPayment>(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     amount: { type: Number, required: true },
     currency: { type: String, default: "usd" },
-    status: { type: String, enum: ["pending", "succeeded", "failed"], default: "pending" },
-    paymentIntentId: { type: String, required: true },
+    type: {
+      type: String,
+      enum: ["booking", "extension", "damage", "payout"],
+      default: "booking",
+    },
+    status: {
+      type: String,
+      enum: [
+        "requires_payment",
+        "held",
+        "captured",
+        "cancelled",
+        "refunded",
+        "partially_refunded",
+        "payout_pending",
+        "paid_out",
+        "failed",
+      ],
+      default: "requires_payment",
+    },
+    paymentIntentId: { type: String },
+    refundId: { type: String },
+    transferId: { type: String },
+    payoutId: { type: String },
+    capturedAt: { type: Date },
+    refundedAt: { type: Date },
+    payoutAvailableAt: { type: Date },
+    paidOutAt: { type: Date },
     method: { type: String, default: "stripe" },
     createdAt: { type: Date, default: Date.now },
   },

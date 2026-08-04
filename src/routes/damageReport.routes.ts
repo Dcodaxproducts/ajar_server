@@ -24,9 +24,9 @@ const userOnly = allowRoles(["user"]) as unknown as express.RequestHandler;
 
 router.post(
   "/",
-  uploadFiles(["attachments"]),
   useAuth,
   userOnly,
+  uploadFiles(["attachments"]),
   asyncHandler(createDamageReport)
 );
 
@@ -39,12 +39,14 @@ router.get("/:id", useAuth, adminOnly, asyncHandler(getDamageReportById));
 // Update
 router.patch(
   "/:id",
+  useAuth,
+  adminOnly,
   uploadFiles(["attachments"]),
   asyncHandler(updateDamageReport)
 );
 
 // Delete
-router.delete("/:id", asyncHandler(deleteDamageReport));
+router.delete("/:id", useAuth, adminOnly, asyncHandler(deleteDamageReport));
 
 // PATCH /api/damage-report/:id/status
 router.patch("/:id/status", useAuth, adminOnly, asyncHandler(updateDamageReportStatus));

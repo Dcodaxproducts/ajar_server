@@ -10,9 +10,11 @@ import { Form } from "../models/form.model";
 import { Booking } from "../models/booking.model";
 import { User } from "../models/user.model";
 import { Review } from "../models/review.model";
-import { sendNotification } from "../utils/notifications";
+import { notificationQueue } from "../queues/notification.queue";
 import { FavouriteCheck } from "../models/favouriteChecks.model";
 import { Dropdown } from "../models/dropdown.model";
+import { Payment } from "../models/payment.model";
+import { RentalPolicy } from "../models/rentalPolicy.model";
 
 // controllers/marketplaceListings.controller.ts]
 const toCamelCase = (str: string) =>
@@ -197,16 +199,16 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     const admins = await User.find({ role: "admin" }).lean();
     for (const adminUser of admins) {
       try {
-        await sendNotification(
-          adminUser._id.toString(),
-          "New Listing Created",
-          `Leaser ${req.user.name || req.user.email || "A user"
-          } has created a new listing: ${listing.name}`,
-          {
+        await notificationQueue.add("listing-created", {
+          userId: adminUser._id.toString(),
+          title: "New Listing Created",
+          message: `Leaser ${req.user.name || req.user.email || "A user"
+            } has created a new listing: ${listing.name}`,
+          data: {
             listingId: (listing._id as mongoose.Types.ObjectId).toString(),
             type: "listing",
-          }
-        );
+          },
+        });
       } catch (err) {
         console.error("Error notifying admin:", err);
       }
@@ -264,16 +266,16 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
 
     // Notify leaser about status update
     try {
-      await sendNotification(
-        listing.leaser.toString(),
-        `Listing ${status}`,
-        `Your listing "${listing.name}" has been ${status}`,
-        {
+      await notificationQueue.add("listing-status-changed", {
+        userId: listing.leaser.toString(),
+        title: `Listing ${status}`,
+        message: `Your listing "${listing.name}" has been ${status}`,
+        data: {
           listingId: (listing._id as mongoose.Types.ObjectId).toString(),
           status,
           type: "listing",
-        }
-      );
+        },
+      });
     } catch (err) {
       console.error("Error notifying leaser about listing status:", err);
     }
@@ -626,7 +628,7 @@ export const getAllMarketplaceListings = async (
       { $unwind: { path: "$leaser", preserveNullAndEmptyArrays: true } }
     );
 
-    // 4. Populate zone + its rentalPolicies
+    // 4. Populate zone
     pipeline.push(
       {
         $lookup: {
@@ -635,19 +637,10 @@ export const getAllMarketplaceListings = async (
           pipeline: [
             { $match: { $expr: { $eq: ["$_id", "$$zoneId"] } } },
             {
-              $lookup: {
-                from: "rentalpolicies",
-                localField: "rentalPolicies",
-                foreignField: "_id",
-                as: "rentalPolicies",
-              },
-            },
-            {
               $project: {
                 _id: 1,
                 name: 1,
                 polygons: 1,
-                rentalPolicies: 1,
               },
             },
           ],
@@ -820,8 +813,7 @@ export const getAllMarketplaceListings = async (
   }
 };
 
-// UPDATED getMarketplaceListingByIdforLeaser
-//adminFee & tax added using SAME logic as booking & getAllMarketplaceListings
+// getMarketplaceListingByIdforLeaser
 export const getMarketplaceListingByIdforLeaser = async (
   req: AuthRequest,
   res: Response,
@@ -850,9 +842,7 @@ export const getMarketplaceListingByIdforLeaser = async (
       .populate("leaser", "name email profilePicture createdAt")
       .populate({
         path: "zone",
-        populate: {
-          path: "rentalPolicies",
-        },
+        select: "name polygons",
       })
       .session(session)
       .lean();
@@ -863,6 +853,15 @@ export const getMarketplaceListingByIdforLeaser = async (
       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
       return;
     }
+
+    const rentalPolicy = await RentalPolicy.findOne({
+      zone: doc.zone?._id || doc.zone,
+      subCategory: doc.subCategory?._id || doc.subCategory,
+    })
+      .session(session)
+      .lean();
+
+    doc.rentalPolicy = rentalPolicy;
 
     const bookings = await Booking.find({ marketplaceListingId: id })
       .select("dates status")
@@ -998,10 +997,7 @@ export const getMarketplaceListingById = async (
       })
       .populate({
         path: "zone",
-        select: "name polygons rentalPolicies",
-        populate: {
-          path: "rentalPolicies"
-        },
+        select: "name polygons",
       })
       .populate("leaser", "name email profilePicture")
       .session(session)
@@ -1013,6 +1009,15 @@ export const getMarketplaceListingById = async (
       sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
       return;
     }
+
+    const rentalPolicy = await RentalPolicy.findOne({
+      zone: (doc.zone as any)?._id || doc.zone,
+      subCategory: (doc.subCategory as any)?._id || doc.subCategory,
+    })
+      .session(session)
+      .lean();
+
+    (doc as any).rentalPolicy = rentalPolicy;
 
     // --- FETCH BOOKINGS (same as leaser version) ---
     const bookings = await Booking.find({ marketplaceListingId: id })
@@ -1417,11 +1422,23 @@ export const getBookingsForListing = async (
       );
     }
 
-    const bookings = await Booking.find({ marketplaceListingId: id })
+    const rawBookings = await Booking.find({ marketplaceListingId: id })
       .populate("renter", "name email profilePicture")
       .populate("leaser", "name email")
       .sort({ createdAt: -1 })
       .lean();
+
+    const pendingBookingIds = rawBookings
+      .filter((booking) => booking.status === "pending")
+      .map((booking) => booking._id);
+    const heldBookingIds = await Payment.find({
+      bookingId: { $in: pendingBookingIds },
+      status: "held",
+    }).distinct("bookingId");
+    const heldBookingIdSet = new Set(heldBookingIds.map((bookingId) => bookingId.toString()));
+    const bookings = rawBookings.filter(
+      (booking) => booking.status !== "pending" || heldBookingIdSet.has(booking._id.toString())
+    );
 
     return sendResponse(
       res,

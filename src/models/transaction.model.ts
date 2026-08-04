@@ -1,53 +1,63 @@
 import mongoose, { Schema, Document } from "mongoose";
 
+export type TransactionType = "credit" | "debit";
+
+export type TransactionSource =
+  | "booking_payment"
+  | "platform_capture"
+  | "security_deposit_refund"
+  | "leaser_earning"
+  | "leaser_payout"
+  | "booking_refund"
+  | "damage_charge";
+
 export interface ITransaction extends Document {
-  user: mongoose.Types.ObjectId;
-  connectedAccountId?: string;
-  paymentIntentId: string;
-  transferId?: string;
-  refundId?: string;
+  paymentId: mongoose.Types.ObjectId;
+  userId: mongoose.Types.ObjectId;
   amount: number;
-  currency: string;
-  status: "pending" | "succeeded" | "failed" | "refunded" | "disputed";
-  paymentMethod?: string;
-  transactionType: "deposit" | "purchase" | "refund" | "payout";
-  metadata?: Record<string, any>;
+  type: TransactionType;
+  source: TransactionSource;
+  status: "pending" | "succeeded" | "failed";
   createdAt: Date;
   updatedAt: Date;
 }
 
 const TransactionSchema = new Schema<ITransaction>(
   {
-    user: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-      index: true,
-    },
-    connectedAccountId: { type: String },
-    paymentIntentId: { type: String, required: true, unique: true },
-    transferId: { type: String },
-    refundId: { type: String },
+    paymentId: { type: Schema.Types.ObjectId, ref: "Payment", required: true },
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     amount: { type: Number, required: true },
-    currency: { type: String, required: true, default: "usd" },
+    type: {
+      type: String,
+      enum: ["credit", "debit"],
+      required: true,
+    },
+    source: {
+      type: String,
+      enum: [
+        "booking_payment",
+        "platform_capture",
+        "security_deposit_refund",
+        "leaser_earning",
+        "leaser_payout",
+        "booking_refund",
+        "damage_charge",
+      ],
+      required: true,
+    },
     status: {
       type: String,
-      enum: ["pending", "succeeded", "failed", "refunded", "disputed"],
-      required: true,
-      default: "pending",
+      enum: ["pending", "succeeded", "failed"],
+      default: "succeeded",
     },
-    paymentMethod: { type: String },
-    transactionType: {
-      type: String,
-      default: "purchase",
-      enum: ["deposit", "purchase", "refund", "payout"],
-    },
-    metadata: { type: Object, default: {} },
   },
   { timestamps: true }
 );
 
+TransactionSchema.index({ paymentId: 1, userId: 1, source: 1 });
+
 export const Transaction = mongoose.model<ITransaction>(
   "Transaction",
-  TransactionSchema
+  TransactionSchema,
+  "ledger_transactions"
 );

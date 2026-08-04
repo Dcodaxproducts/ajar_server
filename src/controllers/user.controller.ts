@@ -9,11 +9,13 @@ import {
   verifyRefreshToken,
 } from "../utils/jwt.utils";
 import { sendEmail } from "../helpers/node-mailer";
+import { emailQueue } from "../queues/email.queue";
 import { createCustomer } from "../helpers/stripe-functions";
 import { generateZodSchema } from "../utils/generate-zod-schema";
 import { Category } from "../models/category.model";
 import { Booking } from "../models/booking.model";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
+import { Transaction } from "../models/transaction.model";
 import { Employee } from "../models/employeeManagement.model";
 import { Zone } from "../models/zone.model";
 import {
@@ -381,6 +383,11 @@ export const getUserDetails = async (
 
     if (hasRole("admin") || hasRole("user")) {
       user = await User.findById(userId).select("-password").lean();
+
+      if (user && hasRole("user") && !hasRole("admin")) {
+        const isLeaser = await MarketplaceListing.exists({ leaser: user._id });
+        user.isLeaser = !!isLeaser;
+      }
 
     } else if (hasRole("staff")) {
       user = await Employee.findById(userId)
@@ -1422,7 +1429,7 @@ export const googleLogin = async (
       await user.save();
 
       // Optional: Welcome email
-      await sendEmail({
+      await emailQueue.add("welcome-google", {
         to: email,
         name,
         subject: "Welcome to our App",
@@ -1461,10 +1468,8 @@ export const googleLogin = async (
 
 // Controller: Apple Login
 import jwksClient from "jwks-rsa";
-import { WalletTransaction } from "../models/walletTransaction.model";
 import { WithdrawRequest } from "../models/withdrawRequest.model";
 import mongoose from "mongoose";
-import { sendNotification } from "../utils/notifications";
 
 dotenv.config();
 
@@ -1589,7 +1594,7 @@ export const appleLogin = async (
 
       await user.save();
 
-      await sendEmail({
+      await emailQueue.add("welcome-apple", {
         to: email,
         name,
         subject: "Welcome to our App",
@@ -1626,22 +1631,159 @@ export const appleLogin = async (
   }
 };
 
-//wallet controller
-// Get wallet balance & transactions
+// Payment-backed wallet/earnings controller
 export const getWallet = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.id;
+    const isAdmin = Array.isArray(req.user?.role)
+      ? req.user?.role.includes("admin")
+      : req.user?.role === "admin";
 
-    const user = await User.findById(userId).select("wallet");
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (isAdmin) {
+      const [platformCredits, platformRefunds, platformLeaserEarnings, platformPayouts, rawTransactions] = await Promise.all([
+        Transaction.find({
+          userId,
+          type: "credit",
+          source: "platform_capture",
+          status: "succeeded",
+        }).lean(),
+        Transaction.find({
+          userId,
+          type: "debit",
+          source: { $in: ["security_deposit_refund", "booking_refund"] },
+          status: "succeeded",
+        }).lean(),
+        Transaction.find({
+          userId,
+          type: "debit",
+          source: { $in: ["leaser_earning", "damage_charge"] },
+          status: "succeeded",
+        }).lean(),
+        Transaction.find({
+          userId,
+          type: "debit",
+          source: "leaser_payout",
+          status: "succeeded",
+        }).lean(),
+        Transaction.find({ userId })
+          .populate({ path: "paymentId", select: "bookingId" })
+          .sort({ createdAt: -1 })
+          .lean(),
+      ]);
 
-    const transactions = await WalletTransaction.find({
-      userId,
-      status: { $ne: "pending" },
-    }).sort({ createdAt: -1 });
+      const settlementSources = new Set(["leaser_earning", "security_deposit_refund", "damage_charge"]);
+      const bookingIds = rawTransactions
+        .map((transaction: any) => transaction.paymentId?.bookingId?.toString())
+        .filter(Boolean);
+      const bookings = await Booking.find({ _id: { $in: bookingIds } })
+        .select("previousBookingId")
+        .lean();
+      const rootBookingById = new Map(
+        bookings.map((booking: any) => [
+          booking._id.toString(),
+          booking.previousBookingId?.toString() || booking._id.toString(),
+        ])
+      );
+      const settlementGroups = new Map<string, any>();
+      const adminTransactions: any[] = [];
+
+      for (const transaction of rawTransactions as any[]) {
+        const bookingId = transaction.paymentId?.bookingId?.toString();
+        const shouldGroup =
+          transaction.type === "debit" &&
+          settlementSources.has(transaction.source) &&
+          bookingId;
+
+        if (!shouldGroup) {
+          adminTransactions.push(transaction);
+          continue;
+        }
+
+        const rootBookingId = rootBookingById.get(bookingId) || bookingId;
+        const groupKey = `booking_settlement:${rootBookingId}`;
+        const existingGroup = settlementGroups.get(groupKey);
+
+        if (existingGroup) {
+          existingGroup.amount = Number((existingGroup.amount + Number(transaction.amount || 0)).toFixed(2));
+          existingGroup.items.push({
+            _id: transaction._id,
+            amount: transaction.amount,
+            source: transaction.source,
+            paymentId: transaction.paymentId,
+            createdAt: transaction.createdAt,
+          });
+          continue;
+        }
+
+        const group = {
+          ...transaction,
+          _id: groupKey,
+          amount: Number(transaction.amount || 0),
+          type: "debit",
+          source: "booking_settlement",
+          items: [
+            {
+              _id: transaction._id,
+              amount: transaction.amount,
+              source: transaction.source,
+              paymentId: transaction.paymentId,
+              createdAt: transaction.createdAt,
+            },
+          ],
+        };
+
+        settlementGroups.set(groupKey, group);
+      }
+
+      const transactions = [...adminTransactions, ...settlementGroups.values()].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      const totalCaptured = Number(
+        platformCredits.reduce((total, payment) => total + Number(payment.amount || 0), 0).toFixed(2)
+      );
+      const totalRefunded = Number(
+        platformRefunds.reduce((total, payment) => total + Number(payment.amount || 0), 0).toFixed(2)
+      );
+      const totalLeaserEarnings = Number(
+        platformLeaserEarnings.reduce((total, payment) => total + Number(payment.amount || 0), 0).toFixed(2)
+      );
+      const totalPaidOut = Number(
+        platformPayouts.reduce((total, payment) => total + Number(payment.amount || 0), 0).toFixed(2)
+      );
+      const balance = Number((totalCaptured - totalRefunded - totalLeaserEarnings).toFixed(2));
+
+      return res.status(200).json({
+        balance,
+        availableEarnings: balance,
+        minimumWithdraw: 100,
+        canWithdraw: false,
+        totalCaptured,
+        totalRefunded,
+        totalLeaserEarnings,
+        totalPaidOut,
+        transactions,
+      });
+    }
+
+    const [earningTransactions, payoutTransactions, transactions] = await Promise.all([
+      Transaction.find({ userId, type: "credit", source: { $in: ["leaser_earning", "damage_charge"] }, status: "succeeded" }).lean(),
+      Transaction.find({ userId, type: "debit", source: "leaser_payout", status: "succeeded" }).lean(),
+      Transaction.find({ userId }).sort({ createdAt: -1 }).lean(),
+    ]);
+
+    const balance = Number(
+      (
+        earningTransactions.reduce((total, transaction) => total + Number(transaction.amount || 0), 0) -
+        payoutTransactions.reduce((total, transaction) => total + Number(transaction.amount || 0), 0)
+      ).toFixed(2)
+    );
 
     res.status(200).json({
-      balance: user.wallet.balance,
+      balance,
+      availableEarnings: balance,
+      minimumWithdraw: 100,
+      canWithdraw: balance >= 100,
       transactions,
     });
   } catch (error) {
@@ -1650,85 +1792,17 @@ export const getWallet = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// Add money to wallet
-export const addToWallet = async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.user?.id;
-    const { amount, description } = req.body;
-
-    if (!amount || amount <= 0)
-      return res.status(400).json({ message: "Invalid amount" });
-
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    // Update balance
-    user.wallet.balance += amount;
-    await user.save();
-
-    // Create transaction in separate collection
-    const transaction = new WalletTransaction({
-      userId,
-      type: "credit",
-      amount,
-      source: "stripe",
-      description,
-      createdAt: new Date(),
-    });
-    await transaction.save();
-
-    res.status(200).json({
-      message: "Wallet credited",
-      balance: user.wallet.balance,
-      transaction,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error", error });
-  }
+export const addToWallet = async (_req: AuthRequest, res: Response) => {
+  return res.status(410).json({
+    message: "Wallet top-up is no longer supported. Booking payments are processed by Stripe.",
+  });
 };
 
-// Deduct money from wallet
-export const deductFromWallet = async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.user?.id;
-    const { amount, description } = req.body;
-
-    if (!amount || amount <= 0)
-      return res.status(400).json({ message: "Invalid amount" });
-
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    if (user.wallet.balance < amount)
-      return res.status(400).json({ message: "Insufficient wallet balance" });
-
-    // Update balance
-    user.wallet.balance -= amount;
-    await user.save();
-
-    // Create transaction in separate collection
-    const transaction = new WalletTransaction({
-      userId,
-      type: "debit",
-      amount,
-      source: "booking",
-      description,
-      createdAt: new Date(),
-    });
-    await transaction.save();
-
-    res.status(200).json({
-      message: "Wallet debited",
-      balance: user.wallet.balance,
-      transaction,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error", error });
-  }
+export const deductFromWallet = async (_req: AuthRequest, res: Response) => {
+  return res.status(410).json({
+    message: "Wallet deductions are no longer supported. Booking payments are processed by Stripe.",
+  });
 };
-
 // Add bank account to user profile
 export const addBankAccount = async (req: AuthRequest, res: Response) => {
   try {
@@ -1914,59 +1988,12 @@ export const deleteBankAccount = async (req: AuthRequest, res: Response) => {
 };
 
 export const instantWithdrawal = async (req: any, res: Response) => {
-  try {
-    const userId = req.user.id;
-    const { amount, bankAccountId } = req.body;
-
-    // Validation
-    if (!amount || amount <= 0) {
-      return sendResponse(res, null, "Invalid withdrawal amount", 400);
-    }
-
-    if (!bankAccountId) {
-      return sendResponse(res, null, "Bank account is required", 400);
-    }
-
-    // Get user
-    const user = await User.findById(userId);
-    if (!user) return sendResponse(res, null, "User not found", 404);
-
-    // Check wallet balance
-    if (user.wallet.balance < amount) {
-      return sendResponse(res, null, "Insufficient wallet balance", 400);
-    }
-
-    // Deduct from wallet
-    user.wallet.balance -= amount;
-    await user.save();
-
-    // Create wallet transaction
-    const transaction = new WalletTransaction({
-      userId,
-      type: "debit",
-      amount,
-      source: "withdraw",
-      bankAccountId,
-      description: "Withdrawal processed instantly",
-      createdAt: new Date(),
-    });
-
-    await transaction.save();
-
-    return sendResponse(
-      res,
-      {
-        message: "Withdrawal successful",
-        balance: user.wallet.balance,
-        transaction,
-      },
-      "Withdrawal processed",
-      200
-    );
-  } catch (err) {
-    console.error(err);
-    return sendResponse(res, null, "Server error", 500);
-  }
+  return sendResponse(
+    res,
+    null,
+    "Wallet withdrawal requests are no longer supported. Use Stripe payout withdrawal.",
+    410
+  );
 };
 
 // Get user's withdrawals
@@ -1974,11 +2001,11 @@ export const getUserWithdrawals = async (req: any, res: Response) => {
   try {
     const userId = req.user.id;
 
-    // Fetch only withdrawal transactions
-    const withdrawals = await WalletTransaction.find({
+    const withdrawals = await Transaction.find({
       userId,
       type: "debit",
-      source: "withdraw",
+      source: "leaser_payout",
+      status: "succeeded",
     }).sort({ createdAt: -1 });
 
     return sendResponse(
@@ -2007,7 +2034,7 @@ export const getWalletHistoryByRange = async (req: any, res: Response) => {
     const { startDate, endDate } = getDateRange(range as RangeType);
 
     // 2. Aggregate for Graph
-    const graphData: GraphItem[] = await WalletTransaction.aggregate([
+    const graphData: GraphItem[] = await Transaction.aggregate([
       {
         $match: {
           userId: new mongoose.Types.ObjectId(userId),
@@ -2021,13 +2048,13 @@ export const getWalletHistoryByRange = async (req: any, res: Response) => {
           // Sums ANY debit (money leaving the wallet)
           totalWithdraw: {
             $sum: {
-              $cond: [{ $eq: ["$type", "debit"] }, "$amount", 0],
+              $cond: [{ $eq: ["$source", "leaser_payout"] }, "$amount", 0],
             },
           },
           // Sums ANY credit (money entering the wallet)
           totalTopup: {
             $sum: {
-              $cond: [{ $eq: ["$type", "credit"] }, "$amount", 0],
+              $cond: [{ $in: ["$source", ["leaser_earning", "damage_charge"]] }, "$amount", 0],
             },
           },
         },
@@ -2081,38 +2108,12 @@ export const processWithdrawal = async (req: any, res: Response) => {
     if (withdrawRequest.status !== "pending")
       return sendResponse(res, null, "Request already processed", 400);
 
-    const user = await User.findById(withdrawRequest.userId);
-    if (!user) return sendResponse(res, null, "User not found", 404);
-
     if (action === "approve") {
-      if (user.wallet.balance < withdrawRequest.amount) {
-        return sendResponse(res, null, "Insufficient wallet balance", 400);
-      }
-
-      // Deduct from wallet
-      user.wallet.balance -= withdrawRequest.amount;
-      await user.save();
-
-      //FIX ADDED: bankAccountId is now passed in transaction
-      const transaction = new WalletTransaction({
-        userId: user._id,
-        type: "debit",
-        amount: withdrawRequest.amount,
-        bankAccountId: withdrawRequest.bankAccountId, //REQUIRED FIELD ADDED
-        source: "withdraw",
-        description: `Withdrawal approved`,
-      });
-      await transaction.save();
-
-      withdrawRequest.status = "approved";
-      withdrawRequest.processedAt = new Date();
-      await withdrawRequest.save();
-
       return sendResponse(
         res,
-        { withdrawRequest, transaction },
-        "Withdrawal approved",
-        200
+        null,
+        "Manual wallet withdrawal approval is no longer supported. Use Stripe payout withdrawal.",
+        410
       );
     } else if (action === "reject") {
       withdrawRequest.status = "rejected";
@@ -2129,3 +2130,4 @@ export const processWithdrawal = async (req: any, res: Response) => {
     return sendResponse(res, null, "Server error", 500);
   }
 };
+

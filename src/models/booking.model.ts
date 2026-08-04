@@ -61,6 +61,12 @@ export interface IBooking extends Document {
   refundRequest?: mongoose.Types.ObjectId;
   refundNote?: string;
   rentalPolicyId: mongoose.Types.ObjectId;
+  rentalPolicySnapshot?: Record<string, any>;
+  depositStatus?: "none" | "held" | "released" | "disputed" | "partially_refunded" | "deducted";
+  depositDisputeWindowDays?: number;
+  disputeWindowEndsAt?: Date;
+  depositReleasedAt?: Date;
+  damageDisputeId?: mongoose.Types.ObjectId;
 }
 
 const BookingSchema = new Schema<IBooking>(
@@ -151,8 +157,25 @@ const BookingSchema = new Schema<IBooking>(
       type: Schema.Types.ObjectId,
       ref: "RentalPolicy"
     },
+    rentalPolicySnapshot: {
+      type: Schema.Types.Mixed,
+    },
+    depositStatus: {
+      type: String,
+      enum: ["none", "held", "released", "disputed", "partially_refunded", "deducted"],
+      default: "none",
+    },
+    depositDisputeWindowDays: { type: Number, default: 7, min: 0 },
+    disputeWindowEndsAt: { type: Date },
+    depositReleasedAt: { type: Date },
+    damageDisputeId: {
+      type: Schema.Types.ObjectId,
+      ref: "DamageReport",
+    },
   },
   { timestamps: true }
 );
+
+BookingSchema.index({ status: 1, depositStatus: 1, disputeWindowEndsAt: 1 });
 
 export const Booking = model<IBooking>("Booking", BookingSchema);

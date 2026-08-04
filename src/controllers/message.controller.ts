@@ -1,11 +1,11 @@
-import { Response,Request } from "express";
+import { Response, Request } from "express";
 import mongoose from "mongoose";
 import { Conversation } from "../models/conversation.model";
 import { IMessage, Message } from "../models/message.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { getIO } from "../socket";
-import { sendNotification } from "../utils/notifications";
 import { IUser, User } from "../models/user.model";
+import { notificationQueue } from "../queues/notification.queue";
 
 
 interface MulterRequest extends Request {
@@ -34,7 +34,7 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
   try {
     const { chatId, receiver, text, attachments } = req.body;
     const sender = new mongoose.Types.ObjectId(req.user!.id);
-
+    
     // Ensure conversation exists
     const conversation = await Conversation.findById(chatId);
     if (!conversation) {
@@ -87,16 +87,17 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
       if (receiverUser) {
 
         // Save notification in DB + push if token exists
-        await sendNotification(
-          receiverUser._id.toString(),          
-          "New Message",
-          `${senderUser?.name || "Someone"} sent you a message`,
-          {
+        await notificationQueue.add("new-message", {
+          userId: receiverUser._id.toString(),
+          title: "New Message",
+          message: `${senderUser?.name || "Someone"} sent you a message`,
+          data: {
             type: "system",
             chatId: chatId.toString(),
-            messageId: newMessage._id.toString(),   
-          }
-        );
+            messageId: newMessage._id.toString(),
+          },
+        });
+
 
         // Emit in-app notification
         getIO().to(`user:${receiver}`).emit("notification:new", {

@@ -31,14 +31,9 @@ export const createRefundPolicy = asyncHandler(
     const policy = await RefundPolicy.create({
       zone,
       subCategory,
-      allowFund: req.body.allowFund ?? false,
-      cancellationCutoffTime: req.body.cancellationCutoffTime ?? {
-        days: 0,
-        hours: 0,
-      },
-      flatFee: req.body.flatFee ?? { amount: 0, days: 0, hours: 0 },
+      allowRefund: req.body.allowRefund ?? false,
+      tiers: req.body.tiers ?? [],
       noteText: req.body.noteText ?? "",
-      refundWindow: req.body.refundWindow ?? "full",
     });
 
     res.status(201).json({

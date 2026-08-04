@@ -12,7 +12,8 @@ const allowedPageNames = [
   "recaptcha",
   "firebase",
   "termsAndConditions",
-  "privacyPolicy"
+  "privacyPolicy",
+  "cancellationPolicy"
 ];
 
 // CREATE only if not exists

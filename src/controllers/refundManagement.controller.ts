@@ -11,7 +11,7 @@ import { RefundRequest } from "../models/refundRequest.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { calculateRefund } from "../utils/calculateRefund";
-import { sendNotification } from "../utils/notifications";
+import { notificationQueue } from "../queues/notification.queue";
 import { User } from "../models/user.model";
 import { capitalizeName } from "../utils/capitalizeName";
 
@@ -251,7 +251,7 @@ export const createRefundRequest = asyncHandler(
     const securityDeposit = parseFloat(Number(bookingData.priceDetails?.securityDeposit ?? 0).toFixed(2));
     const checkInDate = new Date(bookingData.dates.checkIn);
 
-    // calculateRefund handles all tier logic
+    // calculateRefund handles hoursBeforeCheckIn tier logic.
     const result = calculateRefund(totalPrice, checkInDate, policy);
 
     // not eligible — cutoff has passed
@@ -283,33 +283,38 @@ export const createRefundRequest = asyncHandler(
 
     // ================= NOTIFICATIONS =================
 
-    // Renter — confirmation their request was received
-    await sendNotification(
-      renter._id.toString(),
-      "Refund Request Submitted",
-      `Your refund request for "${capitalizeName(listingName)}" has been submitted and is under review.`,
-      {
-        refundId: (refundRequest._id as any).toString(),
-        bookingId: booking.toString(),
-        type: "refund",
-        status: "pending",
-      }
-    );
-
-    // Admin — alert that a new refund request needs review
-    const admin = await User.findOne({ role: "admin" });
-    if (admin) {
-      await sendNotification(
-        (admin._id as any).toString(),
-        "New Refund Request",
-        `A new refund request has been submitted for "${capitalizeName(listingName)}" and requires your review.`,
-        {
+    // Refund request is already saved — a queue failure must not fail the request
+    try {
+      // Renter — confirmation their request was received
+      await notificationQueue.add("refund-request-submitted", {
+        userId: renter._id.toString(),
+        title: "Refund Request Submitted",
+        message: `Your refund request for "${capitalizeName(listingName)}" has been submitted and is under review.`,
+        data: {
           refundId: (refundRequest._id as any).toString(),
           bookingId: booking.toString(),
           type: "refund",
           status: "pending",
-        }
-      );
+        },
+      });
+
+      // Admin — alert that a new refund request needs review
+      const admin = await User.findOne({ role: "admin" });
+      if (admin) {
+        await notificationQueue.add("new-refund-request", {
+          userId: (admin._id as any).toString(),
+          title: "New Refund Request",
+          message: `A new refund request has been submitted for "${capitalizeName(listingName)}" and requires your review.`,
+          data: {
+            refundId: (refundRequest._id as any).toString(),
+            bookingId: booking.toString(),
+            type: "refund",
+            status: "pending",
+          },
+        });
+      }
+    } catch (err) {
+      console.error("Failed to queue refund request notifications:", err);
     }
 
     res.status(201).json({
@@ -627,7 +632,7 @@ export const getRefundPreview = asyncHandler(
       return;
     }
 
-    // use the pure calculator — no logic lives in the controller
+    // Use the pure calculator so hoursBeforeCheckIn logic stays centralized.
     const result = calculateRefund(
       booking.priceDetails.price,
       new Date(booking.dates.checkIn),

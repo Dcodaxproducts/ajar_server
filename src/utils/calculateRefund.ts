@@ -1,4 +1,4 @@
-import { differenceInCalendarDays } from "date-fns";
+import { differenceInHours } from "date-fns";
 import { IRefundPolicy, ICancellationTier } from "../models/refundPolicy.model";
 
 export interface RefundResult {
@@ -21,19 +21,18 @@ export function calculateRefund(
   }
 
   // can't refund a booking whose check-in already passed
-  const daysRemaining = differenceInCalendarDays(checkInDate, now);
-  if (daysRemaining < 0) {
+  const hoursRemaining = differenceInHours(checkInDate, now);
+  if (hoursRemaining < 0) {
     return noRefund(totalPrice, "Check-in date has already passed");
   }
 
-  // sort tiers descending by daysBeforeCheckIn
-  // e.g. [20, 7, 0] — match the highest threshold the user still qualifies for
+  // Sort tiers descending and match the highest threshold the user still qualifies for.
   const sortedTiers = [...policy.tiers].sort(
-    (a, b) => b.daysBeforeCheckIn - a.daysBeforeCheckIn
+    (a, b) => b.hoursBeforeCheckIn - a.hoursBeforeCheckIn
   );
 
   const matchedTier = sortedTiers.find(
-    (tier) => daysRemaining >= tier.daysBeforeCheckIn
+    (tier) => hoursRemaining >= tier.hoursBeforeCheckIn
   ) ?? null;
 
   // no tier matched at all — full refund (user cancelled very early, before any tier)
@@ -74,7 +73,7 @@ export function calculateRefund(
     appliedTier: matchedTier,
     reason:
       matchedTier.label ??
-      `${matchedTier.percentage}% cancellation fee applied (${daysRemaining} day${daysRemaining !== 1 ? "s" : ""} before check-in)`,
+      `${matchedTier.percentage}% cancellation fee applied (${hoursRemaining} hour${hoursRemaining !== 1 ? "s" : ""} before check-in)`,
   };
 }
 

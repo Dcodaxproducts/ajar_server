@@ -417,12 +417,7 @@ export const getFormByZoneAndSubCategory = async (
     }
 
     const form = await Form.findOne({ zone, subCategory })
-      .populate({
-        path: "zone",
-        populate: {
-          path: "rentalPolicies",
-        },
-      })
+      .populate("zone")
       .populate("subCategory")
       .populate({
         path: "fields",

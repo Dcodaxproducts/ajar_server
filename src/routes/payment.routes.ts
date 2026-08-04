@@ -1,5 +1,5 @@
 import express from "express";
-import { createBookingPayment, verifyPayment,createConnectedAccount,getConnectedAccount, withdraw, confirmConnectedAccount } from "../controllers/payment.controller";
+import { verifyPayment,createConnectedAccount,getConnectedAccount, withdraw, confirmConnectedAccount } from "../controllers/payment.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
 const router = express.Router();
@@ -12,7 +12,7 @@ function asyncHandler(fn: any) {
 }
 
 //Create Payment Intent for a Booking
-router.post("/stripe/intent", useAuth, createBookingPayment as express.RequestHandler);
+// router.post("/stripe/intent", useAuth, createBookingPayment as express.RequestHandler);
 
 router.post("/stripe/verify", useAuth, asyncHandler(verifyPayment));
 

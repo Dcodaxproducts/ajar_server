@@ -6,8 +6,6 @@ import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 
-type Granularity = "day" | "month" | "year";
-
 const toObjectId = (v?: string) =>
   v && mongoose.Types.ObjectId.isValid(v)
     ? new mongoose.Types.ObjectId(v)

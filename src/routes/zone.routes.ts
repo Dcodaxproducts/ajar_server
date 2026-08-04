@@ -56,38 +56,38 @@ import {
 
 // GET each section
 router.get(
-  "/:zoneId/rental-policies/security-deposit-rules",
+  "/:zoneId/subcategories/:subCategoryId/rental-policies/security-deposit-rules",
   useAuth,
   asyncHandler(getSecurityDepositRules)
 );
 
 router.get(
-  "/:zoneId/rental-policies/damage-liability-terms",
+  "/:zoneId/subcategories/:subCategoryId/rental-policies/damage-liability-terms",
   useAuth,
   asyncHandler(getDamageLiabilityTerms)
 );
 
 router.get(
-  "/:zoneId/rental-policies/rental-duration-limits",
+  "/:zoneId/subcategories/:subCategoryId/rental-policies/rental-duration-limits",
   useAuth,
   asyncHandler(getRentalDurationLimits)
 );
 
 //Update each section
 router.patch(
-  "/:zoneId/rental-policies/security-deposit-rules",
+  "/:zoneId/subcategories/:subCategoryId/rental-policies/security-deposit-rules",
   useAuth,
   asyncHandler(updateSecurityDepositRules)
 );
 
 router.patch(
-  "/:zoneId/rental-policies/damage-liability-terms",
+  "/:zoneId/subcategories/:subCategoryId/rental-policies/damage-liability-terms",
   useAuth,
   asyncHandler(updateDamageLiabilityTerms)
 );
 
 router.patch(
-  "/:zoneId/rental-policies/rental-duration-limits",
+  "/:zoneId/subcategories/:subCategoryId/rental-policies/rental-duration-limits",
   useAuth,
   asyncHandler(updateRentalDurationLimits)
 );

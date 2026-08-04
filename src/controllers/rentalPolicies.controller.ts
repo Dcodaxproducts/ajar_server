@@ -15,19 +15,44 @@ const updateRentalPolicy = async (
     | "rentalDurationLimits"
 ) => {
   try {
-    const { zoneId } = req.params;
+    const { zoneId, subCategoryId } = req.params;
 
-    // 1. Find the zone and populate the current policy to get existing data
-    const zone = await Zone.findById(zoneId).populate("rentalPolicies");
+    if (
+      !mongoose.Types.ObjectId.isValid(zoneId) ||
+      !mongoose.Types.ObjectId.isValid(subCategoryId)
+    ) {
+      return sendResponse(
+        res,
+        null,
+        "Invalid zone or subCategory ID",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
+
+    const zone = await Zone.findById(zoneId);
     if (!zone) {
       return sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
     }
 
-    // Get existing policy data or set defaults
-    const currentPolicyData = (zone.rentalPolicies as any) || {};
+    const hasSubCategory = (zone.subCategories || []).some(
+      (id: any) => id.toString() === subCategoryId
+    );
 
-    // Initialize the new data object with existing values
+    if (!hasSubCategory) {
+      return sendResponse(
+        res,
+        null,
+        "SubCategory is not linked to this zone",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
+
+    const currentPolicyData: any =
+      (await RentalPolicy.findOne({ zone: zoneId, subCategory: subCategoryId }).lean()) || {};
+
     let newPolicyData: any = {
+      zone: zoneId,
+      subCategory: subCategoryId,
       securityDepositRules: currentPolicyData.securityDepositRules || {},
       damageLiabilityTerms: currentPolicyData.damageLiabilityTerms || {},
       rentalDurationLimits: currentPolicyData.rentalDurationLimits || [],
@@ -64,21 +89,21 @@ const updateRentalPolicy = async (
       };
     }
 
-    // 3. CREATE A NEW DOCUMENT (Versioning)
-    // This ensures old bookings linked to the previous ID remain unchanged
-    const createdPolicy = await RentalPolicy.create(newPolicyData);
-
-    // 4. LINK THE ZONE TO THE NEW POLICY ID
-    zone.rentalPolicies = createdPolicy._id as any;
-    await zone.save();
+    const policy = await RentalPolicy.findOneAndUpdate(
+      { zone: zoneId, subCategory: subCategoryId },
+      { $set: newPolicyData },
+      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+    );
 
     sendResponse(
       res,
       {
-        [field]: createdPolicy[field as keyof typeof createdPolicy],
-        policyId: createdPolicy._id
+        [field]: policy[field as keyof typeof policy],
+        policyId: policy._id,
+        zone: policy.zone,
+        subCategory: policy.subCategory,
       },
-      `${field} updated (new version created)`,
+      `${field} updated successfully`,
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -96,36 +121,46 @@ const getRentalPolicy = async (
     | "rentalDurationLimits"
 ) => {
   try {
-    const { zoneId } = req.params;
+    const { zoneId, subCategoryId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(zoneId)) {
+    if (
+      !mongoose.Types.ObjectId.isValid(zoneId) ||
+      !mongoose.Types.ObjectId.isValid(subCategoryId)
+    ) {
       return sendResponse(
         res,
         null,
-        "Invalid Zone ID",
+        "Invalid zone or subCategory ID",
         STATUS_CODES.BAD_REQUEST
       );
     }
 
-    // 1. Populate 'rentalPolicies' to get the data from the separate collection
-    const zone = await Zone.findById(zoneId)
-      .populate("rentalPolicies")
-      .lean();
-
+    const zone = await Zone.findById(zoneId).lean();
     if (!zone) {
       return sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
     }
 
-    /** * 2. Extract the policies. 
-     * Since we used populate, zone.rentalPolicies is now the full object.
-     * We add a fallback to an empty object if no policy is linked yet.
-     */
-    const policies = (zone.rentalPolicies as any) || {};
+    const hasSubCategory = (zone.subCategories || []).some(
+      (id: any) => id.toString() === subCategoryId
+    );
 
-    // Special case: if fetching rentalDurationLimits, also return extensionAllowed 
-    // to keep your frontend toggle working correctly.
+    if (!hasSubCategory) {
+      return sendResponse(
+        res,
+        null,
+        "SubCategory is not linked to this zone",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
+
+    const policies: any =
+      (await RentalPolicy.findOne({ zone: zoneId, subCategory: subCategoryId }).lean()) || {};
+
     const responseData = {
       [field]: policies[field] || (field === "rentalDurationLimits" ? [] : {}),
+      policyId: (policies as any)?._id ?? null,
+      zone: zoneId,
+      subCategory: subCategoryId,
     };
 
     if (field === "rentalDurationLimits") {

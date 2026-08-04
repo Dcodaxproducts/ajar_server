@@ -1,121 +1,160 @@
 import { Booking } from "../models/booking.model";
 import { IUser, User } from "../models/user.model";
 import { Payment } from "../models/payment.model";
+import { Notification } from "../models/notification.model";
+import { DamageReport } from "../models/damageReport.model";
 import stripe from "../utils/stripe";
 import mongoose from "mongoose";
 import { Request, Response } from "express";
-import { sendNotification } from "../utils/notifications";
+import { notificationQueue } from "../queues/notification.queue";
 import { AuthRequest } from "../middlewares/auth.middleware";
-import { WalletTransaction } from "../models/walletTransaction.model";
 import { saveStripeAccountIdToUser } from "../utils/saveStripeAccountIdToUser";
+import {
+  recordHeldBookingPayment,
+} from "../utils/bookingStripePayments";
+import { createTransaction } from "../utils/transactionLedger";
 
-// CREATE PAYMENT INTENT
-export const createBookingPayment = async (req: AuthRequest, res: Response) => {
+const verifyCapturedPayment = async (payment: any) => {
+  if (!payment?.paymentIntentId) return false;
+
+  const intent = await stripe.paymentIntents.retrieve(payment.paymentIntentId);
+  const expectedAmount = Math.round(Number(payment.amount || 0) * 100);
+  const receivedAmount = Number(intent.amount_received || 0);
+  const capturableAmount = Number(intent.amount_capturable || 0);
+  const capturedAmount = receivedAmount || Number(intent.amount || 0) - capturableAmount;
+
+  return (
+    ["succeeded", "requires_capture"].includes(intent.status) &&
+    capturedAmount >= expectedAmount
+  );
+};
+
+const calculateVerifiedWithdrawableAmount = async (leaserId: string) => {
+  const completedBookings = await Booking.find({
+    leaser: leaserId,
+    status: "completed",
+  })
+    .select("_id priceDetails extraRequestCharges")
+    .lean();
+
+  const bookingIds = completedBookings.map((booking: any) => booking._id);
+  const bookingPayments = await Payment.find({
+    bookingId: { $in: bookingIds },
+    type: { $in: ["booking", "extension"] },
+    status: { $in: ["captured", "partially_refunded", "paid_out", "refunded"] },
+    paymentIntentId: { $exists: true, $ne: "" },
+  }).lean();
+
+  const paymentByBookingId = new Map(
+    bookingPayments.map((payment: any) => [payment.bookingId.toString(), payment])
+  );
+
+  let verifiedEarnings = 0;
+  let sourcePayment: any = null;
+
+  for (const booking of completedBookings as any[]) {
+    const payment = paymentByBookingId.get(booking._id.toString());
+    const isPaymentVerified = await verifyCapturedPayment(payment);
+
+    if (!isPaymentVerified) continue;
+    if (!sourcePayment) sourcePayment = payment;
+
+    verifiedEarnings +=
+      Number(booking.priceDetails?.price || 0) +
+      Number(booking.extraRequestCharges?.additionalCharges || 0);
+  }
+
+  const approvedDamageReports = await DamageReport.find({
+    booking: { $in: bookingIds },
+    status: "approved",
+  })
+    .select("booking damagedCharges")
+    .lean();
+
+  for (const damageReport of approvedDamageReports as any[]) {
+    const payment = paymentByBookingId.get(damageReport.booking?.toString());
+    const isPaymentVerified = await verifyCapturedPayment(payment);
+
+    if (!isPaymentVerified) continue;
+    if (!sourcePayment) sourcePayment = payment;
+
+    verifiedEarnings += Number(damageReport.damagedCharges || 0);
+  }
+
+  const paidOutPayments = await Payment.find({
+    userId: leaserId,
+    type: "payout",
+    status: "paid_out",
+  }).lean();
+
+  const paidOutAmount = paidOutPayments.reduce((total: number, payment: any) => {
+    return total + Number(payment.amount || 0);
+  }, 0);
+
+  return {
+    availableAmount: Number((verifiedEarnings - paidOutAmount).toFixed(2)),
+    sourcePayment,
+  };
+};
+
+const sendPaidBookingRequestNotifications = async (booking: any) => {
+  const renter = booking.renter as IUser | null;
+  const leaser = booking.leaser as IUser | null;
+  const bookingId = booking._id.toString();
+
+  // The payment itself is already settled by the time we get here, so a queue
+  // failure must never fail the caller
   try {
-    const { bookingId, userAmount } = req.body;
-    const userData = req?.user;
-
-    if (bookingId) {
-
-      if (!mongoose.Types.ObjectId.isValid(bookingId)) {
-        return res.status(400).json({ message: "Invalid booking ID" });
-      }
-
-      const booking = await Booking.findById(bookingId).populate("renter");
-      if (!booking) {
-        return res.status(404).json({ message: "Booking not found" });
-      }
-
-      const user = booking.renter as any;
-      if (!user?.stripe?.customerId) {
-        return res
-          .status(400)
-          .json({ message: "Stripe customer not found for user" });
-      }
-
-      // FIX: Price is already calculated in booking controller
-      const amount = booking.priceDetails.totalPrice;
-      const amountInCents = Math.round(amount * 100);
-
-      if (!amount || amountInCents < 50) {
-        return res.status(400).json({
-          message: "Booking amount must be at least $0.50",
-          amount,
-        });
-      }
-
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(amount * 100),
-        currency: "usd",
-        metadata: {
-          bookingId: booking._id.toString(),
-          userId: user._id.toString(),
-        },
-        automatic_payment_methods: {
-          enabled: true,
-          allow_redirects: "never",
-        },
+    if (renter?._id) {
+      const existingRenterNotification = await Notification.exists({
+        user: renter._id,
+        title: "Payment Hold Confirmed",
+        "data.bookingId": bookingId,
       });
 
-      await Payment.create({
-        bookingId: booking._id,
-        userId: user._id,
-        amount,
-        currency: "usd",
-        status: "pending",
-        paymentIntentId: paymentIntent.id,
-        method: "stripe",
-      });
-
-      res.status(200).json({
-        clientSecret: paymentIntent.client_secret,
-        message: "Payment initiated",
-      });
+      if (!existingRenterNotification) {
+        await notificationQueue.add(
+          "payment-held",
+          {
+            userId: renter._id.toString(),
+            title: "Payment Hold Confirmed",
+            message: `Your payment for booking "${bookingId}" has been held successfully.`,
+            data: { bookingId, type: "payment_held" },
+          },
+          // Stripe can deliver the same webhook twice — a fixed jobId makes the
+          // second add a no-op instead of a duplicate notification.
+          // BullMQ rejects ":" in a custom id, so keep it dash-separated.
+          { jobId: `payment-held-${bookingId}` }
+        );
+      }
     }
-    else {
-      const userAmountInCents = Math.round(userAmount * 100);
-      const userId = userData?.id?.toString() as string;
 
-      if (!userAmount || userAmountInCents < 50) {
-        return res.status(400).json({
-          message: "Amount must be at least $0.50",
-          userAmount,
-        });
+    if (leaser?._id) {
+      const existingLeaserNotification = await Notification.exists({
+        user: leaser._id,
+        title: "New Booking Request",
+        "data.bookingId": bookingId,
+      });
+
+      if (!existingLeaserNotification) {
+        const renterName = renter?.name || "A user";
+        await notificationQueue.add(
+          "new-booking-request",
+          {
+            userId: leaser._id.toString(),
+            title: "New Booking Request",
+            message: `${renterName} submitted a paid booking request.`,
+            data: { bookingId, type: "booking", status: "pending" },
+          },
+          { jobId: `new-booking-request-${bookingId}` }
+        );
       }
-
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(userAmount * 100),
-        currency: "usd",
-        metadata: {
-          userRenterId: userId
-        },
-        automatic_payment_methods: {
-          enabled: true,
-          allow_redirects: "never",
-        },
-      });
-
-      await WalletTransaction.create({
-        userId,
-        amount: userAmount,
-        status: "pending",
-        source: "stripe",
-        paymentIntentId: paymentIntent.id,
-        createdAt: new Date(),
-      });
-
-      res.status(200).json({
-        clientSecret: paymentIntent.client_secret,
-        message: "User payment initiated",
-      });
     }
-  } catch (error) {
-    console.error("Payment Intent Error:", error);
-    res.status(500).json({ message: "Server error" });
+  } catch (err) {
+    console.error("Failed to queue paid booking request notifications:", err);
   }
 };
 
-// STRIPE WEBHOOK
 export const stripeWebhook = async (req: Request, res: Response) => {
   const sig = req.headers["stripe-signature"];
   if (!sig) return res.status(400).send("Missing Stripe signature");
@@ -160,37 +199,18 @@ export const stripeWebhook = async (req: Request, res: Response) => {
       const renter = booking.renter as IUser | null;
       const leaser = booking.leaser as IUser | null;
 
+      if (event.type === "payment_intent.amount_capturable_updated") {
+        await recordHeldBookingPayment(paymentIntent.id);
+        await sendPaidBookingRequestNotifications(booking);
+      }
+
       // PAYMENT SUCCESS
-      if (event.type === "payment_intent.succeeded") {
-
-        booking.status = "approved";
-        await booking.save();
-
+      else if (event.type === "payment_intent.succeeded") {
         await Payment.findOneAndUpdate(
           { paymentIntentId: paymentIntent.id },
-          { status: "succeeded" },
+          { status: "captured", capturedAt: new Date() },
           { new: true }
         );
-
-        // Notifications
-        if (renter?._id) {
-          await sendNotification(
-            renter._id.toString(),
-            "Payment Successful",
-            `Your payment for booking "${booking._id}" was successful.`,
-            { bookingId: booking._id.toString(), type: "payment_succeeded" }
-          );
-        }
-
-        if (leaser?._id) {
-          const renterName = renter?.name || "A user";
-          await sendNotification(
-            leaser._id.toString(),
-            "Payment Succeeded",
-            `${renterName} completed payment for booking.`,
-            { bookingId: booking._id.toString(), type: "payment_succeeded" }
-          );
-        }
       }
 
       //  PAYMENT FAILED
@@ -203,83 +223,7 @@ export const stripeWebhook = async (req: Request, res: Response) => {
 
       res.json({ received: true });
     }
-
     else {
-      if (!userRenterId) return res.status(400).send("Missing User ID");
-
-      const walletData = await WalletTransaction.findOne({
-        userId: userRenterId,
-        paymentIntentId: paymentIntent.id
-      });
-
-      if (!walletData) return res.status(404).send("Wallet data not found");
-
-      // PAYMENT SUCCESS
-      if (event.type === "payment_intent.succeeded") {
-
-        const amountInDollars = paymentIntent.amount / 100;
-
-        // ✅ CRITICAL: First update user wallet, THEN update transaction
-        const user = await User.findById(userRenterId);
-        if (!user) return res.status(404).json({ message: "User not found" });
-
-        try {
-          user.wallet.balance += amountInDollars;
-          await user.save();
-
-          // ✅ Only update transaction after successful wallet update
-          await WalletTransaction.findOneAndUpdate(
-            {
-              userId: userRenterId,
-              paymentIntentId: paymentIntent.id,
-            },
-            {
-              status: "succeeded",
-              type: "credit"
-            },
-            { new: true }
-          );
-
-          // Send notification
-          await sendNotification(
-            userRenterId,
-            "Wallet Credited Successfully",
-            `Your wallet has been credited with $${amountInDollars}. The amount is now available for use.`,
-            { userId: userRenterId, type: "wallet_credit" }
-          );
-        } catch (error) {
-          console.error("Failed to update wallet:", error);
-          // ✅ Mark transaction as failed if wallet update fails
-          await WalletTransaction.findOneAndUpdate(
-            { userId: userRenterId, paymentIntentId: paymentIntent.id },
-            { status: "failed" }
-          );
-          return res.status(500).send("Failed to process wallet credit");
-        }
-      }
-
-      // PAYMENT FAILED
-      else if (event.type === "payment_intent.payment_failed") {
-        const amountInDollars = paymentIntent.amount / 100;
-
-        await WalletTransaction.findOneAndUpdate(
-          {
-            userId: userRenterId,
-            paymentIntentId: paymentIntent.id
-          },
-          {
-            status: "failed",
-          }
-        );
-
-        await sendNotification(
-          userRenterId,
-          "Wallet Payment Failed",
-          `Your wallet payment of $${amountInDollars} has failed. Please try again or contact support.`,
-          { userId: userRenterId, type: "wallet_payment_failed" }
-        );
-      }
-
       res.json({ received: true });
     }
   } catch (err) {
@@ -298,123 +242,64 @@ export const verifyPayment = async (req: AuthRequest, res: Response) => {
 
     const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
-    const userRenterId = intent.metadata?.userRenterId;
-    if (!userRenterId) {
-      return res.status(400).json({ message: "Missing User ID" });
-    }
-
-    // ✅ Authorization check: Only the payment owner can verify
-    if (req.user?.id?.toString() !== userRenterId) {
-      return res.status(403).json({ message: "Unauthorized to verify this payment" });
-    }
-
-
-    const walletTx = await WalletTransaction.findOne({
-      userId: userRenterId,
-      paymentIntentId: intent.id,
-    });
-
-    if (!walletTx) {
-      return res.status(404).json({ message: "Wallet transaction not found" });
-    }
-
-    // ===== CHECK IF ALREADY PROCESSED =====
-    if (walletTx.status === "succeeded") {
-      return res.json({
-        status: "succeeded",
-        message: "Wallet payment successful",
-      });
-    }
-
-    if (walletTx.status === "failed") {
-      return res.json({
-        status: "failed",
-        message: "Wallet payment failed",
-      });
-    }
-
-    // ===== SUCCESS =====
-    if (intent.status === "succeeded") {
-      const amountInDollars = intent.amount / 100;
-
-      // ✅ CRITICAL: First update user wallet, THEN update transaction
-      const user = await User.findById(userRenterId);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
+    const bookingId = intent.metadata?.bookingId;
+    if (bookingId) {
+      const booking = await Booking.findById(bookingId)
+        .populate("renter")
+        .populate("leaser");
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
       }
 
-      try {
-        user.wallet.balance += amountInDollars;
-        await user.save();
+      const renter = booking.renter as any;
+      const renterId = renter?._id?.toString() || renter?.toString();
 
-        // ✅ Only update transaction after successful wallet update
-        await WalletTransaction.findOneAndUpdate(
-          {
-            userId: userRenterId,
-            paymentIntentId: intent.id,
-          },
-          {
-            status: "succeeded",
-            type: "credit"
-          },
+      if (req.user?.id?.toString() !== renterId) {
+        return res.status(403).json({ message: "Unauthorized to verify this payment" });
+      }
+
+      if (intent.status === "requires_capture") {
+        await recordHeldBookingPayment(intent.id);
+        await sendPaidBookingRequestNotifications(booking);
+        return res.json({
+          status: "pending",
+          stripeStatus: intent.status,
+          message: "Booking payment hold confirmed",
+        });
+      }
+
+      if (intent.status === "succeeded") {
+        await Payment.findOneAndUpdate(
+          { paymentIntentId: intent.id },
+          { status: "captured", capturedAt: new Date() },
           { new: true }
         );
-
-        await sendNotification(
-          userRenterId,
-          "Wallet Credited Successfully",
-          `Your wallet has been credited with $${amountInDollars}. The amount is now available for use.`,
-          { userId: userRenterId, type: "wallet_credit" }
-        );
-
         return res.json({
           status: "succeeded",
-          message: "Wallet payment successful",
+          stripeStatus: intent.status,
+          message: "Booking payment captured",
         });
-      } catch (error) {
-        console.error("Failed to update wallet:", error);
-        await WalletTransaction.findOneAndUpdate(
-          { userId: userRenterId, paymentIntentId: intent.id },
-          { status: "failed" }
-        );
-        return res.status(500).json({ message: "Failed to process wallet credit" });
       }
-    }
 
-    // ===== FAILED/CANCELED =====
-    if (intent.status === "canceled" || intent.status === "requires_payment_method") {
-      const amountInDollars = intent.amount / 100;
-
-      await WalletTransaction.findOneAndUpdate(
-        {
-          userId: userRenterId,
-          paymentIntentId: intent.id,
-        },
-        {
+      if (["canceled", "requires_payment_method"].includes(intent.status)) {
+        await Payment.findOneAndUpdate(
+          { paymentIntentId: intent.id },
+          { status: "cancelled" }
+        );
+        return res.json({
           status: "failed",
-        }
-      );
-
-      await sendNotification(
-        userRenterId,
-        "Wallet Payment Failed",
-        `Your wallet payment of $${amountInDollars} has failed. Please try again or contact support.`,
-        { userId: userRenterId, type: "wallet_payment_failed" }
-      );
+          stripeStatus: intent.status,
+          message: "Booking payment failed or cancelled",
+        });
+      }
 
       return res.json({
-        status: "failed",
-        message: intent.status === "canceled"
-          ? "Wallet payment was canceled by user"
-          : "Wallet payment failed",
+        status: "pending",
+        stripeStatus: intent.status,
+        message: "Booking payment is still processing",
       });
     }
-
-    // ===== PENDING =====
-    return res.json({
-      status: "pending",
-      message: "Wallet payment is still processing",
-    });
+    return res.status(400).json({ message: "Only booking payments can be verified." });
 
   } catch (error: any) {
     console.error("Verify Wallet Payment Error:", error);
@@ -521,6 +406,10 @@ export const withdraw = async (req: AuthRequest, res: Response) => {
 
     const MIN_WITHDRAWAL = 100;
 
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
     if (!amount || amount < MIN_WITHDRAWAL) {
       return res.status(400).json({
         error: `Invalid amount. Minimum withdrawal is $${MIN_WITHDRAWAL}.`
@@ -545,8 +434,14 @@ export const withdraw = async (req: AuthRequest, res: Response) => {
     if (!user.stripe.connectedAccountId)
       return res.status(400).json({ error: "Bank account not connected" });
 
-    if (user.wallet.balance < amount)
-      return res.status(400).json({ error: "Insufficient wallet balance" });
+    const { availableAmount, sourcePayment } = await calculateVerifiedWithdrawableAmount(userId);
+
+    if (availableAmount < amount)
+      return res.status(400).json({ error: "Insufficient available earnings" });
+
+    if (!sourcePayment?.bookingId) {
+      return res.status(400).json({ error: "No completed booking earning found for payout" });
+    }
 
     const account = await stripe.accounts.retrieve(user.stripe.connectedAccountId);
     if (!account.payouts_enabled)
@@ -556,7 +451,7 @@ export const withdraw = async (req: AuthRequest, res: Response) => {
     const amountInCents = Math.round(amount * 100);
 
     // Platform -> Connected Account
-    await stripe.transfers.create({
+    const transfer = await stripe.transfers.create({
       amount: amountInCents,
       currency: "usd",
       destination: user.stripe.connectedAccountId,
@@ -569,30 +464,51 @@ export const withdraw = async (req: AuthRequest, res: Response) => {
     );
 
     // 5️⃣ Update Database & Record Transaction
-    user.wallet.balance -= amount;
-    await user.save();
+    const admin = await User.findOne({ role: "admin" }).select("_id").lean();
 
-    await WalletTransaction.create({
-      userId: user._id,
-      amount,
-      type: "debit",
-      status: "succeeded",
-      source: "withdraw",
+    const payoutPayment = await Payment.create({
+      bookingId: sourcePayment.bookingId,
+      userId,
+      amount: Number(amount),
+      currency: sourcePayment.currency || "usd",
+      type: "payout",
+      status: "paid_out",
+      transferId: transfer.id,
       payoutId: payout.id,
-      description: `Withdrawal to connected bank account`,
+      paidOutAt: new Date(),
+      method: "stripe",
     });
 
+    await createTransaction({
+      paymentId: payoutPayment._id as mongoose.Types.ObjectId,
+      userId: userId as string,
+      amount: Number(amount),
+      type: "debit",
+      source: "leaser_payout",
+    });
+
+    if (admin?._id) {
+      await createTransaction({
+        paymentId: payoutPayment._id as mongoose.Types.ObjectId,
+        userId: admin._id as mongoose.Types.ObjectId,
+        amount: Number(amount),
+        type: "debit",
+        source: "leaser_payout",
+      });
+    }
+
     // 6️⃣ Notify User
-    await sendNotification(
-      user._id as string,
-      "Withdrawal Initiated",
-      `Your withdrawal of $${amount.toFixed(2)} has been initiated.`,
-      { userId: user._id, type: "wallet_withdrawal", payoutId: payout.id }
-    );
+    await notificationQueue.add("withdrawal-initiated", {
+      userId: user._id as string,
+      title: "Withdrawal Initiated",
+      message: `Your withdrawal of $${amount.toFixed(2)} has been initiated.`,
+      data: { userId: user._id, type: "wallet_withdrawal", payoutId: payout.id },
+    });
 
     return res.json({
       success: true,
       payoutId: payout.id,
+      transferId: transfer.id,
       status: payout.status,
     });
 
@@ -601,3 +517,5 @@ export const withdraw = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: err.message || "Server error" });
   }
 };
+
+

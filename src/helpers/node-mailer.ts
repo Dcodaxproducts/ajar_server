@@ -1,50 +1,51 @@
-import nodemailer from "nodemailer";
+import nodemailer, { Transporter } from "nodemailer";
 
-const createNodeMailerTransporter = async () => {
-  const config = {
-    mailerName: "hostdonor",
-    host: "mail.hostdonor.com",
-    port: 465,
-    secure: true,
-    email: "info@hostdonor.com",
-    password: "qwerty@1122",
-  };
+const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || "AJAR";
 
-  try {
-    if (!config) {
-      throw new Error("Mail configuration is not available.");
-    }
-    const transporter = nodemailer.createTransport({
-      host: config.host,
-      port: config.port,
-      secure: config.secure,
-      auth: {
-        user: config.email,
-        pass: config.password,
-      },
-    });
-    return transporter;
-  } catch (error) {
-    console.error("Failed to create mail transporter:", error);
-    throw error;
+// Built once and reused — creating a transporter per email meant a fresh SMTP
+// handshake on every send
+let transporter: Transporter | null = null;
+
+const getTransporter = (): Transporter => {
+  if (transporter) return transporter;
+
+  const host = process.env.MAIL_HOST;
+  const user = process.env.MAIL_USER;
+  const pass = process.env.MAIL_PASSWORD;
+
+  if (!host || !user || !pass) {
+    throw new Error(
+      "Mail configuration is missing. Set MAIL_HOST, MAIL_USER and MAIL_PASSWORD."
+    );
   }
+
+  transporter = nodemailer.createTransport({
+    host,
+    port: Number(process.env.MAIL_PORT) || 465,
+    secure: process.env.MAIL_SECURE !== "false",
+    auth: { user, pass },
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 100,
+  });
+
+  return transporter;
 };
 
-export const sendEmail = async ({
-  to,
-  name,
-  subject,
-  content,
-}: {
+export type EmailPayload = {
   to: string;
   name: string;
   subject: string;
   content: string;
-}) => {
-  try {
-    const transporter = await createNodeMailerTransporter();
+};
 
-    const htmlTemplate = `
+// Throws on failure so the caller (the email worker) can retry.
+export const sendEmailOrThrow = async ({
+  to,
+  subject,
+  content,
+}: EmailPayload) => {
+  const htmlTemplate = `
       <html>
       <body style="font-family: Arial, sans-serif;">
         <div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
@@ -54,15 +55,21 @@ export const sendEmail = async ({
       </html>
     `;
 
-    const mailOptions = {
-      from: `"AJAR" <info@hostdonor.com>`,
-      to: to,
-      subject: subject,
-      html: htmlTemplate,
-    };
+  const info = await getTransporter().sendMail({
+    from: `"${MAIL_FROM_NAME}" <${process.env.MAIL_USER}>`,
+    to,
+    subject,
+    html: htmlTemplate,
+  });
 
-    const info = await transporter.sendMail(mailOptions);
-    return info.response;
+  return info.response;
+};
+
+// Swallows errors — kept for the auth emails (OTP / 2FA) that are still sent
+// directly from the request, where a throw would break the endpoint.
+export const sendEmail = async (payload: EmailPayload) => {
+  try {
+    return await sendEmailOrThrow(payload);
   } catch (error) {
     return (error as any).response;
   }

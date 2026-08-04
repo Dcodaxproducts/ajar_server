@@ -100,6 +100,8 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
   { timestamps: true, strict: false }
 );
 
+MarketplaceListingSchema.index({ leaser: 1 });
+
 export const MarketplaceListing = model<IMarketplaceListing>(
   "MarketplaceListing",
   MarketplaceListingSchema

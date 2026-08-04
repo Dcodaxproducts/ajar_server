@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface ICancellationTier {
-  daysBeforeCheckIn: number;  // tier applies when days remaining >= this
+  hoursBeforeCheckIn: number;
   percentage: number;         // 0–100: portion of booking price to DEDUCT
   label?: string;             // shown on receipts/UI e.g. "Early cancellation"
 }
@@ -18,7 +18,7 @@ export interface IRefundPolicy extends Document {
 
 const cancellationTierSchema = new Schema<ICancellationTier>(
   {
-    daysBeforeCheckIn: { type: Number, required: true, min: 0 },
+    hoursBeforeCheckIn: { type: Number, required: true, min: 0 },
     percentage: { type: Number, required: true, min: 0, max: 100 },
     label: { type: String },
   },
@@ -35,10 +35,10 @@ const refundPolicySchema = new Schema<IRefundPolicy>(
       default: [],
       validate: {
         validator(tiers: ICancellationTier[]) {
-          const days = tiers.map((t) => t.daysBeforeCheckIn);
-          return days.length === new Set(days).size;
+          const hours = tiers.map((t) => t.hoursBeforeCheckIn);
+          return hours.length === new Set(hours).size;
         },
-        message: "Duplicate daysBeforeCheckIn values in tiers",
+        message: "Duplicate hoursBeforeCheckIn values in tiers",
       },
     },
     noteText: { type: String },
