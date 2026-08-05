@@ -19,6 +19,8 @@ import { Review } from "../models/review.model";
 import { isBookingDateAvailable, isBookingExpiredForApproval } from "../utils/dateValidator";
 import { notificationQueue } from "../queues/notification.queue";
 import { emailQueue } from "../queues/email.queue";
+import { cancelReminder, scheduleReminder } from "../queues/reminders";
+import { REMINDER } from "../config/reminderTypes";
 import { calculateBookingPrice } from "../utils/calculateBookingPrice";
 import { Payment } from "../models/payment.model";
 import { DamageReport } from "../models/damageReport.model";
@@ -456,6 +458,28 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
     const paymentIntent = await createManualBookingPaymentIntent(newBooking);
 
+    // Nudge the renter before the pending booking expires.
+    // Cancelled once the payment hold lands (payment.controller).
+    if (zone.bookingExpiryEnabled) {
+      const expiryMinutes = zone.expiryTimeMinutes ?? 15;
+      const expiresAt = new Date(
+        new Date((newBooking as any).createdAt).getTime() + expiryMinutes * 60_000
+      );
+
+      await scheduleReminder({
+        type: REMINDER.BOOKING_PAYMENT_PENDING,
+        entityId: newBooking._id.toString(),
+        userId: user.id,
+        targetDate: expiresAt,
+        title: "Complete Your Payment",
+        message: `Your booking for "${listing.name}" is still awaiting payment and will expire soon.`,
+        data: {
+          bookingId: newBooking._id.toString(),
+          listingId: listingId?.toString(),
+        },
+      });
+    }
+
     return res.status(201).json({
       message: "Booking created successfully",
       booking: newBooking,
@@ -741,6 +765,22 @@ export const updateBookingStatus = async (
       );
     }
 
+    // A booking can only be closed once the leaser has verified the return PIN
+    if (
+      finalStatus === "completed" &&
+      parentBooking.status === "in_progress" &&
+      !parentBooking.returnVerifiedAt
+    ) {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(
+        res,
+        null,
+        "Return PIN must be verified before completing the booking",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
+
     if (finalStatus === "booking_cancelled" && parentBooking.status !== "approved") {
       await session.abortTransaction();
       session.endSession();
@@ -993,6 +1033,46 @@ export const updateBookingStatus = async (
             },
           });
         }
+
+        // Both are cancelled in submitBookingPin once the renter collects the item
+        await scheduleReminder({
+          type: REMINDER.BOOKING_START,
+          entityId: finalBooking._id.toString(),
+          userId: renterId,
+          targetDate: finalBooking.dates.checkIn,
+          title: "Booking Starting Soon",
+          message: `Your booking for "${listingName}" starts soon. Make sure you are ready to collect the item.`,
+          data: {
+            bookingId: finalBooking._id.toString(),
+            listingId,
+          },
+        });
+
+        await scheduleReminder({
+          type: REMINDER.BOOKING_PICKUP,
+          entityId: finalBooking._id.toString(),
+          userId: renterId,
+          targetDate: finalBooking.dates.checkIn,
+          title: "Pickup Reminder",
+          message: `Your pickup for "${listingName}" is coming up. Remember to collect the item and share the PIN with the leaser.`,
+          data: {
+            bookingId: finalBooking._id.toString(),
+            listingId,
+          },
+        });
+
+        await scheduleReminder({
+          type: REMINDER.BOOKING_HANDOVER,
+          entityId: finalBooking._id.toString(),
+          userId: leaserId,
+          targetDate: finalBooking.dates.checkIn,
+          title: "Handover Reminder",
+          message: `The renter is collecting "${listingName}" soon. Please have the item ready for handover.`,
+          data: {
+            bookingId: finalBooking._id.toString(),
+            listingId,
+          },
+        });
       }
 
       let renterMsg = `Your booking ${finalBooking._id?.toString()} status changed to ${finalStatus}.`;
@@ -1078,6 +1158,65 @@ export const updateBookingStatus = async (
       }
 
       const isDamageReportSubmitted = await DamageReport.findOne({ booking: parentBooking._id });
+
+      const finalBookingId = finalBooking._id.toString();
+
+      // Any status other than approved means the pickup/handover is off
+      if (finalStatus !== "approved") {
+        await cancelReminder(REMINDER.BOOKING_START, finalBookingId);
+        await cancelReminder(REMINDER.BOOKING_PICKUP, finalBookingId);
+        await cancelReminder(REMINDER.BOOKING_PAYMENT_PENDING, finalBookingId);
+        await cancelReminder(REMINDER.BOOKING_HANDOVER, finalBookingId);
+        await cancelReminder(REMINDER.BOOKING_APPROVAL_EXPIRING, finalBookingId);
+      }
+
+      if (finalStatus === "completed") {
+        // Item is back — stop nagging about the return, start nudging for a review
+        await cancelReminder(REMINDER.BOOKING_RETURN, finalBookingId);
+        await cancelReminder(REMINDER.BOOKING_RETURN_LEASER, finalBookingId);
+
+        await scheduleReminder({
+          type: REMINDER.BOOKING_REVIEW,
+          entityId: finalBookingId,
+          userId: renterId,
+          targetDate: new Date(),
+          title: "How was your rental?",
+          message: `Your booking for "${listingName}" is complete. Share a review to help others.`,
+          data: {
+            bookingId: finalBookingId,
+            listingId,
+          },
+        });
+
+        // Both cancelled once the leaser files a damage report
+        await scheduleReminder({
+          type: REMINDER.BOOKING_INSPECT_ITEM,
+          entityId: finalBookingId,
+          userId: leaserId,
+          targetDate: new Date(),
+          title: "Inspect the Returned Item",
+          message: `"${listingName}" has been returned. Please inspect it and report any damage before the dispute window closes.`,
+          data: {
+            bookingId: finalBookingId,
+            listingId,
+          },
+        });
+
+        if (updateFields.disputeWindowEndsAt) {
+          await scheduleReminder({
+            type: REMINDER.DISPUTE_WINDOW_CLOSING,
+            entityId: finalBookingId,
+            userId: leaserId,
+            targetDate: updateFields.disputeWindowEndsAt,
+            title: "Damage Dispute Window Closing",
+            message: `The damage dispute window for "${listingName}" closes soon. Report any damage before it expires.`,
+            data: {
+              bookingId: finalBookingId,
+              listingId,
+            },
+          });
+        }
+      }
 
       await notificationQueue.add("booking-status-changed", {
         userId: renterId,
@@ -2176,8 +2315,15 @@ export const submitBookingPin = async (
       booking.otp = "";
       booking.isVerified = true;
       booking.status = "in_progress";
+      // Renter holds this one; the leaser enters it when the item comes back
+      booking.returnOtp = generatePIN(4);
 
       await booking.save();
+
+      // Item is collected — pre-pickup reminders are no longer relevant
+      await cancelReminder(REMINDER.BOOKING_START, booking._id.toString());
+      await cancelReminder(REMINDER.BOOKING_PICKUP, booking._id.toString());
+      await cancelReminder(REMINDER.BOOKING_HANDOVER, booking._id.toString());
 
       try {
         const listing = (await MarketplaceListing.findById(
@@ -2188,6 +2334,38 @@ export const submitBookingPin = async (
           const renter = booking.renter as IUser | null;
           const leaser = booking.leaser as IUser | null;
 
+          // Rental is running — remind both sides before the return is due.
+          // Cancelled when the booking is marked completed.
+          if (renter?._id) {
+            await scheduleReminder({
+              type: REMINDER.BOOKING_RETURN,
+              entityId: booking._id.toString(),
+              userId: renter._id.toString(),
+              targetDate: booking.dates.checkOut,
+              title: "Return Reminder",
+              message: `Your rental of "${listing.name}" is ending soon. Please return the item on time.`,
+              data: {
+                bookingId: booking._id.toString(),
+                listingId: listing._id.toString(),
+              },
+            });
+          }
+
+          if (leaser?._id) {
+            await scheduleReminder({
+              type: REMINDER.BOOKING_RETURN_LEASER,
+              entityId: booking._id.toString(),
+              userId: leaser._id.toString(),
+              targetDate: booking.dates.checkOut,
+              title: "Item Return Due",
+              message: `"${listing.name}" is due back soon. Be ready to receive and inspect the item.`,
+              data: {
+                bookingId: booking._id.toString(),
+                listingId: listing._id.toString(),
+              },
+            });
+          }
+
           if (renter?._id) {
             await notificationQueue.add("booking-started", {
               userId: renter._id.toString(),
@@ -2197,6 +2375,18 @@ export const submitBookingPin = async (
                 bookingId: booking._id.toString(),
                 listingId: listing._id.toString(),
                 type: "booking_started",
+              },
+            });
+
+            await notificationQueue.add("return-pin", {
+              userId: renter._id.toString(),
+              title: "Return Verification PIN",
+              message: `Your return PIN for "${listing.name}" is ${booking.returnOtp}. Share it with the leaser when you hand the item back.`,
+              data: {
+                bookingId: booking._id.toString(),
+                listingId: listing._id.toString(),
+                type: "return_pin",
+                returnOtp: booking.returnOtp,
               },
             });
           }
@@ -2221,7 +2411,7 @@ export const submitBookingPin = async (
       return sendResponse(
         res,
         booking,
-        "PIN verified successfully and handover recorded",
+        "PIN verified and handover recorded. The return PIN has been sent to the renter.",
         STATUS_CODES.OK
       );
     }
@@ -2234,6 +2424,8 @@ export const submitBookingPin = async (
       dates: booking.dates,
       language: booking.language,
       otp: "",
+      // Renter holds this one; the leaser enters it when the item comes back
+      returnOtp: generatePIN(4),
       isVerified: true,
       priceDetails: booking.priceDetails,
       extraRequestCharges: booking.extraRequestCharges,
@@ -2292,6 +2484,18 @@ export const submitBookingPin = async (
               type: "booking_started",
             },
           });
+
+          await notificationQueue.add("return-pin", {
+            userId: renter._id.toString(),
+            title: "Return Verification PIN",
+            message: `Your return PIN for "${listing.name}" is ${createdNewBooking.returnOtp}. Share it with the leaser when you hand the item back.`,
+            data: {
+              bookingId: createdNewBooking._id.toString(),
+              listingId: listing._id.toString(),
+              type: "return_pin",
+              returnOtp: createdNewBooking.returnOtp,
+            },
+          });
         }
 
         if (leaser?._id) {
@@ -2314,7 +2518,77 @@ export const submitBookingPin = async (
     return sendResponse(
       res,
       createdNewBooking,
-      "New running booking created and handover recorded",
+      "New running booking created and handover recorded. The return PIN has been sent to the renter.",
+      STATUS_CODES.OK
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Verifies the return PIN only. Completing the booking (deposit, payout,
+// dispute window) still goes through updateBookingStatus.
+export const submitReturnPin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const { otp } = req.body;
+    const user = (req as any).user;
+    const userId = (user?.id || user?._id)?.toString();
+
+    if (!otp)
+      return sendResponse(res, null, "PIN is required", STATUS_CODES.BAD_REQUEST);
+
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+
+    const booking = await Booking.findById(id);
+
+    if (!booking)
+      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+
+    const leaserId =
+      (booking.leaser as any)?._id?.toString() ?? booking.leaser?.toString();
+
+    // The renter holds the PIN, so only the leaser proves the item came back
+    if (userId !== leaserId)
+      return sendResponse(
+        res,
+        null,
+        "Only the leaser can verify the return PIN",
+        STATUS_CODES.FORBIDDEN
+      );
+
+    if (booking.returnVerifiedAt)
+      return sendResponse(
+        res,
+        booking,
+        "Return already verified",
+        STATUS_CODES.OK
+      );
+
+    if (booking.status !== "in_progress")
+      return sendResponse(
+        res,
+        null,
+        "Return PIN can only be verified while the booking is in progress",
+        STATUS_CODES.BAD_REQUEST
+      );
+
+    if (!booking.returnOtp || booking.returnOtp !== otp)
+      return sendResponse(res, null, "Invalid PIN", STATUS_CODES.BAD_REQUEST);
+
+    booking.returnOtp = "";
+    booking.returnVerifiedAt = new Date();
+    await booking.save();
+
+    return sendResponse(
+      res,
+      booking,
+      "Return PIN verified. You can now complete the booking.",
       STATUS_CODES.OK
     );
   } catch (err) {

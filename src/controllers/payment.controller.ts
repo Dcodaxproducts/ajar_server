@@ -7,6 +7,10 @@ import stripe from "../utils/stripe";
 import mongoose from "mongoose";
 import { Request, Response } from "express";
 import { notificationQueue } from "../queues/notification.queue";
+import { cancelReminder, scheduleReminder } from "../queues/reminders";
+import { REMINDER } from "../config/reminderTypes";
+import { Zone } from "../models/zone.model";
+import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { saveStripeAccountIdToUser } from "../utils/saveStripeAccountIdToUser";
 import {
@@ -105,6 +109,9 @@ const sendPaidBookingRequestNotifications = async (booking: any) => {
   // The payment itself is already settled by the time we get here, so a queue
   // failure must never fail the caller
   try {
+    // Payment landed — the "complete your payment" nudge is no longer relevant
+    await cancelReminder(REMINDER.BOOKING_PAYMENT_PENDING, bookingId);
+
     if (renter?._id) {
       const existingRenterNotification = await Notification.exists({
         user: renter._id,
@@ -148,6 +155,37 @@ const sendPaidBookingRequestNotifications = async (booking: any) => {
           },
           { jobId: `new-booking-request-${bookingId}` }
         );
+      }
+
+      // Warn the leaser before the pending booking expires on them.
+      // Cancelled as soon as the booking leaves "pending".
+      // Callers pass a booking with only renter/leaser populated, so load the
+      // listing here to reach its zone.
+      const listing = await MarketplaceListing.findById(
+        booking.marketplaceListingId
+      )
+        .select("name zone")
+        .lean();
+
+      const zone = listing?.zone
+        ? await Zone.findById(listing.zone).lean()
+        : null;
+
+      if (zone?.bookingExpiryEnabled) {
+        const expiryMinutes = zone.expiryTimeMinutes ?? 15;
+        const expiresAt = new Date(
+          new Date(booking.createdAt).getTime() + expiryMinutes * 60_000
+        );
+
+        await scheduleReminder({
+          type: REMINDER.BOOKING_APPROVAL_EXPIRING,
+          entityId: bookingId,
+          userId: leaser._id.toString(),
+          targetDate: expiresAt,
+          title: "Booking Request Expiring",
+          message: `A booking request for "${listing?.name ?? "your listing"}" will expire soon if you do not approve it.`,
+          data: { bookingId, listingId: listing?._id?.toString() },
+        });
       }
     }
   } catch (err) {

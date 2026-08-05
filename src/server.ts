@@ -8,6 +8,7 @@ import { startUserDocumentExpiryCron } from "./cron/userDocumentExpiry.cron";
 import { initSocket } from "./socket";
 import { startNotificationWorker } from "./workers/notification.worker";
 import { startEmailWorker } from "./workers/email.worker";
+import { seedReminderSettings } from "./queues/reminders";
 
 const PORT = config.PORT || 5001;
 let notificationWorker: ReturnType<typeof startNotificationWorker> | null = null;   // 👈 YE line
@@ -21,6 +22,10 @@ connectDB().then(() => {
 
   notificationWorker = startNotificationWorker();
   emailWorker = startEmailWorker();
+
+  seedReminderSettings().catch((err) =>
+    console.error("Failed to seed reminder settings:", err)
+  );
 
   initSocket(server);
   server.listen(PORT, () => {

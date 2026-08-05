@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import asyncHandler from "express-async-handler";
 import { Review } from "../models/review.model";
 import { Booking } from "../models/booking.model";
+import { cancelReminder } from "../queues/reminders";
+import { REMINDER } from "../config/reminderTypes";
 
 //AuthRequest interface
 interface AuthRequest extends Request {
@@ -37,6 +39,10 @@ export const createReview = asyncHandler(
     }
 
     const review = await Review.create({ userId, bookingId, stars, comment });
+
+    // Review is in — drop the pending nudge
+    await cancelReminder(REMINDER.BOOKING_REVIEW, bookingId.toString());
+
     res.status(201).json({ success: true, data: review });
   }
 );

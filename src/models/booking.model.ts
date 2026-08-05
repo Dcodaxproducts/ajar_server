@@ -44,6 +44,8 @@ export interface IBooking extends Document {
   };
   language?: string;
   otp?: string;
+  returnOtp?: string;
+  returnVerifiedAt?: Date;
   isVerified?: boolean;
   priceDetails: IPriceDetails;
   pricingMeta: IPricingMeta;
@@ -96,6 +98,9 @@ const BookingSchema = new Schema<IBooking>(
     },
     language: { type: String, default: "en" },
     otp: { type: String, default: "" },
+    // Held by the renter and entered by the leaser to confirm the item came back
+    returnOtp: { type: String, default: "" },
+    returnVerifiedAt: { type: Date },
     isVerified: { type: Boolean, default: false },
 
     priceDetails: {

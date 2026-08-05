@@ -9,6 +9,7 @@ import {
   getBookingsByUserIdForAdmin,
   updateBookingStatus,
   submitBookingPin,
+  submitReturnPin,
   getRenterBookingById,
   getSeasonalBookingsGraph,
 } from "../controllers/booking.controller";
@@ -49,6 +50,7 @@ router.patch(
 router.patch("/:id/status", useAuth, userOnly, asyncHandler(updateBookingStatus));
 router.delete("/:id", useAuth, deleteBooking);
 router.post("/:id/submit-pin", useAuth, userOnly, asyncHandler(submitBookingPin));
+router.post("/:id/submit-return-pin", useAuth, userOnly, asyncHandler(submitReturnPin));
 
 router.get("/graph/seasonal", useAuth, adminOnly, asyncHandler(getSeasonalBookingsGraph));
 

@@ -7,6 +7,8 @@ import { STATUS_CODES } from "../config/constants";
 import { paginateQuery } from "../utils/paginate";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { notificationQueue } from "../queues/notification.queue";
+import { cancelReminder } from "../queues/reminders";
+import { REMINDER } from "../config/reminderTypes";
 import { User } from "../models/user.model";
 import { Payment } from "../models/payment.model";
 import { refundBookingSecurityDeposit } from "../utils/bookingStripePayments";
@@ -126,6 +128,10 @@ export const createDamageReport = async (
     });
 
     const listingName = (booking.marketplaceListingId as any)?.name || "your booking";
+
+    // Report is filed — the leaser no longer needs nudging about it
+    await cancelReminder(REMINDER.BOOKING_INSPECT_ITEM, bookingId.toString());
+    await cancelReminder(REMINDER.DISPUTE_WINDOW_CLOSING, bookingId.toString());
 
     // 6. Send Notification to the RENTER
     try {
