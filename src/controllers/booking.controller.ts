@@ -4,7 +4,6 @@ import { sendResponse } from "../utils/response";
 import mongoose from "mongoose";
 import { STATUS_CODES } from "../config/constants";
 import { paginateQuery } from "../utils/paginate";
-import { sendEmail } from "../helpers/node-mailer";
 import { IUser, User } from "../models/user.model";
 import {
   IMarketplaceListing,
@@ -182,6 +181,9 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     const existingActiveBooking = await Booking.findOne({
       renter: user.id,
       marketplaceListingId: listingId,
+      // Only a running rental can be extended. Without this, a finished booking
+      // left with a null returnDate blocks the renter from ever booking again.
+      status: "in_progress",
       "bookingDates.handover": { $ne: null },
       $or: [
         { "bookingDates.returnDate": { $exists: false } },
@@ -457,28 +459,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     });
 
     const paymentIntent = await createManualBookingPaymentIntent(newBooking);
-
-    // Nudge the renter before the pending booking expires.
-    // Cancelled once the payment hold lands (payment.controller).
-    if (zone.bookingExpiryEnabled) {
-      const expiryMinutes = zone.expiryTimeMinutes ?? 15;
-      const expiresAt = new Date(
-        new Date((newBooking as any).createdAt).getTime() + expiryMinutes * 60_000
-      );
-
-      await scheduleReminder({
-        type: REMINDER.BOOKING_PAYMENT_PENDING,
-        entityId: newBooking._id.toString(),
-        userId: user.id,
-        targetDate: expiresAt,
-        title: "Complete Your Payment",
-        message: `Your booking for "${listing.name}" is still awaiting payment and will expire soon.`,
-        data: {
-          bookingId: newBooking._id.toString(),
-          listingId: listingId?.toString(),
-        },
-      });
-    }
 
     return res.status(201).json({
       message: "Booking created successfully",
@@ -1036,19 +1016,6 @@ export const updateBookingStatus = async (
 
         // Both are cancelled in submitBookingPin once the renter collects the item
         await scheduleReminder({
-          type: REMINDER.BOOKING_START,
-          entityId: finalBooking._id.toString(),
-          userId: renterId,
-          targetDate: finalBooking.dates.checkIn,
-          title: "Booking Starting Soon",
-          message: `Your booking for "${listingName}" starts soon. Make sure you are ready to collect the item.`,
-          data: {
-            bookingId: finalBooking._id.toString(),
-            listingId,
-          },
-        });
-
-        await scheduleReminder({
           type: REMINDER.BOOKING_PICKUP,
           entityId: finalBooking._id.toString(),
           userId: renterId,
@@ -1163,9 +1130,7 @@ export const updateBookingStatus = async (
 
       // Any status other than approved means the pickup/handover is off
       if (finalStatus !== "approved") {
-        await cancelReminder(REMINDER.BOOKING_START, finalBookingId);
         await cancelReminder(REMINDER.BOOKING_PICKUP, finalBookingId);
-        await cancelReminder(REMINDER.BOOKING_PAYMENT_PENDING, finalBookingId);
         await cancelReminder(REMINDER.BOOKING_HANDOVER, finalBookingId);
         await cancelReminder(REMINDER.BOOKING_APPROVAL_EXPIRING, finalBookingId);
       }
@@ -1684,15 +1649,23 @@ export const getBookingsByUser = async (
       ? allBookings.filter((b) => b.marketplaceListingId !== null)
       : allBookings;
 
-    if (role === "leaser" && status === "pending") {
-      const bookingIds = filteredBookings.map((booking) => booking._id);
+    // A pending booking without a held payment was never actually paid for —
+    // hide it from everyone until the cleanup cron removes it
+    const pendingIds = filteredBookings
+      .filter((booking) => booking.status === "pending")
+      .map((booking) => booking._id);
+
+    if (pendingIds.length > 0) {
       const heldBookingIds = await Payment.find({
-        bookingId: { $in: bookingIds },
+        bookingId: { $in: pendingIds },
         status: "held",
       }).distinct("bookingId");
       const heldBookingIdSet = new Set(heldBookingIds.map((bookingId) => bookingId.toString()));
-      filteredBookings = filteredBookings.filter((booking) =>
-        heldBookingIdSet.has(booking._id.toString())
+
+      filteredBookings = filteredBookings.filter(
+        (booking) =>
+          booking.status !== "pending" ||
+          heldBookingIdSet.has(booking._id.toString())
       );
     }
 
@@ -2321,7 +2294,6 @@ export const submitBookingPin = async (
       await booking.save();
 
       // Item is collected — pre-pickup reminders are no longer relevant
-      await cancelReminder(REMINDER.BOOKING_START, booking._id.toString());
       await cancelReminder(REMINDER.BOOKING_PICKUP, booking._id.toString());
       await cancelReminder(REMINDER.BOOKING_HANDOVER, booking._id.toString());
 

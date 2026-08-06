@@ -1,10 +1,17 @@
 import { Booking } from "../models/booking.model";
 import { Zone } from "../models/zone.model";
+import { Payment } from "../models/payment.model";
 import { notificationQueue } from "../queues/notification.queue";
 import { releaseBookingPaymentHold } from "./bookingStripePayments";
 
 export const checkAndUpdateBookingExpiry = async (booking: any): Promise<any> => {
   if (booking.status !== "pending") return booking;
+
+  // Expiry only exists to release a held payment the leaser never approved.
+  // Unpaid bookings hold nothing — they stay pending and get cleaned up by
+  // the unpaid booking cron instead.
+  const hasPayment = await Payment.exists({ bookingId: booking._id });
+  if (!hasPayment) return booking;
 
   const zone = await Zone.findById(booking?.marketplaceListingId?.zone?._id).lean();
   if (!zone?.bookingExpiryEnabled) return booking;

@@ -109,9 +109,6 @@ const sendPaidBookingRequestNotifications = async (booking: any) => {
   // The payment itself is already settled by the time we get here, so a queue
   // failure must never fail the caller
   try {
-    // Payment landed — the "complete your payment" nudge is no longer relevant
-    await cancelReminder(REMINDER.BOOKING_PAYMENT_PENDING, bookingId);
-
     if (renter?._id) {
       const existingRenterNotification = await Notification.exists({
         user: renter._id,

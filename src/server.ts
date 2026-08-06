@@ -5,6 +5,7 @@ import { config } from "./config/env";
 import { startListingDocumentExpiryCron } from "./cron/listingDocumentExpiry.cron";
 import { startSecurityDepositReleaseCron } from "./cron/securityDepositRelease.cron";
 import { startUserDocumentExpiryCron } from "./cron/userDocumentExpiry.cron";
+import { startUnpaidBookingCleanupCron } from "./cron/unpaidBookingCleanup.cron";
 import { initSocket } from "./socket";
 import { startNotificationWorker } from "./workers/notification.worker";
 import { startEmailWorker } from "./workers/email.worker";
@@ -19,6 +20,7 @@ connectDB().then(() => {
   startListingDocumentExpiryCron();
   startUserDocumentExpiryCron();
   startSecurityDepositReleaseCron();
+  startUnpaidBookingCleanupCron();
 
   notificationWorker = startNotificationWorker();
   emailWorker = startEmailWorker();

@@ -21,24 +21,6 @@ type ReminderTypeDefinition = {
 export const REMINDER_TYPES: ReminderTypeDefinition[] = [
   // ----- Renter -----
   {
-    type: "booking-payment-pending",
-    label: "Booking awaiting payment",
-    offsetValue: 5,
-    offsetUnit: "minutes",
-    timing: "before",
-    audience: "renter",
-    channels: ["push"],
-  },
-  {
-    type: "booking-start",
-    label: "Upcoming booking start",
-    offsetValue: 1,
-    offsetUnit: "days",
-    timing: "before",
-    audience: "renter",
-    channels: ["push"],
-  },
-  {
     type: "booking-pickup",
     label: "Upcoming item pickup",
     offsetValue: 2,
@@ -116,8 +98,6 @@ export const REMINDER_TYPES: ReminderTypeDefinition[] = [
 
 export const REMINDER = {
   // Renter
-  BOOKING_PAYMENT_PENDING: "booking-payment-pending",
-  BOOKING_START: "booking-start",
   BOOKING_PICKUP: "booking-pickup",
   BOOKING_RETURN: "booking-return",
   BOOKING_REVIEW: "booking-review",

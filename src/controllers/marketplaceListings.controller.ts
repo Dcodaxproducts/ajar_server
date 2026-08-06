@@ -1168,14 +1168,38 @@ export const getListingBookedDates = async (
       rangeEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
     }
 
-    const bookings = await Booking.find({
+    const overlappingBookings = await Booking.find({
       marketplaceListingId: id,
       status: { $nin: ["request_cancelled", "rejected", "expired"] },
       "dates.checkIn": { $lte: rangeEnd },
       "dates.checkOut": { $gte: rangeStart },
     })
-      .select("dates -_id")
+      .select("dates status")
       .lean();
+
+    // A pending booking only blocks the calendar once its payment is held —
+    // same rule isBookingDateAvailable uses, so the calendar can't disagree
+    // with what the booking guard allows
+    const pendingIds = overlappingBookings
+      .filter((booking: any) => booking.status === "pending")
+      .map((booking: any) => booking._id);
+
+    let heldBookingIdSet = new Set<string>();
+    if (pendingIds.length > 0) {
+      const heldBookingIds = await Payment.find({
+        bookingId: { $in: pendingIds },
+        status: "held",
+      }).distinct("bookingId");
+      heldBookingIdSet = new Set(
+        heldBookingIds.map((bookingId: any) => bookingId.toString())
+      );
+    }
+
+    const bookings = overlappingBookings.filter(
+      (booking: any) =>
+        booking.status !== "pending" ||
+        heldBookingIdSet.has(booking._id.toString())
+    );
 
     // NEW: Safe parsing logic for listing unavailability dates array
     let listingUnavailableDates: string[] = [];
