@@ -1,9 +1,11 @@
 import { notificationQueue } from "./notification.queue";
+import { emailQueue } from "./email.queue";
 import {
   ReminderSetting,
   ReminderUnit,
 } from "../models/reminderSetting.model";
 import { REMINDER_TYPES } from "../config/reminderTypes";
+import { User } from "../models/user.model";
 
 const UNIT_MS: Record<ReminderUnit, number> = {
   minutes: 60 * 1000,
@@ -13,6 +15,8 @@ const UNIT_MS: Record<ReminderUnit, number> = {
 
 // BullMQ rejects ":" inside a custom job id
 const buildJobId = (type: string, entityId: string) => `${type}-${entityId}`;
+const buildEmailJobId = (type: string, entityId: string) =>
+  `${type}-email-${entityId}`;
 
 // Inserts any reminder type that isn't in the DB yet, without touching values an
 // admin has already changed.
@@ -77,16 +81,39 @@ export const scheduleReminder = async ({
     // Send time has already passed — nothing useful to remind about
     if (delay <= 0) return null;
 
-    return await notificationQueue.add(
-      type,
-      {
-        userId,
-        title,
-        message,
-        data: { ...data, type: "reminder", reminderType: type },
-      },
-      { delay, jobId: buildJobId(type, entityId) }
-    );
+    const channels = setting.channels?.length ? setting.channels : ["push"];
+
+    if (channels.includes("push")) {
+      await notificationQueue.add(
+        type,
+        {
+          userId,
+          title,
+          message,
+          data: { ...data, type: "reminder", reminderType: type },
+        },
+        { delay, jobId: buildJobId(type, entityId) }
+      );
+    }
+
+    if (channels.includes("email")) {
+      const user = await User.findById(userId).select("name email").lean();
+
+      if (user?.email) {
+        await emailQueue.add(
+          type,
+          {
+            to: user.email,
+            name: user.name ?? "",
+            subject: title,
+            content: `<p>${message}</p>`,
+          },
+          { delay, jobId: buildEmailJobId(type, entityId) }
+        );
+      }
+    }
+
+    return true;
   } catch (err) {
     console.error(`Failed to schedule reminder "${type}":`, err);
     return null;
@@ -98,9 +125,16 @@ export const scheduleReminder = async ({
  * Safe to call even when nothing was scheduled.
  */
 export const cancelReminder = async (type: string, entityId: string) => {
+  // Both channels are scheduled separately, so both have to be dropped
   try {
     await notificationQueue.remove(buildJobId(type, entityId));
   } catch (err) {
     console.error(`Failed to cancel reminder "${type}":`, err);
+  }
+
+  try {
+    await emailQueue.remove(buildEmailJobId(type, entityId));
+  } catch (err) {
+    console.error(`Failed to cancel email reminder "${type}":`, err);
   }
 };

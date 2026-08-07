@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document } from "mongoose";
 
-export type ReminderChannel = "push" | "email" | "sms";
+export type ReminderChannel = "push" | "email";
 export type ReminderAudience = "renter" | "leaser" | "admin";
 export type ReminderTiming = "before" | "after";
 export type ReminderUnit = "minutes" | "hours" | "days";
@@ -37,9 +37,7 @@ const ReminderSettingSchema = new Schema<IReminderSetting>(
     timing: { type: String, enum: ["before", "after"], default: "before" },
     // Off by default — an admin turns each reminder on deliberately
     enabled: { type: Boolean, default: false },
-    channels: [
-      { type: String, enum: ["push", "email", "sms"], default: "push" },
-    ],
+    channels: [{ type: String, enum: ["push", "email"], default: "push" }],
     audience: {
       type: String,
       enum: ["renter", "leaser", "admin"],

@@ -6,6 +6,7 @@ import { startListingDocumentExpiryCron } from "./cron/listingDocumentExpiry.cro
 import { startSecurityDepositReleaseCron } from "./cron/securityDepositRelease.cron";
 import { startUserDocumentExpiryCron } from "./cron/userDocumentExpiry.cron";
 import { startUnpaidBookingCleanupCron } from "./cron/unpaidBookingCleanup.cron";
+import { startAdminPendingSummaryCron } from "./cron/adminPendingSummary.cron";
 import { initSocket } from "./socket";
 import { startNotificationWorker } from "./workers/notification.worker";
 import { startEmailWorker } from "./workers/email.worker";
@@ -21,6 +22,7 @@ connectDB().then(() => {
   startUserDocumentExpiryCron();
   startSecurityDepositReleaseCron();
   startUnpaidBookingCleanupCron();
+  startAdminPendingSummaryCron();
 
   notificationWorker = startNotificationWorker();
   emailWorker = startEmailWorker();

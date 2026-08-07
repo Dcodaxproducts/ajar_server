@@ -3,7 +3,7 @@ import { ReminderSetting } from "../models/reminderSetting.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 
-const ALLOWED_CHANNELS = ["push", "email", "sms"];
+const ALLOWED_CHANNELS = ["push", "email"];
 const ALLOWED_UNITS = ["minutes", "hours", "days"];
 
 // GET /api/reminder-settings
