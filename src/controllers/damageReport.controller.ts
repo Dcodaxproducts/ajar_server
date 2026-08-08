@@ -355,7 +355,7 @@ export const updateDamageReportStatus = async (
 
   try {
     const { id } = req.params;
-    const { status, adminNote } = req.body;
+    const { status, adminNote, approvedAmount } = req.body;
     const userRole = req.user?.role;
 
     // Only admin can update status
@@ -373,7 +373,7 @@ export const updateDamageReportStatus = async (
     }
 
     // Validate status value
-    const allowedStatuses = ["pending", "approved", "rejected"];
+    const allowedStatuses = ["pending", "approved", "partially_approved", "rejected"];
     if (!allowedStatuses.includes(status)) {
       await session.abortTransaction();
       session.endSession();
@@ -400,7 +400,11 @@ export const updateDamageReportStatus = async (
     }
 
     // Prevent re-processing already settled reports
-    if (damageReport.status === "approved" || damageReport.status === "rejected") {
+    if (
+      damageReport.status === "approved" ||
+      damageReport.status === "partially_approved" ||
+      damageReport.status === "rejected"
+    ) {
       await session.abortTransaction();
       session.endSession();
       return sendResponse(res, null, "This damage report has already been settled", STATUS_CODES.BAD_REQUEST);
@@ -412,8 +416,10 @@ export const updateDamageReportStatus = async (
     const leaserId = bookingData?.leaser?._id?.toString();
     const renterId = bookingData?.renter?._id?.toString();
 
-    // ================= APPROVED =================
-    if (status === "approved") {
+    // ================= APPROVED / PARTIALLY APPROVED =================
+    if (status === "approved" || status === "partially_approved") {
+      const isPartial = status === "partially_approved";
+
       const admin = await User.findOne({ role: "admin" }).session(session);
       if (!admin) {
         await session.abortTransaction();
@@ -422,20 +428,52 @@ export const updateDamageReportStatus = async (
       }
 
       const depositAmount = bookingData?.priceDetails?.securityDeposit || 0;
-      
-      if (damagedCharges > depositAmount) {
+
+      // On a partial approval the admin sets the figure; on a full approval it
+      // stays whatever the leaser claimed
+      let settledAmount = damagedCharges;
+
+      if (isPartial) {
+        const parsedAmount = Number(approvedAmount);
+
+        if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+          await session.abortTransaction();
+          session.endSession();
+          return sendResponse(
+            res,
+            null,
+            "approvedAmount must be a number greater than 0. Use 'rejected' to approve nothing.",
+            STATUS_CODES.BAD_REQUEST
+          );
+        }
+
+        // The deposit is the only pot money can come from — a claim larger than
+        // the deposit is exactly why partial approval exists
+        if (parsedAmount > depositAmount) {
+          await session.abortTransaction();
+          session.endSession();
+          return sendResponse(
+            res,
+            null,
+            `Approved amount ($${parsedAmount.toFixed(2)}) cannot exceed the renter's security deposit ($${depositAmount.toFixed(2)})`,
+            STATUS_CODES.BAD_REQUEST
+          );
+        }
+
+        settledAmount = parsedAmount;
+      } else if (damagedCharges > depositAmount) {
         await session.abortTransaction();
         session.endSession();
         return sendResponse(
           res,
           null,
-          `Insufficient security deposit. Damage charges ($${damagedCharges.toFixed(2)}) exceed the renter's security deposit ($${depositAmount.toFixed(2)})`,
+          `Insufficient security deposit. Damage charges ($${damagedCharges.toFixed(2)}) exceed the renter's security deposit ($${depositAmount.toFixed(2)}). Use partial approval to authorise a lower amount.`,
           STATUS_CODES.BAD_REQUEST
         );
       }
 
-      const remainingDeposit = depositAmount - damagedCharges;
-      if (damagedCharges > 0) {
+      const remainingDeposit = depositAmount - settledAmount;
+      if (settledAmount > 0) {
         const payment = await Payment.findOne({
           bookingId: bookingData._id,
           type: { $in: ["booking", "extension"] },
@@ -446,7 +484,7 @@ export const updateDamageReportStatus = async (
           await createTransaction({
             paymentId: payment._id as mongoose.Types.ObjectId,
             userId: leaserId,
-            amount: damagedCharges,
+            amount: settledAmount,
             type: "credit",
             source: "damage_charge",
             session,
@@ -455,7 +493,7 @@ export const updateDamageReportStatus = async (
           await createTransaction({
             paymentId: payment._id as mongoose.Types.ObjectId,
             userId: admin._id as mongoose.Types.ObjectId,
-            amount: damagedCharges,
+            amount: settledAmount,
             type: "debit",
             source: "damage_charge",
             session,
@@ -472,19 +510,25 @@ export const updateDamageReportStatus = async (
         {
           $set: {
             depositStatus:
-              damagedCharges <= 0
+              settledAmount <= 0
                 ? "released"
                 : remainingDeposit > 0
                   ? "partially_refunded"
                   : "deducted",
             depositReleasedAt: new Date(),
             damageDisputeId: damageReport._id,
+            // Keep the booking record on the settled figure, not the claim
+            damagesCharges: {
+              damagedCharges: settledAmount,
+              totalPrice: settledAmount,
+            },
           },
         },
         { session }
       );
 
-      damageReport.status = "approved";
+      damageReport.status = isPartial ? "partially_approved" : "approved";
+      damageReport.approvedAmount = settledAmount;
       damageReport.resolvedBy = req.user?.id as any;
       damageReport.resolvedAt = new Date();
       if (adminNote !== undefined) damageReport.adminNote = adminNote;
@@ -495,22 +539,47 @@ export const updateDamageReportStatus = async (
 
       try {
         if (leaserId) {
-          await notificationQueue.add("damage-report-approved", {
-            userId: leaserId,
-            title: "Damage Report Approved",
-            message: `Admin approved the damage report for "${listingName}". Damage compensation of $${damagedCharges.toFixed(2)} has been approved from the renter's security deposit.`,
-            data: { bookingId: bookingData._id.toString(), type: "damage_report", status: "approved" },
-          });
+          await notificationQueue.add(
+            isPartial ? "damage-report-partially-approved" : "damage-report-approved",
+            {
+              userId: leaserId,
+              title: isPartial
+                ? "Damage Report Partially Approved"
+                : "Damage Report Approved",
+              message: isPartial
+                ? `Admin partially approved the damage report for "${listingName}". You claimed $${damagedCharges.toFixed(2)} and $${settledAmount.toFixed(2)} has been approved from the renter's security deposit.`
+                : `Admin approved the damage report for "${listingName}". Damage compensation of $${settledAmount.toFixed(2)} has been approved from the renter's security deposit.`,
+              data: {
+                bookingId: bookingData._id.toString(),
+                type: "damage_report",
+                status: isPartial ? "partially_approved" : "approved",
+                claimedAmount: damagedCharges.toFixed(2),
+                approvedAmount: settledAmount.toFixed(2),
+              },
+            }
+          );
         }
 
         if (renterId) {
+          const deductionLine = isPartial
+            ? `$${settledAmount.toFixed(2)} of the $${damagedCharges.toFixed(2)} claimed has been deducted from your security deposit for the damage report on "${listingName}".`
+            : `$${settledAmount.toFixed(2)} has been deducted from your security deposit for the damage report on "${listingName}".`;
+
           await notificationQueue.add("damage-charges-deducted", {
             userId: renterId,
             title: "Damage Charges Deducted",
-            message: remainingDeposit > 0
-              ? `$${damagedCharges.toFixed(2)} has been deducted from your security deposit for the damage report on "${listingName}". The remaining deposit of $${remainingDeposit.toFixed(2)} has been refunded to your original payment method.`
-              : `$${damagedCharges.toFixed(2)} has been deducted from your full security deposit for the damage report on "${listingName}". No remaining deposit to refund.`,
-            data: { bookingId: bookingData._id.toString(), type: "damage_report", status: "approved" },
+            message:
+              remainingDeposit > 0
+                ? `${deductionLine} The remaining deposit of $${remainingDeposit.toFixed(2)} has been refunded to your original payment method.`
+                : `${deductionLine} No remaining deposit to refund.`,
+            data: {
+              bookingId: bookingData._id.toString(),
+              type: "damage_report",
+              status: isPartial ? "partially_approved" : "approved",
+              claimedAmount: damagedCharges.toFixed(2),
+              approvedAmount: settledAmount.toFixed(2),
+              refundedAmount: remainingDeposit.toFixed(2),
+            },
           });
         }
       } catch (err) {
@@ -520,7 +589,9 @@ export const updateDamageReportStatus = async (
       return sendResponse(
         res,
         damageReport,
-        `Damage report approved and $${damagedCharges.toFixed(2)} transferred to leaser successfully`,
+        isPartial
+          ? `Damage report partially approved and $${settledAmount.toFixed(2)} transferred to leaser successfully`
+          : `Damage report approved and $${settledAmount.toFixed(2)} transferred to leaser successfully`,
         STATUS_CODES.OK
       );
     }

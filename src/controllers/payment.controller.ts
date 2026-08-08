@@ -70,9 +70,9 @@ const calculateVerifiedWithdrawableAmount = async (leaserId: string) => {
 
   const approvedDamageReports = await DamageReport.find({
     booking: { $in: bookingIds },
-    status: "approved",
+    status: { $in: ["approved", "partially_approved"] },
   })
-    .select("booking damagedCharges")
+    .select("booking damagedCharges approvedAmount")
     .lean();
 
   for (const damageReport of approvedDamageReports as any[]) {
@@ -82,7 +82,12 @@ const calculateVerifiedWithdrawableAmount = async (leaserId: string) => {
     if (!isPaymentVerified) continue;
     if (!sourcePayment) sourcePayment = payment;
 
-    verifiedEarnings += Number(damageReport.damagedCharges || 0);
+    // approvedAmount is what the admin actually authorised. Older reports
+    // predate the field, so fall back to the claimed figure.
+    const settledAmount =
+      damageReport.approvedAmount ?? damageReport.damagedCharges ?? 0;
+
+    verifiedEarnings += Number(settledAmount);
   }
 
   const paidOutPayments = await Payment.find({
