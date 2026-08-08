@@ -4,7 +4,8 @@ import { Booking } from "../models/booking.model";
 import { refundBookingSecurityDeposit } from "../utils/bookingStripePayments";
 import { notificationQueue } from "../queues/notification.queue";
 
-const EVERY_DAY_AT_MIDNIGHT = "0 0 * * *";
+// TESTING — revert to "0 0 * * *" (midnight) when done
+const EVERY_DAY_AT_MIDNIGHT = "* * * * *";
 
 let securityDepositReleaseCron: ReturnType<typeof cron.schedule> | null = null;
 
