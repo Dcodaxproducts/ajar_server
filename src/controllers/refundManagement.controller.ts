@@ -535,7 +535,9 @@ export const getMyRefundRequests = asyncHandler(
     const baseQuery = RefundManagement.find(filter)
       .populate("zone", "zoneName")
       .populate("subCategory", "categoryName")
-      .populate("booking");
+      .populate("booking")
+      // Newest first, and without it paginated pages can repeat or skip rows
+      .sort({ createdAt: -1 });
 
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
 

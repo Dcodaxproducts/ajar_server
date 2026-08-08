@@ -29,7 +29,8 @@ export const getMyRefundRequests = asyncHandler(
         },
       })
       .populate("user")
-      ;
+      // Newest first, and without it paginated pages can repeat or skip rows
+      .sort({ createdAt: -1 });
 
     // Paginated results
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
