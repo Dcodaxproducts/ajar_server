@@ -10,7 +10,7 @@ import { RefundPolicy } from "../models/refundPolicy.model";
 import { RefundRequest } from "../models/refundRequest.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
-import { calculateRefund } from "../utils/calculateRefund";
+import { buildBookingRefund } from "../utils/buildBookingRefund";
 import { notificationQueue } from "../queues/notification.queue";
 import { User } from "../models/user.model";
 import { capitalizeName } from "../utils/capitalizeName";
@@ -247,21 +247,10 @@ export const createRefundRequest = asyncHandler(
       return;
     }
 
-    const totalPrice = parseFloat(Number(bookingData.priceDetails?.price ?? 0).toFixed(2));
     const securityDeposit = parseFloat(Number(bookingData.priceDetails?.securityDeposit ?? 0).toFixed(2));
-    const checkInDate = new Date(bookingData.dates.checkIn);
 
-    // calculateRefund handles hoursBeforeCheckIn tier logic.
-    const result = calculateRefund(totalPrice, checkInDate, policy);
-
-    // not eligible — cutoff has passed
-    // if (result.refundAmount <= 0) {
-    //   res.status(400).json({
-    //     success: false,
-    //     message: "Refund not allowed. Cancellation cutoff period has passed.",
-    //   });
-    //   return;
-    // }
+    // Covers the parent booking, and on an early return its extensions too
+    const result = await buildBookingRefund(bookingData, policy);
 
     // create refund request
     const refundRequest = await RefundRequest.create({
@@ -269,11 +258,13 @@ export const createRefundRequest = asyncHandler(
       reason,
       note,
       user: user?.id,
-      deduction: result.deductedAmount,
-      totalRefundAmount: result.refundAmount,
+      deduction: result.totalDeducted,
+      totalRefundAmount: result.totalRefund,
       securityDeposit,
       policy: policy._id,
       status: "pending",
+      isEarlyReturn: result.isEarlyReturn,
+      breakdown: result.lines,
     });
 
     // link refund request back to booking
@@ -634,32 +625,37 @@ export const getRefundPreview = asyncHandler(
       return;
     }
 
-    // Use the pure calculator so hoursBeforeCheckIn logic stays centralized.
-    const result = calculateRefund(
-      booking.priceDetails.price,
-      new Date(booking.dates.checkIn),
-      policy
-    );
+    // Covers the parent booking, and on an early return its extensions too
+    const result = await buildBookingRefund(booking, policy);
 
     const adminFee = booking.priceDetails.adminFee ?? 0;
     const tax = booking.priceDetails.tax ?? 0;
     const securityDeposit = booking.priceDetails.securityDeposit ?? 0;
 
-    // estimatedRefund = refundable base + adminFee + tax (all returned to renter)
-    const estimatedRefund = parseFloat((result.refundAmount + adminFee + tax).toFixed(2));
-    const totalToWallet = parseFloat((estimatedRefund + securityDeposit).toFixed(2));
+    // The platform keeps its fee once the rental has actually run, and the
+    // deposit settles later through the dispute window instead
+    const estimatedRefund = result.isEarlyReturn
+      ? result.totalRefund
+      : parseFloat((result.totalRefund + adminFee + tax).toFixed(2));
+
+    const totalToWallet = result.isEarlyReturn
+      ? estimatedRefund
+      : parseFloat((estimatedRefund + securityDeposit).toFixed(2));
 
     res.status(200).json({
       success: true,
       data: {
-        totalBookingAmount: booking.priceDetails.totalPrice,
-        deductionFee: result.deductedAmount,
+        totalBookingAmount: result.totalPrice,
+        deductionFee: result.totalDeducted,
         securityDeposit,
         estimatedRefund,
         totalToWallet,
         isEligible: totalToWallet > 0,
         appliedTier: result.appliedTier,
         reason: result.reason,
+        basis: result.basis,
+        isEarlyReturn: result.isEarlyReturn,
+        breakdown: result.lines,
       },
     });
   }

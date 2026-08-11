@@ -67,11 +67,28 @@ export const createDamageReport = async (
       );
     }
 
-    if (booking.status !== "completed") {
+    // An early return also puts the item back in the leaser's hands, so it can
+    // be disputed. A pre-pickup cancellation can't — the item never left.
+    const isEarlyReturn =
+      booking.status === "booking_cancelled" &&
+      booking.cancelledFromStatus === "in_progress";
+
+    if (booking.status !== "completed" && !isEarlyReturn) {
       return sendResponse(
         res,
         null,
-        "Damage report can only be created for completed bookings",
+        "Damage report can only be created once the item has been returned",
+        STATUS_CODES.BAD_REQUEST
+      );
+    }
+
+    // Damage can only be assessed after the item is physically back, and
+    // confirming it is also what starts the dispute window
+    if (isEarlyReturn && !booking.returnVerifiedAt) {
+      return sendResponse(
+        res,
+        null,
+        "Confirm the item return with the return PIN before reporting damage",
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -133,7 +150,8 @@ export const createDamageReport = async (
     await cancelReminder(REMINDER.BOOKING_INSPECT_ITEM, bookingId.toString());
     await cancelReminder(REMINDER.DISPUTE_WINDOW_CLOSING, bookingId.toString());
 
-    // 6. Send Notification to the RENTER
+    // 6. Notify the admin to review it, and the renter that their deposit is
+    //    now on hold pending that review
     try {
       const admin = await User.findOne({ role: "admin" }).lean();
 
@@ -147,6 +165,24 @@ export const createDamageReport = async (
             reportId: report._id,
             type: "damage_report",
             status: "pending"
+          },
+        });
+      }
+
+      const renterId =
+        (booking.renter as any)?._id?.toString() ?? booking.renter?.toString();
+
+      // The claimed amount is deliberately left out — nothing is decided yet
+      if (renterId) {
+        await notificationQueue.add("damage-report-filed-renter", {
+          userId: renterId,
+          title: "Damage Report Filed",
+          message: `The host has reported damage for "${listingName}". Your security deposit is on hold while our team reviews it.`,
+          data: {
+            bookingId: booking._id.toString(),
+            reportId: report._id,
+            type: "damage_report",
+            status: "pending",
           },
         });
       }

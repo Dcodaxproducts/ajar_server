@@ -761,13 +761,21 @@ export const updateBookingStatus = async (
       );
     }
 
-    if (finalStatus === "booking_cancelled" && parentBooking.status !== "approved") {
+    // Cancelling an in_progress booking is an early return: the renter already
+    // has the item, so it settles differently from a pre-pickup cancellation
+    const isEarlyReturn =
+      finalStatus === "booking_cancelled" && parentBooking.status === "in_progress";
+
+    if (
+      finalStatus === "booking_cancelled" &&
+      !["approved", "in_progress"].includes(parentBooking.status)
+    ) {
       await session.abortTransaction();
       session.endSession();
       return sendResponse(
         res,
         null,
-        "Booking can only be booking_cancelled when it is in approved status",
+        "Booking can only be booking_cancelled when it is in approved or in_progress status",
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -889,6 +897,29 @@ export const updateBookingStatus = async (
     if (["rejected", "request_cancelled"].includes(finalStatus)) {
       await releaseBookingPaymentHold(parentBooking._id, session);
       updateFields.depositStatus = "none";
+    }
+
+    if (finalStatus === "booking_cancelled") {
+      updateFields.cancelledFromStatus = isEarlyReturn ? "in_progress" : "approved";
+    }
+
+    // The renter still has the item at this point, so the deposit is only put
+    // on hold. The dispute window starts later, when the leaser verifies the
+    // return PIN — otherwise it would run down while the item is still out.
+    if (isEarlyReturn) {
+      updateFields.depositStatus =
+        (parentBooking.priceDetails?.securityDeposit || 0) > 0 ? "held" : "none";
+    }
+
+    // Booking is closed — neither PIN can be used again.
+    // An early return is the exception: its return PIN is still needed to
+    // confirm the item actually came back.
+    if (
+      ["rejected", "completed", "request_cancelled"].includes(finalStatus) ||
+      (finalStatus === "booking_cancelled" && !isEarlyReturn)
+    ) {
+      updateFields.otp = "";
+      updateFields.returnOtp = "";
     }
 
     // ========== UPDATE BOOKING ==========
@@ -1111,13 +1142,17 @@ export const updateBookingStatus = async (
       } else if (finalStatus === "request_cancelled") {
         renterMsg = `Your booking for "${listingName}" has been cancelled.`;
       } else if (finalStatus === "booking_cancelled") {
-        renterMsg = `Your booking for "${listingName}" has been cancelled. Please check the "Refund Info" for eligibility and deduction details as per the policy.`;
+        // The renter still has the item on an early return, and the deposit
+        // only moves once the leaser verifies the return PIN
+        renterMsg = isEarlyReturn
+          ? `Your early return for "${listingName}" has been recorded. Please hand the item back and share your Return OTP with the host — your security deposit is released after they confirm. Check "Refund Info" for the refund breakdown.`
+          : `Your booking for "${listingName}" has been cancelled. Please check the "Refund Info" for eligibility and deduction details as per the policy.`;
       }
 
       let notificationTitle = `Booking ${finalStatus.replace(/-/g, " ").replace(/_/g, " ")}`;
 
       if (finalStatus === "booking_cancelled") {
-        notificationTitle = "Booking Cancelled";
+        notificationTitle = isEarlyReturn ? "Early Return Started" : "Booking Cancelled";
       } else if (finalStatus === "request_cancelled") {
         notificationTitle = "Request Cancelled";
       } else {
@@ -1217,6 +1252,11 @@ export const updateBookingStatus = async (
         if (finalStatus === "request_cancelled") {
           leaserTitle = "Booking Request Cancelled";
           leaserMsg = `The pending booking request for your listing "${listingName}" has been cancelled by the renter.`;
+        } else if (finalStatus === "booking_cancelled" && isEarlyReturn) {
+          // The item is still with the renter, so telling the leaser it is
+          // available again would be wrong — they need to collect it first
+          leaserTitle = "Early Return Started";
+          leaserMsg = `The renter has ended the rental for "${listingName}" early. Collect the item and submit the Return PIN to confirm — the damage dispute window starts once you do.`;
         } else if (finalStatus === "booking_cancelled") {
           leaserTitle = "Approved Booking Cancelled";
           leaserMsg = `The approved booking for "${listingName}" has been cancelled by the renter. Your item is now available for others to book.`;
@@ -1638,7 +1678,8 @@ export const getBookingsByUser = async (
       .populate("leaser", "name email")
       .populate({
         path: "refundRequest",
-        select: "status reason totalRefundAmount deduction note createdAt"
+        select:
+          "status reason totalRefundAmount deduction note createdAt isEarlyReturn breakdown securityDeposit"
       })
       .sort({ createdAt: -1 })
       .lean();
@@ -1870,7 +1911,8 @@ export const getRenterBookingById = async (
       .populate("renter", "name email profilePicture")
       .populate({
         path: "refundRequest",
-        select: "status reason totalRefundAmount deduction note createdAt"
+        select:
+          "status reason totalRefundAmount deduction note createdAt isEarlyReturn breakdown securityDeposit"
       })
       .lean();
 
@@ -2542,25 +2584,81 @@ export const submitReturnPin = async (
         STATUS_CODES.OK
       );
 
-    if (booking.status !== "in_progress")
+    // A running rental, or one the renter ended early — either way the item is
+    // coming back and the leaser confirms it with the same PIN
+    const isEarlyReturn =
+      booking.status === "booking_cancelled" &&
+      booking.cancelledFromStatus === "in_progress";
+
+    if (booking.status !== "in_progress" && !isEarlyReturn)
       return sendResponse(
         res,
         null,
-        "Return PIN can only be verified while the booking is in progress",
+        "Return PIN can only be verified while the booking is in progress or after an early return",
         STATUS_CODES.BAD_REQUEST
       );
 
     if (!booking.returnOtp || booking.returnOtp !== otp)
       return sendResponse(res, null, "Invalid PIN", STATUS_CODES.BAD_REQUEST);
 
+    const returnedAt = new Date();
+
     booking.returnOtp = "";
-    booking.returnVerifiedAt = new Date();
+    booking.returnVerifiedAt = returnedAt;
+
+    // The booking is already closed, so nothing else will start the dispute
+    // window — it begins here, the moment the item is confirmed back
+    if (isEarlyReturn) {
+      const disputeWindowDays = booking.depositDisputeWindowDays ?? 7;
+
+      if (!booking.bookingDates) booking.bookingDates = {};
+      booking.bookingDates.returnDate = returnedAt;
+      booking.depositDisputeWindowDays = disputeWindowDays;
+      booking.disputeWindowEndsAt = new Date(
+        returnedAt.getTime() + disputeWindowDays * 24 * 60 * 60 * 1000
+      );
+    }
+
     await booking.save();
+
+    // The renter is waiting on this — on an early return it is what starts the
+    // clock on their deposit
+    try {
+      const renterId =
+        (booking.renter as any)?._id?.toString() ?? booking.renter?.toString();
+      const listing = await MarketplaceListing.findById(booking.marketplaceListingId)
+        .select("name")
+        .lean();
+      const listingName = listing?.name ?? "your booking";
+      const deposit = Number(booking.priceDetails?.securityDeposit || 0);
+
+      if (renterId) {
+        const depositLine =
+          isEarlyReturn && deposit > 0 && booking.disputeWindowEndsAt
+            ? ` Your security deposit of $${deposit.toFixed(2)} will be released after ${booking.disputeWindowEndsAt.toDateString()} if no damage is reported.`
+            : "";
+
+        await notificationQueue.add("return-confirmed", {
+          userId: renterId,
+          title: "Return Confirmed",
+          message: `The host has confirmed the return of "${listingName}".${depositLine}`,
+          data: {
+            bookingId: booking._id.toString(),
+            type: "booking",
+            status: "return_confirmed",
+          },
+        });
+      }
+    } catch (err) {
+      console.error("Failed to queue return confirmation notification:", err);
+    }
 
     return sendResponse(
       res,
       booking,
-      "Return PIN verified. You can now complete the booking.",
+      isEarlyReturn
+        ? "Return PIN verified. The damage dispute window has started."
+        : "Return PIN verified. You can now complete the booking.",
       STATUS_CODES.OK
     );
   } catch (err) {

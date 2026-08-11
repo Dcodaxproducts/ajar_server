@@ -24,9 +24,14 @@ export const getMyRefundRequests = asyncHandler(
       .populate("policy")
       .populate({
         path: "booking",
-        populate: {
-          path: "marketplaceListingId"
-        },
+        populate: [
+          { path: "marketplaceListingId" },
+          {
+            path: "refundRequest",
+            select:
+              "status reason totalRefundAmount deduction note createdAt isEarlyReturn breakdown securityDeposit",
+          },
+        ],
       })
       .populate("user")
       // Newest first, and without it paginated pages can repeat or skip rows
@@ -77,10 +82,14 @@ export const getRefundRequestById = asyncHandler(
       })
       .populate({
         path: "booking",
-        populate: {
-          path: "marketplaceListingId",
-          select: "name zone subCategory",
-        },
+        populate: [
+          { path: "marketplaceListingId", select: "name zone subCategory" },
+          {
+            path: "refundRequest",
+            select:
+              "status reason totalRefundAmount deduction note createdAt isEarlyReturn breakdown securityDeposit",
+          },
+        ],
       })
       .populate("user", "name email profilePicture");
 
@@ -234,9 +243,14 @@ export const updateRefundStatus = async (
     // ================= ACCEPT =================
     const refundAmount = parseFloat(Number(refund.totalRefundAmount ?? 0).toFixed(2));
     const securityDeposit = parseFloat(Number(refund.securityDeposit ?? 0).toFixed(2));
+    const isEarlyReturn = Boolean(refund.isEarlyReturn);
 
-    const totalRenterCredit = parseFloat((refundAmount + adminFee + tax + securityDeposit).toFixed(2));
-    const leaserAmount = parseFloat((refund.totalRefundAmount).toFixed(2));
+    // An early return keeps the platform fee — the rental actually ran — and
+    // leaves the deposit to settle through the dispute window instead
+    const totalRenterCredit = isEarlyReturn
+      ? refundAmount
+      : parseFloat((refundAmount + adminFee + tax + securityDeposit).toFixed(2));
+
     const capturedAmount = parseFloat(
       (
         Number(booking.priceDetails?.totalPrice || 0) +
@@ -244,7 +258,8 @@ export const updateRefundStatus = async (
       ).toFixed(2)
     );
 
-    if (totalRenterCredit > 0) {
+    // Pre-pickup cancellation: single booking, single PaymentIntent — unchanged
+    if (!isEarlyReturn && totalRenterCredit > 0) {
       await refundBookingPaymentAmount(booking._id, totalRenterCredit, session);
       await Payment.findOneAndUpdate(
         {
@@ -267,11 +282,69 @@ export const updateRefundStatus = async (
     await session.commitTransaction();
     session.endSession();
 
+    // Early return: every extension is its own booking with its own
+    // PaymentIntent, so each one is refunded separately. Runs after the commit
+    // and stamps each line as Stripe confirms it, so a retry can pick up where
+    // it stopped instead of refunding twice.
+    if (isEarlyReturn) {
+      for (const line of refund.breakdown) {
+        if (line.refundedAt || line.refundAmount <= 0) continue;
+
+        try {
+          await refundBookingPaymentAmount(line.booking, line.refundAmount);
+
+          // Always partial: the deposit is part of the same charge and is
+          // settled later through the dispute window, so the PaymentIntent is
+          // never fully refunded at this point.
+          await Payment.findOneAndUpdate(
+            {
+              bookingId: line.booking,
+              type: { $in: ["booking", "extension"] },
+              status: { $in: ["captured", "payout_pending", "partially_refunded"] },
+            },
+            {
+              status: "partially_refunded",
+              refundedAt: new Date(),
+            }
+          );
+
+          line.refundedAt = new Date();
+          await refund.save();
+        } catch (err) {
+          console.error(
+            `Early return refund failed for booking ${line.booking}:`,
+            err
+          );
+        }
+      }
+
+      // Extensions follow the parent out of the rental
+      await Booking.updateMany(
+        { previousBookingId: booking._id, status: { $ne: "booking_cancelled" } },
+        {
+          $set: {
+            status: "booking_cancelled",
+            cancelledFromStatus: "in_progress",
+          },
+        }
+      );
+    }
+
     // ================= NOTIFICATIONS =================
 
     // Renter
+    const depositLine = isEarlyReturn
+      ? securityDeposit > 0
+        ? ` Your security deposit of $${securityDeposit.toFixed(2)} stays on hold until the damage dispute window closes.`
+        : ""
+      : securityDeposit > 0
+        ? ` (includes $${securityDeposit.toFixed(2)} security deposit)`
+        : "";
+
     const renterMsg = totalRenterCredit > 0
-      ? `Your refund request for "${capitalizeName(listingName)}" has been approved. $${totalRenterCredit.toFixed(2)} will be refunded to the original payment method${securityDeposit > 0 ? ` (includes $${securityDeposit.toFixed(2)} security deposit)` : ""}.`
+      ? isEarlyReturn
+        ? `Your early return request for "${capitalizeName(listingName)}" has been approved. $${totalRenterCredit.toFixed(2)} will be refunded to the original payment method.${depositLine}`
+        : `Your refund request for "${capitalizeName(listingName)}" has been approved. $${totalRenterCredit.toFixed(2)} will be refunded to the original payment method${depositLine}.`
       : `Your refund request for "${capitalizeName(listingName)}" has been approved (No monetary refund applicable).`;
 
     // Stripe refund is already done and the transaction committed — a queue
@@ -291,35 +364,28 @@ export const updateRefundStatus = async (
         },
       });
 
-      // Admin — refund debit
+      // Admin — one notification for the whole debit. The deposit is already
+      // part of totalRenterCredit on a pre-pickup cancellation, so announcing
+      // it separately would read as if twice the money left the platform.
+      const adminDepositLine =
+        !isEarlyReturn && securityDeposit > 0
+          ? ` (includes $${securityDeposit.toFixed(2)} security deposit)`
+          : "";
+
       await notificationQueue.add("refund-processed", {
         userId: admin._id as string,
         title: "Refund Processed",
-        message: `A refund of $${totalRenterCredit.toFixed(2)} has been returned to the renter for "${capitalizeName(listingName)}".`,
+        message: `A refund of $${totalRenterCredit.toFixed(2)} has been returned to the renter for "${capitalizeName(listingName)}"${adminDepositLine}.`,
         data: {
           refundId: (refund._id as any).toString(),
           bookingId: booking._id.toString(),
           type: "refund",
           status: "approved",
           debitedAmount: totalRenterCredit.toFixed(2),
+          depositReturned: isEarlyReturn ? "0.00" : securityDeposit.toFixed(2),
         },
       });
 
-      // Admin — deposit debit notification
-      if (securityDeposit > 0) {
-        await notificationQueue.add("security-deposit-returned", {
-          userId: admin._id as string,
-          title: "Security Deposit Returned",
-          message: `A security deposit of $${securityDeposit.toFixed(2)} has been returned to the renter for "${capitalizeName(listingName)}".`,
-          data: {
-            refundId: (refund._id as any).toString(),
-            bookingId: booking._id.toString(),
-            type: "security_deposit",
-            status: "approved",
-            depositReturned: securityDeposit.toFixed(2),
-          },
-        });
-      }
     } catch (err) {
       console.error("Failed to queue refund notifications:", err);
     }

@@ -33,6 +33,7 @@ export const createRefundPolicy = asyncHandler(
       subCategory,
       allowRefund: req.body.allowRefund ?? false,
       tiers: req.body.tiers ?? [],
+      earlyReturnTiers: req.body.earlyReturnTiers ?? [],
       noteText: req.body.noteText ?? "",
     });
 
@@ -130,10 +131,11 @@ export const updateRefundPolicy = asyncHandler(
     }
 
     // only patch fields that were actually sent — never overwrite with undefined
-    const { allowRefund, tiers, noteText } = req.body;
+    const { allowRefund, tiers, earlyReturnTiers, noteText } = req.body;
     const patch: Record<string, unknown> = {};
     if (allowRefund !== undefined) patch.allowRefund = allowRefund;
     if (tiers !== undefined) patch.tiers = tiers;
+    if (earlyReturnTiers !== undefined) patch.earlyReturnTiers = earlyReturnTiers;
     if (noteText !== undefined) patch.noteText = noteText;
 
     // single DB round-trip — findOne + update/create was two

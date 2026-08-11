@@ -69,6 +69,9 @@ export interface IBooking extends Document {
   disputeWindowEndsAt?: Date;
   depositReleasedAt?: Date;
   damageDisputeId?: mongoose.Types.ObjectId;
+  // Which state the booking was cancelled from — separates a pre-pickup
+  // cancellation from an early return, which settle very differently
+  cancelledFromStatus?: "approved" | "in_progress";
 }
 
 const BookingSchema = new Schema<IBooking>(
@@ -176,6 +179,10 @@ const BookingSchema = new Schema<IBooking>(
     damageDisputeId: {
       type: Schema.Types.ObjectId,
       ref: "DamageReport",
+    },
+    cancelledFromStatus: {
+      type: String,
+      enum: ["approved", "in_progress"],
     },
   },
   { timestamps: true }

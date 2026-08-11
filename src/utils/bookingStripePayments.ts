@@ -168,10 +168,13 @@ export const refundBookingSecurityDeposit = async (
 ) => {
   if (!depositAmount || depositAmount <= 0) return null;
 
+  // "partially_refunded" is included because an early return refunds the rental
+  // amount first — the deposit is a separate slice of the same PaymentIntent and
+  // is still refundable after that.
   const payment = await Payment.findOne({
     bookingId,
     type: { $in: ["booking", "extension"] },
-    status: { $in: ["captured", "payout_pending", "paid_out"] },
+    status: { $in: ["captured", "payout_pending", "paid_out", "partially_refunded"] },
     paymentIntentId: { $exists: true, $ne: "" },
   }).session(session || null);
   if (!payment) {

@@ -4,8 +4,7 @@ import { Booking } from "../models/booking.model";
 import { refundBookingSecurityDeposit } from "../utils/bookingStripePayments";
 import { notificationQueue } from "../queues/notification.queue";
 
-// TESTING — revert to "0 0 * * *" (midnight) when done
-const EVERY_DAY_AT_MIDNIGHT = "* * * * *";
+const EVERY_DAY_AT_MIDNIGHT = "0 0 * * *";
 
 let securityDepositReleaseCron: ReturnType<typeof cron.schedule> | null = null;
 
@@ -13,7 +12,9 @@ export const releaseExpiredSecurityDeposits = async () => {
   const now = new Date();
 
   const bookings = await Booking.find({
-    status: "completed",
+    // An early return settles its deposit the same way a completed booking does.
+    // Pre-pickup cancellations never get a dispute window, so they can't match.
+    status: { $in: ["completed", "booking_cancelled"] },
     depositStatus: "held",
     disputeWindowEndsAt: { $lte: now },
     "priceDetails.securityDeposit": { $gt: 0 },
