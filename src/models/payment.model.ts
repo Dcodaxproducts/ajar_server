@@ -20,6 +20,10 @@ export interface IPayment extends Document {
   refundId?: string;
   transferId?: string;
   payoutId?: string;
+  // What Stripe actually took, read back from the charge after capture. Lets us
+  // compare the fee we estimated at checkout against the real cost.
+  stripeFee?: number;
+  netAmount?: number;
   capturedAt?: Date;
   refundedAt?: Date;
   payoutAvailableAt?: Date;
@@ -58,6 +62,8 @@ const PaymentSchema = new Schema<IPayment>(
     refundId: { type: String },
     transferId: { type: String },
     payoutId: { type: String },
+    stripeFee: { type: Number },
+    netAmount: { type: Number },
     capturedAt: { type: Date },
     refundedAt: { type: Date },
     payoutAvailableAt: { type: Date },

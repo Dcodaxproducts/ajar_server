@@ -10,7 +10,10 @@ const MIN_STRIPE_AMOUNT_CENTS = 50;
 export const getBookingStripeAmount = (booking: any): number => {
   const totalPrice = Number(booking?.priceDetails?.totalPrice || 0);
   const securityDeposit = Number(booking?.priceDetails?.securityDeposit || 0);
-  return Number((totalPrice + securityDeposit).toFixed(2));
+  // The processing fee is deliberately kept out of totalPrice, so it has to be
+  // added back here — this is the only place the renter is actually charged
+  const stripeFee = Number(booking?.priceDetails?.stripeFee || 0);
+  return Number((totalPrice + securityDeposit + stripeFee).toFixed(2));
 };
 
 const getBookingUserId = (user: any) => {
@@ -104,10 +107,22 @@ export const captureHeldBookingPayment = async (
     throw new Error(`Payment is not ready to capture: ${intent.status}`);
   }
 
-  const captured = await stripe.paymentIntents.capture(payment.paymentIntentId);
+  // Expanding the balance transaction is the only way to see what Stripe
+  // actually charged — without it we just get an id
+  const captured = await stripe.paymentIntents.capture(payment.paymentIntentId, {
+    expand: ["latest_charge.balance_transaction"],
+  });
+
+  const balanceTx = (captured.latest_charge as any)?.balance_transaction as any;
 
   payment.status = "captured";
   payment.capturedAt = new Date();
+
+  if (balanceTx) {
+    payment.stripeFee = Number(((balanceTx.fee ?? 0) / 100).toFixed(2));
+    payment.netAmount = Number(((balanceTx.net ?? 0) / 100).toFixed(2));
+  }
+
   await payment.save({ session });
 
   const booking = await Booking.findById(bookingId).session(session || null);

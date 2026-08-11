@@ -20,7 +20,10 @@ import { notificationQueue } from "../queues/notification.queue";
 import { emailQueue } from "../queues/email.queue";
 import { cancelReminder, scheduleReminder } from "../queues/reminders";
 import { REMINDER } from "../config/reminderTypes";
-import { calculateBookingPrice } from "../utils/calculateBookingPrice";
+import {
+  calculateBookingPrice,
+  calculateProcessingFee,
+} from "../utils/calculateBookingPrice";
 import { Payment } from "../models/payment.model";
 import { DamageReport } from "../models/damageReport.model";
 import { Zone } from "../models/zone.model";
@@ -325,6 +328,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         adminFee: 0,
         tax: 0,
         securityDeposit: 0,
+        stripeFee: calculateProcessingFee(priceBreakdown.basePrice),
         totalPrice: priceBreakdown.basePrice,
       };
 
@@ -435,6 +439,10 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       tax: priceBreakdown.tax,
       // Include security deposit from zone's rental policy (0 if not required)
       securityDeposit: securityDepositAmount,
+      // Charged on top of everything the renter is billed, including the deposit
+      stripeFee: calculateProcessingFee(
+        priceBreakdown.totalPrice + securityDepositAmount
+      ),
       // Total = booking price + security deposit
       totalPrice: priceBreakdown.totalPrice,
     };

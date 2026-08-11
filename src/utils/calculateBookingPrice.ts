@@ -3,6 +3,25 @@ export type PriceUnit = "hour" | "day" | "month" | "year";
 const DAY_MS = 1000 * 60 * 60 * 24;
 const HOUR_MS = 1000 * 60 * 60;
 
+// Payment processing fee charged to the renter on top of the booking.
+// Stripe takes ~2.9% + $0.30 on domestic cards and up to ~4.4% on international
+// ones, so this sits in between. Keep in sync with the frontend constant.
+export const PROCESSING_FEE_PERCENT = 3.5;
+export const PROCESSING_FEE_FIXED = 0.3;
+
+/**
+ * Processing fee for a given subtotal (booking price + fees + deposit).
+ * Kept separate from totalPrice so the booking amount keeps its own meaning —
+ * the fee is added on only when charging the card.
+ */
+export const calculateProcessingFee = (subtotal: number): number => {
+  const amount = Number(subtotal) || 0;
+  if (amount <= 0) return 0;
+
+  const fee = (amount * PROCESSING_FEE_PERCENT) / 100 + PROCESSING_FEE_FIXED;
+  return Math.round(fee * 100) / 100;
+};
+
 const toDateKey = (date: Date) => date.toISOString().split("T")[0];
 const toLocalDateKey = (date: Date) => {
   const year = date.getFullYear();

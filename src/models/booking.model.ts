@@ -7,6 +7,9 @@ interface IPriceDetails {
   adminFee: number;
   tax: number;
   securityDeposit: number;
+  // Charged on top of totalPrice when taking the card, and never refunded —
+  // Stripe keeps its cut even when the booking is refunded
+  stripeFee: number;
   totalPrice: number;
 }
 
@@ -111,6 +114,7 @@ const BookingSchema = new Schema<IBooking>(
       adminFee: { type: Number, required: true },
       tax: { type: Number, required: true },
       securityDeposit: { type: Number, default: 0 },
+      stripeFee: { type: Number, default: 0 },
       totalPrice: { type: Number, required: true },
     },
 
