@@ -24,16 +24,16 @@ export const createBusinessSetting = async (req: Request, res: Response) => {
     if (!pageName || !pageSettings) {
       return res.status(400).json({
         success: false,
-        message: "`pageName` and `pageSettings` are required",
+        message: req.t("setting:pageFieldsRequired"),
       });
     }
 
     if (!allowedPageNames.includes(pageName)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid pageName. Allowed values are: ${allowedPageNames.join(
-          ", "
-        )}`,
+        message: req.t("setting:invalidPageName", {
+          allowed: allowedPageNames.join(", "),
+        }),
       });
     }
 
@@ -41,7 +41,7 @@ export const createBusinessSetting = async (req: Request, res: Response) => {
     if (existing) {
       return res.status(400).json({
         success: false,
-        message: `Settings for '${pageName}' already exist. Use update API instead.`,
+        message: req.t("setting:alreadyExists", { pageName }),
       });
     }
 
@@ -53,7 +53,7 @@ export const createBusinessSetting = async (req: Request, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      message: "Business setting created successfully",
+      message: req.t("setting:created"),
       data: created,
     });
   } catch (error: any) {
@@ -91,7 +91,9 @@ export const updateOrCreateBusinessSetting = async (
     if (!allowedPageNames.includes(pageName)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid pageName. Allowed values are: ${allowedPageNames.join(", ")}`,
+        message: req.t("setting:invalidPageName", {
+          allowed: allowedPageNames.join(", "),
+        }),
       });
     }
 
@@ -109,14 +111,14 @@ export const updateOrCreateBusinessSetting = async (
       );
       return res.status(200).json({
         success: true,
-        message: `Business setting for '${pageName}' updated successfully`,
+        message: req.t("setting:updated", { pageName }),
         data: result,
       });
     } else {
       result = await BusinessSetting.create({ pageName, pageSettings, languages });
       return res.status(201).json({
         success: true,
-        message: "Business setting created successfully (via PATCH)",
+        message: req.t("setting:createdViaPatch"),
         data: result,
       });
     }
@@ -138,7 +140,7 @@ export const getBusinessSettingByPage = async (req: Request, res: Response) => {
     if (!setting) {
       return res
         .status(404)
-        .json({ success: false, message: "Setting not found" });
+        .json({ success: false, message: req.t("setting:notFound") });
     }
 
     return res.status(200).json({ success: true, data: setting });
@@ -160,12 +162,12 @@ export const deleteBusinessSettingByPage = async (
     if (!deleted) {
       return res
         .status(404)
-        .json({ success: false, message: "Setting not found" });
+        .json({ success: false, message: req.t("setting:notFound") });
     }
 
     return res
       .status(200)
-      .json({ success: true, message: "Setting deleted successfully" });
+      .json({ success: true, message: req.t("setting:deleted") });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }

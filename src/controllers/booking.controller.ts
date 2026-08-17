@@ -67,7 +67,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
     const renter = await User.findById(user.id);
     if (!renter) {
-      return res.status(404).json({ message: "Renter not found" });
+      return res.status(404).json({ message: req.t("common:renterNotFound") });
     }
 
     if (renter.status === "inactive" || renter.status === "blocked") {
@@ -77,18 +77,18 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     }
 
     if (!mongoose.Types.ObjectId.isValid(marketplaceListingId)) {
-      return res.status(400).json({ message: "Invalid Marketplace Listing ID" });
+      return res.status(400).json({ message: req.t("common:invalidListingId") });
     }
 
     const listing = await MarketplaceListing.findById(marketplaceListingId);
-    if (!listing) return res.status(404).json({ message: "Listing not found" });
+    if (!listing) return res.status(404).json({ message: req.t("common:listingNotFound") });
 
     const listingId = listing._id as Types.ObjectId;
     const leaserId = listing.leaser as Types.ObjectId;
 
     // 1. MOVED UP: Fetch Form first so we have Tax/Commission rates for both Extensions and New Bookings
     const form = await Form.findOne({ subCategory: listing.subCategory, zone: listing.zone });
-    if (!form) return res.status(400).json({ message: "Form settings not found for this listing" });
+    if (!form) return res.status(400).json({ message: req.t("booking:formNotFound") });
 
     // Prepare rates
     const adminCommissionRate = (form.setting.renterCommission.value + form.setting.leaserCommission.value) / 100;
@@ -96,7 +96,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
     // --- SECURITY DEPOSIT + RENTAL POLICY FETCH ---
     const zone = await Zone.findById(listing.zone);
-    if (!zone) return res.status(404).json({ message: "Zone not found for this listing" });
+    if (!zone) return res.status(404).json({ message: req.t("common:zoneNotFound") });
 
     const rentalPolicy = await RentalPolicy.findOne({
       zone: listing.zone,
@@ -105,7 +105,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
     if (!rentalPolicy) {
       return res.status(400).json({
-        message: "Rental policy is not configured for this zone and subcategory",
+        message: req.t("booking:policyNotConfigured"),
       });
     }
 
@@ -196,7 +196,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
     if (existingActiveBooking) {
       if (!extensionDate) {
-        return res.status(400).json({ message: "You have an active booking for this listing. Please provide an extension date to extend your rental period." });
+        return res.status(400).json({ message: req.t("booking:extension.activeBooking") });
       }
 
       const lastExtension = await Booking.findOne({
@@ -205,7 +205,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
       if (lastExtension && lastExtension.status !== "approved") {
         return res.status(400).json({
-          message: "Your previous extension request must be approved before submitting a new one.",
+          message: req.t("booking:extension.previousPending"),
         });
       }
 
@@ -244,13 +244,13 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         const minAllowedEnd = new Date(extensionStartDate.getTime() + 60 * 60 * 1000); // +1 hour
         if (extensionEndDate < minAllowedEnd) {
           return res.status(400).json({
-            message: "Hourly extension must be at least 1 hour after current checkout.",
+            message: req.t("booking:extension.hourlyTooShort"),
           });
         }
       } else {
         if (extensionEndDate <= extensionStartDate) {
           return res.status(400).json({
-            message: "Extension date must be after previous checkout date.",
+            message: req.t("booking:extension.dateTooEarly"),
           });
         }
       }
@@ -274,7 +274,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
       if (!isAvailableForExtend) {
         return res.status(400).json({
-          message: "Listing is not available for the selected extension period",
+          message: req.t("booking:extension.datesUnavailable"),
         });
       }
 
@@ -358,7 +358,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       const paymentIntent = await createManualBookingPaymentIntent(extendedBooking);
 
       return res.status(201).json({
-        message: "Extension request created successfully",
+        message: req.t("booking:extension.created"),
         booking: extendedBooking,
         priceBreakdown,
         payment: {
@@ -372,7 +372,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
        NEW BOOKING LOGIC
     --------------------------------------------------------- */
     if (!dates?.checkIn || !dates?.checkOut) {
-      return res.status(400).json({ message: "Booking dates (checkIn & checkOut) are required" });
+      return res.status(400).json({ message: req.t("booking:datesRequired") });
     }
 
     const { checkIn: checkInDate, checkOut: checkOutDate } = normalizeBookingDates(dates.checkIn, dates.checkOut);
@@ -400,14 +400,14 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     );
 
     if (!isAvailable) {
-      return res.status(400).json({ message: "Listing is already booked for the selected dates" });
+      return res.status(400).json({ message: req.t("booking:datesUnavailable") });
     }
 
     // Check required documents
     const requiredUserDocs = form.userDocuments || [];
     if (requiredUserDocs.length > 0) {
       const renterProfile = await User.findById(user.id);
-      if (!renterProfile) return res.status(404).json({ message: "Renter profile not found" });
+      if (!renterProfile) return res.status(404).json({ message: req.t("common:renterProfileNotFound") });
 
       const missingDocs: string[] = [];
       const unapprovedDocs: string[] = [];
@@ -469,7 +469,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     const paymentIntent = await createManualBookingPaymentIntent(newBooking);
 
     return res.status(201).json({
-      message: "Booking created successfully",
+      message: req.t("booking:created"),
       booking: newBooking,
       priceBreakdown,
       // Return deposit info so frontend can show the renter what was held
@@ -487,7 +487,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
   } catch (error) {
     console.error("Error creating booking:", error);
-    return res.status(500).json({ message: "Server error", error });
+    return res.status(500).json({ message: req.t("common:serverError"), error });
   }
 };
 
@@ -515,7 +515,7 @@ export const updateBookingStatus = async (
       return sendResponse(
         res,
         null,
-        "Admin not found",
+        req.t("common:adminNotFound"),
         STATUS_CODES.NOT_FOUND
       );
     }
@@ -531,7 +531,7 @@ export const updateBookingStatus = async (
       return sendResponse(
         res,
         null,
-        "Booking not found",
+        req.t("booking:notFound"),
         STATUS_CODES.NOT_FOUND
       );
     }
@@ -564,7 +564,7 @@ export const updateBookingStatus = async (
         if (!isLeaser) {
           await session.abortTransaction();
           session.endSession();
-          return sendResponse(res, null, "Only leaser can reject the extension", STATUS_CODES.FORBIDDEN);
+          return sendResponse(res, null, req.t("booking:extension.onlyLeaserCanReject"), STATUS_CODES.FORBIDDEN);
         }
 
         const childBooking = childBookingId
@@ -574,7 +574,7 @@ export const updateBookingStatus = async (
         if (!childBooking) {
           await session.abortTransaction();
           session.endSession();
-          return sendResponse(res, null, "No pending extension found", STATUS_CODES.BAD_REQUEST);
+          return sendResponse(res, null, req.t("booking:extension.noneFound"), STATUS_CODES.BAD_REQUEST);
         }
 
         await releaseBookingPaymentHold(childBooking._id, session);
@@ -610,7 +610,7 @@ export const updateBookingStatus = async (
           console.error("Failed to notify renter about extension rejection:", err);
         }
 
-        return sendResponse(res, childBooking, "Extension rejected successfully", STATUS_CODES.OK);
+        return sendResponse(res, childBooking, req.t("booking:extension.rejected"), STATUS_CODES.OK);
       }
 
       const childBooking = childBookingId
@@ -623,7 +623,7 @@ export const updateBookingStatus = async (
         return sendResponse(
           res,
           null,
-          "No pending extension request found for this booking",
+          req.t("booking:extension.noneFoundForBooking"),
           STATUS_CODES.BAD_REQUEST
         );
       }
@@ -641,7 +641,7 @@ export const updateBookingStatus = async (
         return sendResponse(
           res,
           null,
-          "Additional extension charges require a separate Stripe payment before approval",
+          req.t("booking:extension.chargesNeedPayment"),
           STATUS_CODES.BAD_REQUEST
         );
       }
@@ -724,7 +724,7 @@ export const updateBookingStatus = async (
       return sendResponse(
         res,
         childBooking,
-        "Extension approved successfully",
+        req.t("booking:extension.approved"),
         STATUS_CODES.OK
       );
     }
@@ -737,7 +737,7 @@ export const updateBookingStatus = async (
       return sendResponse(
         res,
         null,
-        "Invalid status",
+        req.t("booking:status.invalid"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -748,7 +748,7 @@ export const updateBookingStatus = async (
       return sendResponse(
         res,
         null,
-        "Only renter can cancel the booking",
+        req.t("booking:status.onlyRenterCanCancel"),
         STATUS_CODES.FORBIDDEN
       );
     }
@@ -764,7 +764,7 @@ export const updateBookingStatus = async (
       return sendResponse(
         res,
         null,
-        "Return PIN must be verified before completing the booking",
+        req.t("booking:status.returnPinRequired"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -783,7 +783,7 @@ export const updateBookingStatus = async (
       return sendResponse(
         res,
         null,
-        "Booking can only be booking_cancelled when it is in approved or in_progress status",
+        req.t("booking:status.cancelNotAllowed"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -797,7 +797,7 @@ export const updateBookingStatus = async (
       return sendResponse(
         res,
         null,
-        "Only leaser can change the booking status",
+        req.t("booking:status.onlyLeaserCanChange"),
         STATUS_CODES.FORBIDDEN
       );
     }
@@ -821,7 +821,7 @@ export const updateBookingStatus = async (
         return sendResponse(
           res,
           null,
-          "Cannot approve booking. Checkout date has already passed.",
+          req.t("booking:status.checkoutPassed"),
           STATUS_CODES.BAD_REQUEST
         );
       }
@@ -847,7 +847,7 @@ export const updateBookingStatus = async (
         return sendResponse(
           res,
           null,
-          "Special request charges require a separate Stripe payment before approval",
+          req.t("booking:status.specialChargesNeedPayment"),
           STATUS_CODES.BAD_REQUEST
         );
       }
@@ -945,7 +945,7 @@ export const updateBookingStatus = async (
       return sendResponse(
         res,
         null,
-        "Booking update failed",
+        req.t("booking:updateFailed"),
         STATUS_CODES.INTERNAL_SERVER_ERROR
       );
     }
@@ -1289,7 +1289,7 @@ export const updateBookingStatus = async (
     return sendResponse(
       res,
       finalBooking,
-      `Booking status updated to ${finalStatus}`,
+      req.t("booking:statusUpdated", { status: finalStatus }),
       STATUS_CODES.OK
     );
 
@@ -1471,7 +1471,7 @@ export const getAllBookings = async (
 
     return sendResponse(res, {
       statusCode: STATUS_CODES.OK,
-      message: "Bookings retrieved successfully",
+      message: req.t("booking:retrieved"),
       data: {
         bookings: bookingsWithExtensions,
         total,
@@ -1500,7 +1500,7 @@ export const getBookingsByUserIdForAdmin = async (
       return sendResponse(
         res,
         null,
-        "Invalid user ID",
+        req.t("common:invalidUserId"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -1522,7 +1522,7 @@ export const getBookingsByUserIdForAdmin = async (
         page,
         limit,
       },
-      "User bookings retrieved successfully",
+      req.t("booking:userRetrieved"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -1556,7 +1556,7 @@ export const getBookingById = async (
           : "en";
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("booking:invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -1579,7 +1579,7 @@ export const getBookingById = async (
       .lean();
 
     if (!booking) {
-      sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("booking:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -1629,7 +1629,7 @@ export const getBookingById = async (
     sendResponse(
       res,
       finalResult,
-      `Booking found (locale: ${locale})`,
+      req.t("booking:found", { locale }),
       STATUS_CODES.OK
     );
   } catch (err) {
@@ -1868,7 +1868,7 @@ export const getBookingsByUser = async (
     return sendResponse(res, {
       statusCode: STATUS_CODES.OK,
       success: true,
-      message: "Bookings retrieved successfully",
+      message: req.t("booking:retrieved"),
       data: {
         bookings: finalBookings,
         total,
@@ -1898,7 +1898,7 @@ export const getRenterBookingById = async (
           : "en";
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("booking:invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -1925,7 +1925,7 @@ export const getRenterBookingById = async (
       .lean();
 
     if (!booking) {
-      sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("booking:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -1989,7 +1989,7 @@ export const getRenterBookingById = async (
     sendResponse(
       res,
       finalResult,
-      `Booking found (locale: ${locale})`,
+      req.t("booking:found", { locale }),
       STATUS_CODES.OK
     );
   } catch (err) {
@@ -2007,13 +2007,13 @@ export const updateBooking = async (
     const user = (req as any).user;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("booking:invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     const booking = await Booking.findById(id);
     if (!booking) {
-      sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("booking:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -2024,7 +2024,7 @@ export const updateBooking = async (
       return sendResponse(
         res,
         null,
-        "Only the leaser can update 'actualReturnedAt'",
+        req.t("booking:status.onlyLeaserCanUpdateReturn"),
         STATUS_CODES.FORBIDDEN
       );
     }
@@ -2036,7 +2036,7 @@ export const updateBooking = async (
     sendResponse(
       res,
       updatedBooking,
-      "Booking updated successfully",
+      req.t("booking:updated"),
       STATUS_CODES.OK
     );
   } catch (err: any) {
@@ -2062,7 +2062,7 @@ export const deleteBooking = async (
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("booking:invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -2076,7 +2076,7 @@ export const deleteBooking = async (
 
     if (!booking) {
       await session.abortTransaction();
-      sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("booking:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -2216,7 +2216,7 @@ export const deleteBooking = async (
         leaserDebitedAmount,
         adminDebitedAmount,
       },
-      "Booking deleted",
+      req.t("booking:deleted"),
       STATUS_CODES.OK
     );
   } catch (err) {
@@ -2241,7 +2241,7 @@ export const submitBookingPin = async (
       return sendResponse(
         res,
         null,
-        "PIN is required",
+        req.t("booking:pin.required"),
         STATUS_CODES.BAD_REQUEST
       );
 
@@ -2249,7 +2249,7 @@ export const submitBookingPin = async (
       return sendResponse(
         res,
         null,
-        "Invalid booking ID",
+        req.t("booking:invalidId"),
         STATUS_CODES.BAD_REQUEST
       );
 
@@ -2263,7 +2263,7 @@ export const submitBookingPin = async (
       return sendResponse(
         res,
         null,
-        "Booking not found",
+        req.t("booking:notFound"),
         STATUS_CODES.NOT_FOUND
       );
 
@@ -2271,7 +2271,7 @@ export const submitBookingPin = async (
       return sendResponse(
         res,
         null,
-        "Invalid or expired PIN",
+        req.t("booking:pin.invalidOrExpired"),
         STATUS_CODES.UNAUTHORIZED
       );
 
@@ -2303,27 +2303,27 @@ export const submitBookingPin = async (
 
       if (todayStr < checkInStr) {
         return sendResponse(res, null,
-          "PIN submission not allowed before the check-in date.",
+          req.t("booking:pin.beforeCheckInDate"),
           STATUS_CODES.BAD_REQUEST
         );
       }
 
       if (todayStr > checkOutStr) {
         return sendResponse(res, null,
-          "PIN has expired after checkout date.",
+          req.t("booking:pin.expiredAfterCheckoutDate"),
           STATUS_CODES.BAD_REQUEST
         );
       }
     } else {
       if (now < checkIn) {
         return sendResponse(res, null,
-          "PIN submission not allowed before the check-in time.",
+          req.t("booking:pin.beforeCheckInTime"),
           STATUS_CODES.BAD_REQUEST
         );
       }
       if (now > checkOut) {
         return sendResponse(res, null,
-          "PIN has expired because check-out time has passed.",
+          req.t("booking:pin.expiredAfterCheckoutTime"),
           STATUS_CODES.BAD_REQUEST
         );
       }
@@ -2433,7 +2433,7 @@ export const submitBookingPin = async (
       return sendResponse(
         res,
         booking,
-        "PIN verified and handover recorded. The return PIN has been sent to the renter.",
+        req.t("booking:pin.verified"),
         STATUS_CODES.OK
       );
     }
@@ -2540,7 +2540,7 @@ export const submitBookingPin = async (
     return sendResponse(
       res,
       createdNewBooking,
-      "New running booking created and handover recorded. The return PIN has been sent to the renter.",
+      req.t("booking:pin.newBookingCreated"),
       STATUS_CODES.OK
     );
   } catch (err) {
@@ -2562,15 +2562,15 @@ export const submitReturnPin = async (
     const userId = (user?.id || user?._id)?.toString();
 
     if (!otp)
-      return sendResponse(res, null, "PIN is required", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(res, null, req.t("booking:pin.required"), STATUS_CODES.BAD_REQUEST);
 
     if (!mongoose.Types.ObjectId.isValid(id))
-      return sendResponse(res, null, "Invalid booking ID", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(res, null, req.t("booking:invalidId"), STATUS_CODES.BAD_REQUEST);
 
     const booking = await Booking.findById(id);
 
     if (!booking)
-      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("booking:notFound"), STATUS_CODES.NOT_FOUND);
 
     const leaserId =
       (booking.leaser as any)?._id?.toString() ?? booking.leaser?.toString();
@@ -2580,7 +2580,7 @@ export const submitReturnPin = async (
       return sendResponse(
         res,
         null,
-        "Only the leaser can verify the return PIN",
+        req.t("booking:returnPin.onlyLeaser"),
         STATUS_CODES.FORBIDDEN
       );
 
@@ -2588,7 +2588,7 @@ export const submitReturnPin = async (
       return sendResponse(
         res,
         booking,
-        "Return already verified",
+        req.t("booking:returnPin.alreadyVerified"),
         STATUS_CODES.OK
       );
 
@@ -2602,12 +2602,12 @@ export const submitReturnPin = async (
       return sendResponse(
         res,
         null,
-        "Return PIN can only be verified while the booking is in progress or after an early return",
+        req.t("booking:returnPin.wrongStatus"),
         STATUS_CODES.BAD_REQUEST
       );
 
     if (!booking.returnOtp || booking.returnOtp !== otp)
-      return sendResponse(res, null, "Invalid PIN", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(res, null, req.t("booking:pin.invalid"), STATUS_CODES.BAD_REQUEST);
 
     const returnedAt = new Date();
 
@@ -2760,7 +2760,7 @@ export const getSeasonalBookingsGraph = async (
 
     return sendResponse(res, {
       statusCode: STATUS_CODES.OK,
-      message: "Bookings graph data retrieved successfully",
+      message: req.t("booking:graphRetrieved"),
       data: {
         year,
         category: subCategoryId || null,

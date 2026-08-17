@@ -143,7 +143,7 @@ export const getCategoryWithSubcategories = async (
     const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid Category ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("catalog:category.invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -155,7 +155,7 @@ export const getCategoryWithSubcategories = async (
       .lean();
 
     if (!category) {
-      sendResponse(res, null, "Category not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:category.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -219,7 +219,7 @@ export const getCategoryDetails = async (
           : typeQuery;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid Category ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("catalog:category.invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -233,7 +233,7 @@ export const getCategoryDetails = async (
         .lean();
 
       if (!category) {
-        sendResponse(res, null, "Category not found", STATUS_CODES.NOT_FOUND);
+        sendResponse(res, null, req.t("catalog:category.notFound"), STATUS_CODES.NOT_FOUND);
         return;
       }
 
@@ -273,7 +273,7 @@ export const getCategoryDetails = async (
         sendResponse(
           res,
           null,
-          "Subcategory not found",
+          req.t("catalog:subCategory.notFound"),
           STATUS_CODES.NOT_FOUND
         );
         return;
@@ -321,7 +321,7 @@ export const getCategoryDetails = async (
       .lean();
 
     if (!category) {
-      sendResponse(res, null, "Category not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:category.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -374,7 +374,7 @@ export const createNewCategory = async (
 
     const exists = await Category.findOne({ name }).lean();
     if (exists) {
-      sendResponse(res, null, "Category with this name already exists", STATUS_CODES.CONFLICT);
+      sendResponse(res, null, req.t("catalog:category.nameExists"), STATUS_CODES.CONFLICT);
       return;
     }
 
@@ -447,7 +447,7 @@ export const updateCategory = async (
   const categoryId = req.params.id;
 
   if (!mongoose.Types.ObjectId.isValid(categoryId)) {
-    sendResponse(res, null, "Invalid Category ID", STATUS_CODES.BAD_REQUEST);
+    sendResponse(res, null, req.t("catalog:category.invalidId"), STATUS_CODES.BAD_REQUEST);
     return;
   }
 
@@ -462,7 +462,7 @@ export const updateCategory = async (
           });
         });
       }
-      sendResponse(res, null, "Category not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:category.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -531,7 +531,7 @@ export const updateCategoryThumbnail = async (
 
   if (!mongoose.Types.ObjectId.isValid(categoryId)) {
     if (req.file) deleteFile(req.file.path);
-    sendResponse(res, null, "Invalid Category ID", STATUS_CODES.BAD_REQUEST);
+    sendResponse(res, null, req.t("catalog:category.invalidId"), STATUS_CODES.BAD_REQUEST);
     return;
   }
 
@@ -539,12 +539,12 @@ export const updateCategoryThumbnail = async (
     const category = await Category.findById(categoryId);
     if (!category) {
       if (req.file) deleteFile(req.file.path);
-      sendResponse(res, null, "Category not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:category.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
     if (!req.file) {
-      sendResponse(res, null, "No file uploaded", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("catalog:category.noFileUploaded"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -556,7 +556,7 @@ export const updateCategoryThumbnail = async (
     category.image = `/uploads/${req.file.filename}`;
     await category.save();
 
-    sendResponse(res, category, "Image updated successfully", STATUS_CODES.OK);
+    sendResponse(res, category, req.t("catalog:category.imageUpdated"), STATUS_CODES.OK);
   } catch (error) {
     if (req.file) deleteFile(req.file.path);
     next(error);
@@ -571,7 +571,7 @@ export const deleteCategory = async (
   const categoryId = req.params.id;
 
   if (!mongoose.Types.ObjectId.isValid(categoryId)) {
-    sendResponse(res, null, "Invalid Category ID", STATUS_CODES.BAD_REQUEST);
+    sendResponse(res, null, req.t("catalog:category.invalidId"), STATUS_CODES.BAD_REQUEST);
     return;
   }
 
@@ -584,7 +584,7 @@ export const deleteCategory = async (
     if (!category) {
       await session.abortTransaction();
       session.endSession();
-      sendResponse(res, null, "Category not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:category.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -709,7 +709,7 @@ export const getCategoryNamesAndIds = async (
     sendResponse(
       res,
       categories,
-      "Category IDs and names fetched successfully",
+      req.t("catalog:category.idsFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -731,7 +731,7 @@ export const getSubCategoryNamesAndIds = async (
     sendResponse(
       res,
       subcategories,
-      "Subcategory names and IDs fetched successfully",
+      req.t("catalog:subCategory.idsFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {

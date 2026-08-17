@@ -18,7 +18,7 @@ export const createConversation = async (req: AuthRequest, res: Response) => {
       return sendResponse(
         res,
         null,
-        "Receiver ID is required",
+        req.t("chat:conversation.receiverIdRequired"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -27,7 +27,7 @@ export const createConversation = async (req: AuthRequest, res: Response) => {
       return sendResponse(
         res,
         null,
-        "Invalid receiver ID",
+        req.t("chat:conversation.invalidReceiverId"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -63,7 +63,7 @@ export const createConversation = async (req: AuthRequest, res: Response) => {
     sendResponse(
       res,
       responseData,
-      "Conversation fetched/created successfully",
+      req.t("chat:conversation.fetchedOrCreated"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -71,7 +71,7 @@ export const createConversation = async (req: AuthRequest, res: Response) => {
     sendResponse(
       res,
       null,
-      "Failed to create conversation",
+      req.t("chat:conversation.createFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -125,7 +125,7 @@ export const getAllConversations = async (
         page: Number(page),
         limit: Number(limit),
       },
-      "Conversations fetched successfully",
+      req.t("chat:conversation.listFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -160,7 +160,7 @@ export const getConversationById = async (
       return sendResponse(
         res,
         null,
-        "Conversation not found or you are not a participant",
+        req.t("chat:conversation.notFoundOrNotParticipant"),
         STATUS_CODES.NOT_FOUND
       );
     }
@@ -168,7 +168,7 @@ export const getConversationById = async (
     sendResponse(
       res,
       conversation,
-      "Conversation fetched successfully",
+      req.t("chat:conversation.fetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -194,7 +194,7 @@ export const getConversationMessages = async (
       return sendResponse(
         res,
         null,
-        "Not authorised or conversation not found",
+        req.t("chat:conversation.notAuthorisedOrNotFound"),
         STATUS_CODES.FORBIDDEN
       );
     }
@@ -207,7 +207,7 @@ export const getConversationMessages = async (
       return sendResponse(
         res,
         null,
-        "Not authorised or conversation not found",
+        req.t("chat:conversation.notAuthorisedOrNotFound"),
         STATUS_CODES.FORBIDDEN
       );
     }
@@ -221,7 +221,7 @@ export const getConversationMessages = async (
       return sendResponse(
         res,
         null,
-        "Receiver not found or deleted",
+        req.t("chat:conversation.receiverNotFound"),
         STATUS_CODES.NOT_FOUND
       );
     }
@@ -239,7 +239,7 @@ export const getConversationMessages = async (
     sendResponse(
       res,
       { messages, receiver, total, page: Number(page), limit: Number(limit) },
-      "Messages fetched successfully",
+      req.t("chat:conversation.messagesFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {

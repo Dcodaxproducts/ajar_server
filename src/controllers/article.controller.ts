@@ -24,7 +24,7 @@ export const createArticle = async (req: AuthRequest, res: Response) => {
       return sendResponse(
         res,
         null,
-        "Title and description are required",
+        req.t("article:titleDescriptionRequired"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -35,12 +35,12 @@ export const createArticle = async (req: AuthRequest, res: Response) => {
 
     const article = await Article.create({ title, description, images });
 
-    sendResponse(res, article, "Article created successfully");
+    sendResponse(res, article, req.t("article:created"));
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Error creating article",
+      req.t("article:createFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -54,7 +54,7 @@ export const updateArticle = async (req: AuthRequest, res: Response) => {
 
     const article = await Article.findById(id);
     if (!article) {
-      return sendResponse(res, null, "Not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("article:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
     if (title) article.title = title;
@@ -68,12 +68,12 @@ export const updateArticle = async (req: AuthRequest, res: Response) => {
     }
 
     await article.save();
-    sendResponse(res, article, "Article updated successfully");
+    sendResponse(res, article, req.t("article:updated"));
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Error updating article",
+      req.t("article:updateFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -108,13 +108,13 @@ export const getAllArticles = async (req: Request, res: Response) => {
         page: paginated.page,
         limit: paginated.limit,
       },
-      "Retrieved successfully"
+      req.t("article:retrieved")
     );
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Error retrieving articles",
+      req.t("article:listFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -127,15 +127,15 @@ export const getArticleById = async (req: Request, res: Response) => {
 
     const article = await Article.findById(id);
     if (!article) {
-      return sendResponse(res, null, "Not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("article:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
-    sendResponse(res, article, "Retrieved successfully");
+    sendResponse(res, article, req.t("article:retrieved"));
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Error retrieving article",
+      req.t("article:retrieveFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -148,7 +148,7 @@ export const deleteArticle = async (req: Request, res: Response) => {
 
     const article = await Article.findById(id);
     if (!article) {
-      return sendResponse(res, null, "Not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("article:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
     // Delete images physically
@@ -161,12 +161,12 @@ export const deleteArticle = async (req: Request, res: Response) => {
 
     await Article.findByIdAndDelete(id);
 
-    sendResponse(res, article, "Deleted successfully");
+    sendResponse(res, article, req.t("article:deleted"));
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Error deleting article",
+      req.t("article:deleteFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -181,7 +181,7 @@ export const searchArticles = async (req: Request, res: Response) => {
       return sendResponse(
         res,
         null,
-        "Search keyword is required",
+        req.t("article:searchKeywordRequired"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -206,13 +206,13 @@ export const searchArticles = async (req: Request, res: Response) => {
         page: paginated.page,
         limit: paginated.limit,
       },
-      "Search results retrieved successfully"
+      req.t("article:searchResults")
     );
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Error searching articles",
+      req.t("article:searchFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
