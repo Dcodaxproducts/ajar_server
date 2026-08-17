@@ -1,0 +1,79 @@
+{
+  "zone": {
+    "notFound": "Zone not found",
+    "invalidId": "Invalid Zone ID",
+    "created": "Zone created successfully",
+    "updated": "Zone updated successfully",
+    "deleted": "Zone and related records deleted successfully",
+    "detailsFetched": "Zone details fetched successfully",
+    "nameExists": "Zone with this name already exists",
+    "subCategoriesUpdated": "Subcategories updated successfully"
+  },
+
+  "category": {
+    "notFound": "Category not found",
+    "invalidId": "Invalid Category ID",
+    "created": "Category created successfully",
+    "updated": "Category updated successfully",
+    "nameExists": "Category with this name already exists",
+    "idsFetched": "Category IDs and names fetched successfully",
+    "imageUpdated": "Image updated successfully",
+    "noFileUploaded": "No file uploaded"
+  },
+
+  "subCategory": {
+    "notFound": "Subcategory not found",
+    "created": "Subcategory created successfully",
+    "updated": "SubCategory updated successfully",
+    "idsFetched": "Subcategory names and IDs fetched successfully"
+  },
+
+  "field": {
+    "notFound": "Field not found",
+    "invalidId": "Invalid Field ID",
+    "created": "Field created successfully",
+    "updated": "Field updated successfully",
+    "deleted": "Field deleted successfully",
+    "detailsFetched": "Field details fetched successfully",
+    "parentNotFound": "Parent field not found",
+    "parentWrongType": "Parent field must be of type select or radio",
+    "conditionalWrongType": "Conditional logic is only allowed on select or radio fields",
+    "conditionalMissingDependsOn": "Invalid or missing conditional.dependsOn",
+    "conditionValueRequired": "Each condition must have a value"
+  },
+
+  "form": {
+    "notFound": "Form not found",
+    "created": "Form created successfully",
+    "updated": "Form updated successfully",
+    "deleted": "Form deleted successfully",
+    "fetched": "Form fetched successfully",
+    "alreadyExists": "Form already exists for this zone and sub-category",
+    "nameAndDescriptionRequired": "Form name and description are required",
+    "invalidZoneOrSubCategory": "Invalid subCategoryId or zoneId",
+    "invalidIds": "Invalid subCategoryId, zoneId, or fieldsIds",
+    "systemFieldsMissing": "Required system fields missing in database",
+    "someFieldsInvalid": "Some fields are invalid",
+    "someSelectedFieldsInvalid": "Some selected fields are invalid",
+    "subCategoryNotFound": "SubCategory not found"
+  },
+
+  "validation": {
+    "zoneAndSubCategoryRequired": "zone and subCategory are required",
+    "formNotFoundForContext": "Form not found for zone/subCategory with context={{context}}",
+    "missingDocuments": "Missing required documents"
+  },
+
+  "userForm": {
+    "notFound": "UserForm not found",
+    "created": "UserForm created successfully",
+    "updated": "UserForm updated successfully",
+    "deleted": "UserForm deleted successfully",
+    "fetched": "UserForm fetched successfully",
+    "listFetched": "UserForms fetched successfully",
+    "requiredFields": "zone, subCategory and fields are required",
+    "invalidZoneId": "Invalid zone ID",
+    "invalidSubCategoryId": "Invalid subCategory ID",
+    "invalidFieldIds": "One or more fieldIds are invalid"
+  }
+}

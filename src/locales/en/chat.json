@@ -1,0 +1,28 @@
+{
+  "filesUploaded": "Files uploaded successfully",
+  "uploadFailed": "File upload failed",
+  "conversationNotFound": "Conversation not found",
+  "notAllowed": "You are not allowed in this chat",
+  "messageSent": "Message sent successfully",
+  "sendFailed": "Failed to send message",
+  "messageNotFound": "Message not found",
+  "notAuthorised": "Not authorised",
+  "markedDelivered": "Message marked as delivered",
+  "markDeliveredFailed": "Failed to mark delivered",
+  "noUnseen": "No unseen messages",
+  "markedSeen": "Messages marked as seen",
+  "markSeenFailed": "Failed to mark messages seen",
+
+  "conversation": {
+    "receiverIdRequired": "Receiver ID is required",
+    "invalidReceiverId": "Invalid receiver ID",
+    "receiverNotFound": "Receiver not found or deleted",
+    "fetchedOrCreated": "Conversation fetched/created successfully",
+    "createFailed": "Failed to create conversation",
+    "listFetched": "Conversations fetched successfully",
+    "fetched": "Conversation fetched successfully",
+    "notFoundOrNotParticipant": "Conversation not found or you are not a participant",
+    "notAuthorisedOrNotFound": "Not authorised or conversation not found",
+    "messagesFetched": "Messages fetched successfully"
+  }
+}

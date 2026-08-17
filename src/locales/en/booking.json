@@ -1,0 +1,64 @@
+{
+  "notFound": "Booking not found",
+  "invalidId": "Invalid booking ID",
+  "created": "Booking created successfully",
+  "updated": "Booking updated successfully",
+  "deleted": "Booking deleted",
+  "updateFailed": "Booking update failed",
+  "retrieved": "Bookings retrieved successfully",
+  "userRetrieved": "User bookings retrieved successfully",
+  "graphRetrieved": "Bookings graph data retrieved successfully",
+  "found": "Booking found (locale: {{locale}})",
+  "statusUpdated": "Booking status updated to {{status}}",
+
+  "datesRequired": "Booking dates (checkIn & checkOut) are required",
+  "policyNotConfigured": "Rental policy is not configured for this zone and subcategory",
+  "formNotFound": "Form settings not found for this listing",
+  "datesUnavailable": "Listing is already booked for the selected dates",
+
+  "extension": {
+    "activeBooking": "You have an active booking for this listing. Please provide an extension date to extend your rental period.",
+    "previousPending": "Your previous extension request must be approved before submitting a new one.",
+    "hourlyTooShort": "Hourly extension must be at least 1 hour after current checkout.",
+    "dateTooEarly": "Extension date must be after previous checkout date.",
+    "datesUnavailable": "Listing is not available for the selected extension period",
+    "created": "Extension request created successfully",
+    "approved": "Extension approved successfully",
+    "rejected": "Extension rejected successfully",
+    "noneFound": "No pending extension found",
+    "noneFoundForBooking": "No pending extension request found for this booking",
+    "onlyLeaserCanReject": "Only leaser can reject the extension",
+    "chargesNeedPayment": "Additional extension charges require a separate Stripe payment before approval"
+  },
+
+  "status": {
+    "invalid": "Invalid status",
+    "onlyRenterCanCancel": "Only renter can cancel the booking",
+    "onlyLeaserCanChange": "Only leaser can change the booking status",
+    "returnPinRequired": "Return PIN must be verified before completing the booking",
+    "cancelNotAllowed": "Booking can only be booking_cancelled when it is in approved or in_progress status",
+    "checkoutPassed": "Cannot approve booking. Checkout date has already passed.",
+    "specialChargesNeedPayment": "Special request charges require a separate Stripe payment before approval",
+    "onlyLeaserCanUpdateReturn": "Only the leaser can update 'actualReturnedAt'"
+  },
+
+  "pin": {
+    "required": "PIN is required",
+    "invalid": "Invalid PIN",
+    "invalidOrExpired": "Invalid or expired PIN",
+    "beforeCheckInDate": "PIN submission not allowed before the check-in date.",
+    "beforeCheckInTime": "PIN submission not allowed before the check-in time.",
+    "expiredAfterCheckoutDate": "PIN has expired after checkout date.",
+    "expiredAfterCheckoutTime": "PIN has expired because check-out time has passed.",
+    "verified": "PIN verified and handover recorded. The return PIN has been sent to the renter.",
+    "newBookingCreated": "New running booking created and handover recorded. The return PIN has been sent to the renter."
+  },
+
+  "returnPin": {
+    "onlyLeaser": "Only the leaser can verify the return PIN",
+    "alreadyVerified": "Return already verified",
+    "wrongStatus": "Return PIN can only be verified while the booking is in progress or after an early return",
+    "verified": "Return PIN verified. You can now complete the booking.",
+    "verifiedEarlyReturn": "Return PIN verified. The damage dispute window has started."
+  }
+}

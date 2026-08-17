@@ -1,0 +1,21 @@
+{
+  "serverError": "Server error",
+  "internalServerError": "Internal server error",
+  "unauthorized": "Unauthorized",
+  "invalidId": "Invalid ID",
+  "adminNotFound": "Admin not found",
+  "renterNotFound": "Renter not found",
+  "renterProfileNotFound": "Renter profile not found",
+  "listingNotFound": "Listing not found",
+  "zoneNotFound": "Zone not found for this listing",
+  "invalidListingId": "Invalid Marketplace Listing ID",
+  "invalidUserId": "Invalid user ID",
+  "analyticsFetched": "Admin analytics fetched successfully",
+  "accountAndUserIdRequired": "accountId and userId are required",
+  "validationError": "Invalid request data",
+  "somethingWentWrong": "Something went wrong, please try again later",
+  "invalidIdFormat": "Invalid ID format",
+  "modelNotFound": "{{model}} not found",
+  "noTranslatableFields": "No translatable fields provided",
+  "translationSaved": "{{model}} translation saved for locale \"{{locale}}\""
+}
