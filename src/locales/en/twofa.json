@@ -1,0 +1,12 @@
+{
+  "flagEnabled": "2FA flag enabled. Please complete setup.",
+  "setupStarted": "2FA setup started. Verification code sent to email.",
+  "setupVerified": "2FA setup verified successfully",
+  "disabled": "2FA disabled",
+  "codeRequired": "2FA code is required",
+  "loginCodeExpired": "2FA login code expired",
+  "invalidLoginCode": "Invalid 2FA login code",
+  "verificationCodeExpired": "Verification code expired",
+  "invalidVerificationCode": "Invalid verification code",
+  "noProcessInProgress": "No 2FA process in progress (neither setup nor login)"
+}

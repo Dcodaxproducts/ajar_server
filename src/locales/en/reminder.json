@@ -1,0 +1,10 @@
+{
+  "listFetched": "Reminder settings fetched",
+  "updated": "Reminder setting updated",
+  "notFound": "Reminder setting not found",
+  "invalidOffsetValue": "offsetValue must be a number greater than or equal to 0",
+  "invalidOffsetUnit": "offsetUnit must be one of: {{allowed}}",
+  "invalidEnabled": "enabled must be true or false",
+  "invalidChannels": "channels must be a non-empty array of: {{allowed}}",
+  "nothingToUpdate": "Nothing to update. Send offsetValue, offsetUnit, enabled or channels."
+}

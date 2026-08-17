@@ -1,0 +1,10 @@
+{
+  "created": "Business setting created successfully",
+  "createdViaPatch": "Business setting created successfully (via PATCH)",
+  "updated": "Business setting for '{{pageName}}' updated successfully",
+  "deleted": "Setting deleted successfully",
+  "notFound": "Setting not found",
+  "pageFieldsRequired": "`pageName` and `pageSettings` are required",
+  "invalidPageName": "Invalid pageName. Allowed values are: {{allowed}}",
+  "alreadyExists": "Settings for '{{pageName}}' already exist. Use update API instead."
+}

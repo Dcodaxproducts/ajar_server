@@ -1,0 +1,8 @@
+{
+  "fieldUpdated": "{{field}} updated successfully",
+  "fieldFetched": "{{field}} fetched successfully",
+  "invalidZoneOrSubCategory": "Invalid zone or subCategory ID",
+  "zoneNotFound": "Zone not found",
+  "subCategoryNotLinked": "SubCategory is not linked to this zone",
+  "durationLimitsMustBeArray": "rentalDurationLimits must be an array of policies"
+}

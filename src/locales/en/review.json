@@ -1,0 +1,4 @@
+{
+  "bookingIdRequired": "bookingId is required",
+  "alreadyReviewed": "You have already reviewed this booking"
+}

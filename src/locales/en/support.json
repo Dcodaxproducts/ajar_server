@@ -1,0 +1,14 @@
+{
+  "created": "Created successfully",
+  "deleted": "Deleted successfully",
+  "retrieved": "Retrieved successfully",
+  "notFound": "Not found",
+  "statusUpdated": "Status updated successfully",
+  "titleRequired": "Title is required",
+  "invalidStatus": "Invalid status",
+  "createFailed": "Error creating ",
+  "retrieveFailed": "Error retrieving ",
+  "deleteFailed": "Error deleting ",
+  "listFailed": "Error retrieving tickets",
+  "updateStatusFailed": "Error updating status"
+}

@@ -1,0 +1,144 @@
+{
+  "notFound": "User not found",
+  "alreadyExists": "User already exists",
+  "created": "User created successfully",
+  "deleted": "User deleted successfully",
+  "detailsFetched": "User details fetched successfully",
+  "notAuthenticated": "User not authenticated",
+  "unauthorized": "Unauthorized user",
+  "invalidRole": "Invalid role",
+  "adminsOnly": "Forbidden: Admins only",
+  "allFieldsRequired": "All fields are required",
+  "employeeNotFound": "Employee not found",
+  "statsFetched": "Stats fetched successfully",
+  "listFetched": "Users and statistics fetched successfully",
+  "statusUpdated": "User status updated successfully",
+  "invalidStatus": "Invalid status value",
+  "invalidFilter": "Invalid filter. Use 'week', 'month', or 'year'.",
+  "invalidRange": "Invalid range",
+
+  "employee": {
+    "created": "Employee created successfully",
+    "updated": "Employee updated successfully",
+    "deleted": "Employee deleted",
+    "detailsFetched": "Employee details fetched",
+    "listFetched": "Employees fetched successfully",
+    "listFetchedForLocale": "Employees fetched successfully for locale: {{locale}}",
+    "invalidId": "Invalid Employee ID",
+    "emailExists": "Email already exists",
+    "invalidStatus": "Invalid status value. Must be 'active', 'inactive', or 'blocked'.",
+    "invalidRoleId": "Invalid Role ID: {{id}}",
+    "detailsForLocale": "Employee details for locale: {{locale}}",
+    "noTranslationsForLocale": "No translations found for locale: {{locale}}"
+  },
+
+  "auth": {
+    "loginSuccess": "Login successful",
+    "loginSuccessStaff": "Login successful (staff)",
+    "invalidCredentials": "Invalid email or password",
+    "blocked": "Your account has been blocked. Please contact support.",
+    "leaserAppOnly": "The Leaser experience is only available in our mobile app. Please use the app to manage your account.",
+    "twoFactorRequired": "Enter the 6-digit 2FA code or backup code",
+    "loggedOut": "Logged out successfully",
+    "notLoggedIn": "Unauthorized: User not logged in",
+    "invalidRefreshToken": "Unauthorized: Invalid or expired refresh token",
+    "sessionExpired": "Session expired. Please log in again.",
+    "tokenRefreshed": "Token refreshed successfully"
+  },
+
+  "otp": {
+    "sent": "OTP sent to your email",
+    "resent": "OTP resent successfully",
+    "verified": "OTP verified successfully",
+    "invalidOrExpired": "Invalid or expired OTP",
+    "notVerified": "OTP not verified"
+  },
+
+  "password": {
+    "reset": "Password reset successfully",
+    "updated": "Password updated successfully",
+    "oldIncorrect": "Old password is incorrect",
+    "sameAsOld": "New password must be different from old password"
+  },
+
+  "profile": {
+    "updated": "Profile updated successfully"
+  },
+
+  "fcm": {
+    "required": "FCM token is required",
+    "saved": "FCM token saved successfully"
+  },
+
+  "document": {
+    "notFound": "Document not found",
+    "removed": "Document removed successfully",
+    "userFetched": "User documents fetched",
+    "listingFetched": "Listing documents fetched",
+    "uploaded": "Document uploaded successfully",
+    "nameRequired": "Document name is required",
+    "fileOrUrlRequired": "A file or URL must be provided",
+    "invalidStatus": "Invalid status. Allowed: approved, rejected",
+    "userOrDocNotFound": "User or document not found",
+    "alreadyApproved": "Document \"{{name}}\" is already approved and cannot be re-uploaded",
+    "alreadySubmitted": "Document \"{{name}}\" is already submitted and under review",
+    "approvedSuccessfully": "Document approved successfully",
+    "rejectedSuccessfully": "Document rejected successfully",
+    "usersFetched": "Users fetched successfully",
+    "singleUserFetched": "User fetched successfully"
+  },
+
+  "role": {
+    "created": "Role created",
+    "updated": "Role updated",
+    "deleted": "Role deleted",
+    "fetched": "Role fetched",
+    "notFound": "Role not found",
+    "alreadyExists": "Role already exists",
+    "listFetched": "Employee roles fetched successfully"
+  },
+
+  "social": {
+    "missingFirebaseToken": "Missing Firebase ID token",
+    "emailNotInFirebaseToken": "Email not found in Firebase token",
+    "googleLoginSuccess": "Firebase Google login successful",
+    "missingAppleToken": "Missing Apple ID token",
+    "invalidAppleHeader": "Invalid Apple token header",
+    "emailNotInAppleToken": "Email not found in Apple token",
+    "appleLoginSuccess": "Apple login successful",
+    "invalidIssuer": "Invalid issuer",
+    "invalidAudience": "Invalid audience",
+    "authFailed": "Authentication failed",
+    "oauthCallbackFailed": "OAuth callback failed",
+    "missingOrInvalidToken": "Missing or invalid token",
+    "tokenExpiredOrInvalid": "Token expired or invalid",
+    "idTokenRequired": "idToken is required",
+    "invalidGoogleToken": "Invalid Google token",
+    "googleAuthFailed": "Google auth failed"
+  },
+
+  "bank": {
+    "added": "Bank account added successfully",
+    "fetched": "Bank accounts fetched successfully",
+    "notFound": "Bank account not found",
+    "updated": "Bank account updated successfully",
+    "deleted": "Bank account deleted successfully"
+  },
+
+  "wallet": {
+    "topUpUnsupported": "Wallet top-up is no longer supported. Booking payments are processed by Stripe.",
+    "deductionUnsupported": "Wallet deductions are no longer supported. Booking payments are processed by Stripe.",
+    "withdrawalUnsupported": "Wallet withdrawal requests are no longer supported. Use Stripe payout withdrawal.",
+    "manualApprovalUnsupported": "Manual wallet withdrawal approval is no longer supported. Use Stripe payout withdrawal."
+  },
+
+  "withdrawal": {
+    "historyFetched": "Your withdrawal history fetched",
+    "allFetched": "All withdrawal requests fetched",
+    "historyRange": "History from {{from}} to {{to}}",
+    "requestNotFound": "Request not found",
+    "alreadyProcessed": "Request already processed",
+    "rejected": "Withdrawal rejected",
+    "invalidAction": "Invalid action"
+  }
+}
