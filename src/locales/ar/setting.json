@@ -1,0 +1,10 @@
+{
+  "created": "تم إنشاء إعداد الأعمال بنجاح",
+  "createdViaPatch": "تم إنشاء إعداد الأعمال بنجاح (عبر PATCH)",
+  "updated": "تم تحديث إعداد الأعمال لصفحة '{{pageName}}' بنجاح",
+  "deleted": "تم حذف الإعداد بنجاح",
+  "notFound": "لم يتم العثور على الإعداد",
+  "pageFieldsRequired": "الحقلان `pageName` و`pageSettings` مطلوبان",
+  "invalidPageName": "اسم الصفحة غير صالح. القيم المسموح بها هي: {{allowed}}",
+  "alreadyExists": "إعدادات '{{pageName}}' موجودة بالفعل. استخدم واجهة التحديث بدلاً من ذلك."
+}

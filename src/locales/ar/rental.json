@@ -1,0 +1,8 @@
+{
+  "fieldUpdated": "تم تحديث {{field}} بنجاح",
+  "fieldFetched": "تم جلب {{field}} بنجاح",
+  "invalidZoneOrSubCategory": "معرّف المنطقة أو الفئة الفرعية غير صالح",
+  "zoneNotFound": "لم يتم العثور على المنطقة",
+  "subCategoryNotLinked": "الفئة الفرعية غير مرتبطة بهذه المنطقة",
+  "durationLimitsMustBeArray": "يجب أن تكون rentalDurationLimits مصفوفة من السياسات"
+}

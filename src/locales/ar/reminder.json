@@ -1,0 +1,10 @@
+{
+  "listFetched": "تم جلب إعدادات التذكير",
+  "updated": "تم تحديث إعداد التذكير",
+  "notFound": "لم يتم العثور على إعداد التذكير",
+  "invalidOffsetValue": "يجب أن تكون قيمة offsetValue رقمًا أكبر من أو يساوي 0",
+  "invalidOffsetUnit": "يجب أن تكون قيمة offsetUnit واحدة من: {{allowed}}",
+  "invalidEnabled": "يجب أن تكون قيمة enabled إما true أو false",
+  "invalidChannels": "يجب أن تكون channels مصفوفة غير فارغة من: {{allowed}}",
+  "nothingToUpdate": "لا يوجد ما يتم تحديثه. أرسل offsetValue أو offsetUnit أو enabled أو channels."
+}
