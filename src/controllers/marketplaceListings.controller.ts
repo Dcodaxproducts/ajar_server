@@ -51,7 +51,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     if (!validUnits.includes(normalisedBody.priceUnit)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid priceUnit. Allowed: hour, day, month, year",
+        message: req.t("listing:invalidPriceUnit"),
       });
     }
 
@@ -67,7 +67,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     if (!form) {
       return res.status(400).json({
         success: false,
-        message: "Form not found for this Zone/SubCategory",
+        message: req.t("listing:formNotFound"),
       });
     }
 
@@ -216,14 +216,14 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      message: "Listing created successfully",
+      message: req.t("listing:created"),
       data: listing,
     });
   } catch (error) {
     console.error("Server error during listing creation:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message: req.t("common:serverError"),
     });
   }
 };
@@ -238,7 +238,7 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
     if (!["approved", "rejected"].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid status. Allowed values: approved, rejected",
+        message: req.t("listing:invalidStatus"),
       });
     }
 
@@ -256,7 +256,7 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
     if (!listing) {
       return res.status(404).json({
         success: false,
-        message: "Listing not found",
+        message: req.t("listing:notFound"),
       });
     }
 
@@ -289,7 +289,7 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
     console.error("Error updating listing status:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message: req.t("common:serverError"),
     });
   }
 };
@@ -803,7 +803,7 @@ export const getAllMarketplaceListings = async (
         totalUsersWithListings: uniqueUserIds.length,
         totalMarketplaceListings: total,
       },
-      "Marketplace listings fetched successfully",
+      req.t("listing:listFetched"),
       STATUS_CODES.OK
     );
   } catch (err) {
@@ -829,7 +829,7 @@ export const getMarketplaceListingByIdforLeaser = async (
     if (!mongoose.Types.ObjectId.isValid(id)) {
       await session.abortTransaction();
       session.endSession();
-      sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("common:invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -850,7 +850,7 @@ export const getMarketplaceListingByIdforLeaser = async (
     if (!doc) {
       await session.abortTransaction();
       session.endSession();
-      sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("listing:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -961,7 +961,7 @@ export const getMarketplaceListingByIdforLeaser = async (
     await session.commitTransaction();
     session.endSession();
 
-    sendResponse(res, doc, "Listing fetched successfully", STATUS_CODES.OK);
+    sendResponse(res, doc, req.t("listing:fetched"), STATUS_CODES.OK);
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -985,7 +985,7 @@ export const getMarketplaceListingById = async (
     if (!mongoose.Types.ObjectId.isValid(id)) {
       await session.abortTransaction();
       session.endSession();
-      sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("common:invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -1006,7 +1006,7 @@ export const getMarketplaceListingById = async (
     if (!doc) {
       await session.abortTransaction();
       session.endSession();
-      sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("listing:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -1091,7 +1091,7 @@ export const getMarketplaceListingById = async (
       sendResponse(
         res,
         null,
-        "Listing not found (references invalid)",
+        req.t("listing:notFoundInvalidRefs"),
         STATUS_CODES.NOT_FOUND
       );
       return;
@@ -1121,7 +1121,7 @@ export const getMarketplaceListingById = async (
     await session.commitTransaction();
     session.endSession();
 
-    sendResponse(res, doc, "Listing fetched", STATUS_CODES.OK);
+    sendResponse(res, doc, req.t("listing:fetchedShort"), STATUS_CODES.OK);
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -1139,7 +1139,7 @@ export const getListingBookedDates = async (
     const { month } = req.query;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid listing ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("listing:invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -1149,7 +1149,7 @@ export const getListingBookedDates = async (
       .lean();
 
     if (!listing) {
-      sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("listing:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -1321,7 +1321,7 @@ export const getListingBookedDates = async (
             to: rangeEnd.toISOString().split("T")[0],
           },
         },
-        "Booked slots fetched successfully",
+        req.t("listing:bookedSlotsFetched"),
         STATUS_CODES.OK
       );
       return;
@@ -1361,7 +1361,7 @@ export const getListingBookedDates = async (
           to: rangeEnd.toISOString().split("T")[0],
         },
       },
-      "Booked dates fetched successfully",
+      req.t("listing:bookedDatesFetched"),
       STATUS_CODES.OK
     );
   } catch (err) {
@@ -1413,7 +1413,7 @@ export const cleanupAllOrphanedListings = async (
     console.error("Error cleaning up orphaned listings:", error);
     res.status(500).json({
       success: false,
-      message: "Error cleaning up orphaned listings",
+      message: req.t("listing:cleanupFailed"),
     });
   }
 };
@@ -1431,7 +1431,7 @@ export const getBookingsForListing = async (
       return sendResponse(
         res,
         null,
-        "Invalid listing ID",
+        req.t("listing:invalidId"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -1441,7 +1441,7 @@ export const getBookingsForListing = async (
       return sendResponse(
         res,
         null,
-        "Listing not found",
+        req.t("listing:notFound"),
         STATUS_CODES.NOT_FOUND
       );
     }
@@ -1467,7 +1467,7 @@ export const getBookingsForListing = async (
     return sendResponse(
       res,
       { listing, bookings },
-      "Bookings for listing fetched successfully",
+      req.t("listing:bookingsFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -1485,19 +1485,19 @@ export const updateMarketplaceListing = async (
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("common:invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     const existingListing = await MarketplaceListing.findById(id);
     if (!existingListing) {
-      sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("listing:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
     // Authorization: Only the owner can update
     if (String(existingListing.leaser) !== String(req.user?.id)) {
-      sendResponse(res, null, "Forbidden: You are not the owner", STATUS_CODES.FORBIDDEN);
+      sendResponse(res, null, req.t("listing:notOwner"), STATUS_CODES.FORBIDDEN);
       return;
     }
 
@@ -1624,7 +1624,7 @@ export const updateMarketplaceListing = async (
       { new: true }
     );
 
-    sendResponse(res, updatedListing, "Listing updated and sent for review", STATUS_CODES.OK);
+    sendResponse(res, updatedListing, req.t("listing:updatedForReview"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -1640,13 +1640,13 @@ export const deleteMarketplaceListing = async (
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("common:invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     const existingListing = await MarketplaceListing.findById(id);
     if (!existingListing) {
-      sendResponse(res, null, "Listing not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("listing:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -1654,7 +1654,7 @@ export const deleteMarketplaceListing = async (
       sendResponse(
         res,
         null,
-        "Forbidden: You are not the owner",
+        req.t("listing:notOwner"),
         STATUS_CODES.FORBIDDEN
       );
       return;
@@ -1667,7 +1667,7 @@ export const deleteMarketplaceListing = async (
     sendResponse(
       res,
       existingListing,
-      "Listing, related favourites deleted",
+      req.t("listing:deleted"),
       STATUS_CODES.OK
     );
   } catch (err) {
@@ -1684,7 +1684,7 @@ export const searchMarketplaceListings = async (
     const { name } = req.query;
 
     if (!name) {
-      return res.status(400).json({ message: "Name query is required" });
+      return res.status(400).json({ message: req.t("listing:nameQueryRequired") });
     }
 
     // Normalize input: lowercase + remove spaces
@@ -1716,7 +1716,7 @@ export const searchMarketplaceListings = async (
 
     res.json({ count: results.length, data: results });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error });
+    res.status(500).json({ message: req.t("common:serverError"), error });
   }
 };
 

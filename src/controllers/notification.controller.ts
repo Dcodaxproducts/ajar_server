@@ -67,7 +67,7 @@ export const getNotifications = async (req: any, res: Response) => {
     console.error("Error fetching notifications:", err);
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message: req.t("common:serverError"),
     });
   }
 };
@@ -87,7 +87,7 @@ export const getUnreadNotificationCount = async (req: any, res: Response) => {
     });
   } catch (err) {
     console.error("Error fetching notification count:", err);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: req.t("common:serverError") });
   }
 };
 
@@ -102,11 +102,11 @@ export const markAllNotificationsAsRead = async (req: any, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      message: "All notifications marked as read",
+      message: req.t("notification:allMarkedRead"),
       data: { modifiedCount: result.modifiedCount }
     });
   } catch (err) {
     console.error("Error updating notifications:", err);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: req.t("common:serverError") });
   }
 };

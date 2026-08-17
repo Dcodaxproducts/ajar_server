@@ -277,7 +277,7 @@ export const verifyPayment = async (req: AuthRequest, res: Response) => {
     const { paymentIntentId } = req.body;
 
     if (!paymentIntentId) {
-      return res.status(400).json({ message: "Missing paymentIntentId" });
+      return res.status(400).json({ message: req.t("payment:missingIntentId") });
     }
 
     const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
@@ -288,14 +288,14 @@ export const verifyPayment = async (req: AuthRequest, res: Response) => {
         .populate("renter")
         .populate("leaser");
       if (!booking) {
-        return res.status(404).json({ message: "Booking not found" });
+        return res.status(404).json({ message: req.t("payment:bookingNotFound") });
       }
 
       const renter = booking.renter as any;
       const renterId = renter?._id?.toString() || renter?.toString();
 
       if (req.user?.id?.toString() !== renterId) {
-        return res.status(403).json({ message: "Unauthorized to verify this payment" });
+        return res.status(403).json({ message: req.t("payment:unauthorizedVerify") });
       }
 
       if (intent.status === "requires_capture") {
@@ -304,7 +304,7 @@ export const verifyPayment = async (req: AuthRequest, res: Response) => {
         return res.json({
           status: "pending",
           stripeStatus: intent.status,
-          message: "Booking payment hold confirmed",
+          message: req.t("payment:holdConfirmed"),
         });
       }
 
@@ -317,7 +317,7 @@ export const verifyPayment = async (req: AuthRequest, res: Response) => {
         return res.json({
           status: "succeeded",
           stripeStatus: intent.status,
-          message: "Booking payment captured",
+          message: req.t("payment:captured"),
         });
       }
 
@@ -329,21 +329,21 @@ export const verifyPayment = async (req: AuthRequest, res: Response) => {
         return res.json({
           status: "failed",
           stripeStatus: intent.status,
-          message: "Booking payment failed or cancelled",
+          message: req.t("payment:failedOrCancelled"),
         });
       }
 
       return res.json({
         status: "pending",
         stripeStatus: intent.status,
-        message: "Booking payment is still processing",
+        message: req.t("payment:stillProcessing"),
       });
     }
-    return res.status(400).json({ message: "Only booking payments can be verified." });
+    return res.status(400).json({ message: req.t("payment:onlyBookingPayments") });
 
   } catch (error: any) {
     console.error("Verify Wallet Payment Error:", error);
-    res.status(500).json({ message: "Wallet payment verification failed" });
+    res.status(500).json({ message: req.t("payment:verificationFailed") });
   }
 };
 
@@ -352,10 +352,10 @@ export const createConnectedAccount = async (req: AuthRequest, res: Response) =>
     const { country } = req.body;
     const userId = req.user?.id;
 
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!userId) return res.status(401).json({ error: req.t("user:unauthorized") });
 
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user) return res.status(404).json({ error: req.t("user:notFound") });
 
     // If already has a complete connected account, skip
     if (user.stripe?.connectedAccountId) {
@@ -392,12 +392,12 @@ export const confirmConnectedAccount = async (req: AuthRequest, res: Response) =
     const { accountId } = req.body;
 
     if (!accountId || !userId) {
-      return res.status(400).json({ error: "accountId and userId are required" });
+      return res.status(400).json({ error: req.t("common:accountAndUserIdRequired") });
     }
 
     const account = await stripe.accounts.retrieve(accountId);
     if (!account.details_submitted) {
-      return res.status(400).json({ error: "Stripe onboarding not completed" });
+      return res.status(400).json({ error: req.t("payment:connect.onboardingIncomplete") });
     }
 
     await saveStripeAccountIdToUser(userId, accountId);
@@ -412,14 +412,14 @@ export const confirmConnectedAccount = async (req: AuthRequest, res: Response) =
 export const getConnectedAccount = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!userId) return res.status(401).json({ error: req.t("user:unauthorized") });
 
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user) return res.status(404).json({ error: req.t("user:notFound") });
 
     const connectedAccountId = user.stripe.connectedAccountId;
     if (!connectedAccountId)
-      return res.status(404).json({ error: "No Stripe connected account" });
+      return res.status(404).json({ error: req.t("payment:connect.noAccount") });
 
     const account = await stripe.accounts.retrieve(connectedAccountId);
 
@@ -435,7 +435,7 @@ export const getConnectedAccount = async (req: AuthRequest, res: Response) => {
 
   } catch (err: any) {
     console.error("Error fetching connected account:", err);
-    res.status(500).json({ error: err.message || "Server error" });
+    res.status(500).json({ error: err.message || req.t("common:serverError") });
   }
 };
 
@@ -447,12 +447,12 @@ export const withdraw = async (req: AuthRequest, res: Response) => {
     const MIN_WITHDRAWAL = 100;
 
     if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
+      return res.status(401).json({ error: req.t("user:unauthorized") });
     }
 
     if (!amount || amount < MIN_WITHDRAWAL) {
       return res.status(400).json({
-        error: `Invalid amount. Minimum withdrawal is $${MIN_WITHDRAWAL}.`
+        error: req.t("payment:payout.invalidAmount", { min: MIN_WITHDRAWAL })
       });
     }
 
@@ -463,29 +463,29 @@ export const withdraw = async (req: AuthRequest, res: Response) => {
 
     if (hasActiveBookings) {
       return res.status(400).json({
-        error: "Cannot withdraw while you have active bookings."
+        error: req.t("payment:payout.activeBookings")
       });
     }
 
     // 3️⃣ Fetch User & Stripe Account Eligibility
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user) return res.status(404).json({ error: req.t("user:notFound") });
 
     if (!user.stripe.connectedAccountId)
-      return res.status(400).json({ error: "Bank account not connected" });
+      return res.status(400).json({ error: req.t("payment:payout.bankNotConnected") });
 
     const { availableAmount, sourcePayment } = await calculateVerifiedWithdrawableAmount(userId);
 
     if (availableAmount < amount)
-      return res.status(400).json({ error: "Insufficient available earnings" });
+      return res.status(400).json({ error: req.t("payment:payout.insufficientEarnings") });
 
     if (!sourcePayment?.bookingId) {
-      return res.status(400).json({ error: "No completed booking earning found for payout" });
+      return res.status(400).json({ error: req.t("payment:payout.noEarningFound") });
     }
 
     const account = await stripe.accounts.retrieve(user.stripe.connectedAccountId);
     if (!account.payouts_enabled)
-      return res.status(400).json({ error: "Stripe account not eligible for payouts" });
+      return res.status(400).json({ error: req.t("payment:connect.notEligibleForPayouts") });
 
     // 4️⃣ Execute Transfer and Payout
     const amountInCents = Math.round(amount * 100);
@@ -554,7 +554,7 @@ export const withdraw = async (req: AuthRequest, res: Response) => {
 
   } catch (err: any) {
     console.error("Withdraw error:", err);
-    res.status(500).json({ error: err.message || "Server error" });
+    res.status(500).json({ error: err.message || req.t("common:serverError") });
   }
 };
 

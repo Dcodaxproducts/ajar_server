@@ -20,12 +20,12 @@ export const uploadChatFiles = async (req: MulterRequest, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      message: "Files uploaded successfully",
+      message: req.t("chat:filesUploaded"),
       attachments: urls,
     });
   } catch (error) {
     console.error("Upload error:", error);
-    res.status(500).json({ error: "File upload failed" });
+    res.status(500).json({ error: req.t("chat:uploadFailed") });
   }
 };
 
@@ -38,7 +38,7 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
     // Ensure conversation exists
     const conversation = await Conversation.findById(chatId);
     if (!conversation) {
-      return res.status(404).json({ error: "Conversation not found" });
+      return res.status(404).json({ error: req.t("chat:conversationNotFound") });
     }
 
     // Ensure user is participant
@@ -49,7 +49,7 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
     ) {
       return res
         .status(403)
-        .json({ error: "You are not allowed in this chat" });
+        .json({ error: req.t("chat:notAllowed") });
     }
 
     const newMessage = (await Message.create({
@@ -113,12 +113,12 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
 
     res.status(201).json({
       success: true,
-      message: "Message sent successfully",
+      message: req.t("chat:messageSent"),
       data: populatedMessage,
     });
   } catch (error) {
     console.error("Send message error:", error);
-    res.status(500).json({ error: "Failed to send message" });
+    res.status(500).json({ error: req.t("chat:sendFailed") });
   }
 };
 
@@ -129,12 +129,12 @@ export const markMessageDelivered = async (req: AuthRequest, res: Response) => {
 
     const message = await Message.findById(messageId);
     if (!message) {
-      return res.status(404).json({ error: "Message not found" });
+      return res.status(404).json({ error: req.t("chat:messageNotFound") });
     }
 
     //Only the intended receiver can mark delivered
     if (!message.receiver.equals(userId)) {
-      return res.status(403).json({ error: "Not authorised" });
+      return res.status(403).json({ error: req.t("chat:notAuthorised") });
     }
 
     // Only set delivered once
@@ -152,12 +152,12 @@ export const markMessageDelivered = async (req: AuthRequest, res: Response) => {
 
     res.status(200).json({
       success: true,
-      message: "Message marked as delivered",
+      message: req.t("chat:markedDelivered"),
       data: message,
     });
   } catch (error) {
     console.error("Deliver error:", error);
-    res.status(500).json({ error: "Failed to mark delivered" });
+    res.status(500).json({ error: req.t("chat:markDeliveredFailed") });
   }
 };
 
@@ -176,7 +176,7 @@ export const markMessagesSeen = async (req: AuthRequest, res: Response) => {
     if (unseenMessages.length === 0) {
       return res
         .status(200)
-        .json({ success: true, message: "No unseen messages" });
+        .json({ success: true, message: req.t("chat:noUnseen") });
     }
 
     //Update all unseen messages
@@ -202,11 +202,11 @@ export const markMessagesSeen = async (req: AuthRequest, res: Response) => {
 
     res.status(200).json({
       success: true,
-      message: "Messages marked as seen",
+      message: req.t("chat:markedSeen"),
       count: unseenMessages.length,
     });
   } catch (error) {
     console.error("Seen error:", error);
-    res.status(500).json({ error: "Failed to mark messages seen" });
+    res.status(500).json({ error: req.t("chat:markSeenFailed") });
   }
 };

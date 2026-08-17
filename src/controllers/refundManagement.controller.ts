@@ -55,12 +55,12 @@ export const createRefundSettings = asyncHandler(
     const { zone, subCategory } = sanitizedBody;
 
     if (!(await isValidObjectIdAndExists(zone, Zone))) {
-      res.status(400).json({ message: "Invalid zone ID" });
+      res.status(400).json({ message: req.t("refund:settings.invalidZoneId") });
       return;
     }
 
     if (!(await isValidObjectIdAndExists(subCategory, Category))) {
-      res.status(400).json({ message: "Invalid subCategory ID" });
+      res.status(400).json({ message: req.t("refund:settings.invalidSubCategoryId") });
       return;
     }
 
@@ -70,7 +70,7 @@ export const createRefundSettings = asyncHandler(
 
     res.status(201).json({
       success: true,
-      message: "Refund settings created successfully",
+      message: req.t("refund:settings.created"),
       data: dataWithoutStatus,
     });
   }
@@ -121,12 +121,12 @@ export const updateRefundSettings = asyncHandler(
 
     const refund = await RefundManagement.findById(id);
     if (!refund) {
-      res.status(404).json({ message: "Refund settings not found" });
+      res.status(404).json({ message: req.t("refund:settings.notFound") });
       return;
     }
 
     if (zone && !(await isValidObjectIdAndExists(zone, Zone))) {
-      res.status(400).json({ message: "Invalid zone ID" });
+      res.status(400).json({ message: req.t("refund:settings.invalidZoneId") });
       return;
     }
 
@@ -134,7 +134,7 @@ export const updateRefundSettings = asyncHandler(
       subCategory &&
       !(await isValidObjectIdAndExists(subCategory, Category))
     ) {
-      res.status(400).json({ message: "Invalid subCategory ID" });
+      res.status(400).json({ message: req.t("refund:settings.invalidSubCategoryId") });
       return;
     }
 
@@ -151,7 +151,7 @@ export const updateRefundSettings = asyncHandler(
 
     res.status(200).json({
       success: true,
-      message: "Refund settings updated successfully",
+      message: req.t("refund:settings.updated"),
       data: refund,
     });
   }
@@ -164,13 +164,13 @@ export const deleteRefundSettings = asyncHandler(
 
     const refund = await RefundManagement.findByIdAndDelete(id);
     if (!refund) {
-      res.status(404).json({ message: "Refund settings not found" });
+      res.status(404).json({ message: req.t("refund:settings.notFound") });
       return;
     }
 
     res.status(200).json({
       success: true,
-      message: "Refund settings deleted successfully",
+      message: req.t("refund:settings.deleted"),
     });
   }
 );
@@ -193,7 +193,7 @@ export const createRefundRequest = asyncHandler(
 
     // validate booking ID
     if (!(await isValidObjectIdAndExists(booking, Booking))) {
-      res.status(400).json({ message: "Invalid booking ID" });
+      res.status(400).json({ message: req.t("booking:invalidId") });
       return;
     }
 
@@ -207,7 +207,7 @@ export const createRefundRequest = asyncHandler(
       sendResponse(
         res,
         null,
-        "Refund request for this booking already exists",
+        req.t("refund:alreadyExists"),
         STATUS_CODES.NOT_FOUND
       );
       return;
@@ -219,7 +219,7 @@ export const createRefundRequest = asyncHandler(
     );
 
     if (!bookingData || !bookingData.marketplaceListingId) {
-      res.status(404).json({ message: "Booking or listing not found" });
+      res.status(404).json({ message: req.t("refund:bookingOrListingNotFound") });
       return;
     }
 
@@ -227,7 +227,7 @@ export const createRefundRequest = asyncHandler(
     if (bookingData.status !== "booking_cancelled") {
       res.status(400).json({
         success: false,
-        message: "Refund is only applicable for bookings with 'booking_cancelled' status.",
+        message: req.t("refund:onlyCancelledStatus"),
       });
       return;
     }
@@ -243,7 +243,7 @@ export const createRefundRequest = asyncHandler(
     });
 
     if (!policy || !policy.allowRefund) {
-      res.status(400).json({ message: "Refund not allowed for this booking" });
+      res.status(400).json({ message: req.t("refund:notAllowed") });
       return;
     }
 
@@ -310,7 +310,7 @@ export const createRefundRequest = asyncHandler(
 
     res.status(201).json({
       success: true,
-      message: "Refund request submitted successfully",
+      message: req.t("refund:requestSubmitted"),
       data: refundRequest,
     });
   }
@@ -334,7 +334,7 @@ export const createRefundRequest = asyncHandler(
 
 //     // booking id validate
 //     if (!(await isValidObjectIdAndExists(booking, Booking))) {
-//       res.status(400).json({ message: "Invalid booking ID" });
+//       res.status(400).json({ message: req.t("booking:invalidId") });
 //       return;
 //     }
 
@@ -344,7 +344,7 @@ export const createRefundRequest = asyncHandler(
 //     );
 
 //     if (!bookingData || !bookingData.marketplaceListingId) {
-//       res.status(404).json({ message: "Booking or listing not found" });
+//       res.status(404).json({ message: req.t("refund:bookingOrListingNotFound") });
 //       return;
 //     }
 
@@ -357,7 +357,7 @@ export const createRefundRequest = asyncHandler(
 
 //     if (!policy || !policy.allowFund) {
 //       res.status(400).json({
-//         message: "Refund not allowed for this booking",
+//         message: req.t("refund:notAllowed"),
 //       });
 //       return;
 //     }
@@ -418,7 +418,7 @@ export const createRefundRequest = asyncHandler(
 
 //     res.status(201).json({
 //       success: true,
-//       message: "Refund request submitted successfully",
+//       message: req.t("refund:requestSubmitted"),
 //       data: refund,
 //     });
 //   }
@@ -433,7 +433,7 @@ export const updateRefundRequest = asyncHandler(
 
     const refund = await RefundManagement.findById(id);
     if (!refund) {
-      res.status(404).json({ message: "Refund request not found" });
+      res.status(404).json({ message: req.t("refund:requestNotFound") });
       return;
     }
 
@@ -451,7 +451,7 @@ export const updateRefundRequest = asyncHandler(
       updates.booking &&
       !(await isValidObjectIdAndExists(updates.booking, Booking))
     ) {
-      res.status(400).json({ message: "Invalid booking ID" });
+      res.status(400).json({ message: req.t("booking:invalidId") });
       return;
     }
 
@@ -460,7 +460,7 @@ export const updateRefundRequest = asyncHandler(
 
     res.status(200).json({
       success: true,
-      message: "Refund request updated",
+      message: req.t("refund:requestUpdated"),
       data: refund,
     });
   }
@@ -473,13 +473,13 @@ export const deleteRefundRequest = asyncHandler(
 
     const refund = await RefundManagement.findByIdAndDelete(id);
     if (!refund) {
-      res.status(404).json({ message: "Refund request not found" });
+      res.status(404).json({ message: req.t("refund:requestNotFound") });
       return;
     }
 
     res.status(200).json({
       success: true,
-      message: "Refund request deleted",
+      message: req.t("refund:requestDeleted"),
     });
   }
 );
@@ -490,7 +490,7 @@ export const getRefundRequestById = asyncHandler(
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      res.status(400).json({ message: "Invalid refund ID" });
+      res.status(400).json({ message: req.t("refund:invalidRefundId") });
       return;
     }
 
@@ -500,7 +500,7 @@ export const getRefundRequestById = asyncHandler(
       .populate("booking");
 
     if (!refund) {
-      res.status(404).json({ message: "Refund request not found" });
+      res.status(404).json({ message: req.t("refund:requestNotFound") });
       return;
     }
 
@@ -559,13 +559,13 @@ export const updateRefundStatus = asyncHandler(
     const { status } = req.body;
 
     if (!["pending", "accept", "reject"].includes(status)) {
-      res.status(400).json({ message: "Invalid status value" });
+      res.status(400).json({ message: req.t("refund:invalidStatus") });
       return;
     }
 
     const refund = await RefundManagement.findById(id);
     if (!refund) {
-      res.status(404).json({ message: "Refund request not found" });
+      res.status(404).json({ message: req.t("refund:requestNotFound") });
       return;
     }
 
@@ -586,20 +586,20 @@ export const getRefundPreview = asyncHandler(
 
     // validate booking ID
     if (!bookingId || !(await isValidObjectIdAndExists(bookingId, Booking))) {
-      res.status(400).json({ success: false, message: "Invalid or missing booking ID" });
+      res.status(400).json({ success: false, message: req.t("refund:invalidBookingId") });
       return;
     }
 
     const booking = await Booking.findById(bookingId).populate("marketplaceListingId");
 
     if (!booking || !booking.marketplaceListingId) {
-      res.status(404).json({ success: false, message: "Booking not found" });
+      res.status(404).json({ success: false, message: req.t("booking:notFound") });
       return;
     }
 
     // booking must be in a cancellable state
     if (booking.status !== "booking_cancelled") {
-      res.status(400).json({ success: false, message: "Only cancelled bookings can be refunded" });
+      res.status(400).json({ success: false, message: req.t("refund:onlyCancelledBookings") });
       return;
     }
 
