@@ -1,0 +1,8 @@
+{
+  "added": "Added to favourites successfully",
+  "removed": "Removed from favourites successfully",
+  "alreadyAdded": "Already added to favourites",
+  "listFetched": "Favourites retrieved successfully",
+  "idRequired": "Either listingId or bookingId is required",
+  "mustProvideId": "Must provide listingId or bookingId"
+}

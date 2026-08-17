@@ -1,0 +1,25 @@
+{
+  "missingIntentId": "Missing paymentIntentId",
+  "bookingNotFound": "Booking not found",
+  "unauthorizedVerify": "Unauthorized to verify this payment",
+  "holdConfirmed": "Booking payment hold confirmed",
+  "captured": "Booking payment captured",
+  "failedOrCancelled": "Booking payment failed or cancelled",
+  "stillProcessing": "Booking payment is still processing",
+  "onlyBookingPayments": "Only booking payments can be verified.",
+  "verificationFailed": "Payment verification failed",
+
+  "connect": {
+    "onboardingIncomplete": "Stripe onboarding not completed",
+    "noAccount": "No Stripe connected account",
+    "notEligibleForPayouts": "Stripe account not eligible for payouts"
+  },
+
+  "payout": {
+    "bankNotConnected": "Bank account not connected",
+    "insufficientEarnings": "Insufficient available earnings",
+    "noEarningFound": "No completed booking earning found for payout",
+    "invalidAmount": "Invalid amount. Minimum withdrawal is ${{min}}.",
+    "activeBookings": "Cannot withdraw while you have active bookings."
+  }
+}

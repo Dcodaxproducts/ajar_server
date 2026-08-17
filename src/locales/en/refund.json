@@ -1,0 +1,42 @@
+{
+  "requestNotFound": "Refund request not found",
+  "invalidRequestId": "Invalid refund request ID",
+  "invalidRefundId": "Invalid refund ID",
+  "invalidStatus": "Invalid status value",
+  "requestSubmitted": "Refund request submitted successfully",
+  "requestUpdated": "Refund request updated",
+  "requestDeleted": "Refund request deleted",
+  "requestRejected": "Refund request rejected",
+  "processed": "Refund processed successfully",
+  "alreadyProcessed": "Refund request already processed",
+  "alreadyExists": "Refund request for this booking already exists",
+  "rejectionNoteRequired": "A rejection note is required to process this request",
+  "notAllowed": "Refund not allowed for this booking",
+  "notAllowedForZone": "Refunds are not allowed for this category/zone",
+  "onlyCancelledBookings": "Only cancelled bookings can be refunded",
+  "onlyCancelledStatus": "Refund is only applicable for bookings with 'booking_cancelled' status.",
+  "bookingOrListingNotFound": "Booking or listing not found",
+  "invalidBookingId": "Invalid or missing booking ID",
+
+  "policy": {
+    "created": "Refund policy created successfully",
+    "saved": "Refund policy saved successfully",
+    "deleted": "Refund policy deleted",
+    "notFound": "Refund policy not found",
+    "noneForZone": "No refund policy found for this zone and subCategory",
+    "invalidZoneId": "Invalid zone ID",
+    "invalidSubCategoryId": "Invalid subCategory ID",
+    "zoneAndSubCategoryRequired": "zone and subCategory are required",
+    "zoneMismatch": "Zone mismatch between params and body",
+    "subCategoryMismatch": "SubCategory mismatch between params and body"
+  },
+
+  "settings": {
+    "created": "Refund settings created successfully",
+    "updated": "Refund settings updated successfully",
+    "deleted": "Refund settings deleted successfully",
+    "notFound": "Refund settings not found",
+    "invalidZoneId": "Invalid zone ID",
+    "invalidSubCategoryId": "Invalid subCategory ID"
+  }
+}

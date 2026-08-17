@@ -1,0 +1,20 @@
+{
+  "notFound": "Listing not found",
+  "notFoundInvalidRefs": "Listing not found (references invalid)",
+  "invalidId": "Invalid listing ID",
+  "created": "Listing created successfully",
+  "fetched": "Listing fetched successfully",
+  "fetchedShort": "Listing fetched",
+  "listFetched": "Marketplace listings fetched successfully",
+  "updatedForReview": "Listing updated and sent for review",
+  "deleted": "Listing, related favourites deleted",
+  "notOwner": "Forbidden: You are not the owner",
+  "formNotFound": "Form not found for this Zone/SubCategory",
+  "invalidPriceUnit": "Invalid priceUnit. Allowed: hour, day, month, year",
+  "invalidStatus": "Invalid status. Allowed values: approved, rejected",
+  "nameQueryRequired": "Name query is required",
+  "bookedDatesFetched": "Booked dates fetched successfully",
+  "bookedSlotsFetched": "Booked slots fetched successfully",
+  "bookingsFetched": "Bookings for listing fetched successfully",
+  "cleanupFailed": "Error cleaning up orphaned listings"
+}
