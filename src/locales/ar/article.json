@@ -1,0 +1,16 @@
+{
+  "created": "تم إنشاء المقال بنجاح",
+  "updated": "تم تحديث المقال بنجاح",
+  "deleted": "تم الحذف بنجاح",
+  "retrieved": "تم الجلب بنجاح",
+  "notFound": "غير موجود",
+  "titleDescriptionRequired": "العنوان والوصف مطلوبان",
+  "searchKeywordRequired": "كلمة البحث مطلوبة",
+  "searchResults": "تم جلب نتائج البحث بنجاح",
+  "createFailed": "حدث خطأ أثناء إنشاء المقال",
+  "updateFailed": "حدث خطأ أثناء تحديث المقال",
+  "deleteFailed": "حدث خطأ أثناء حذف المقال",
+  "listFailed": "حدث خطأ أثناء جلب المقالات",
+  "retrieveFailed": "حدث خطأ أثناء جلب المقال",
+  "searchFailed": "حدث خطأ أثناء البحث في المقالات"
+}

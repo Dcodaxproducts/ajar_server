@@ -1,0 +1,17 @@
+{
+  "noToken": "غير مصرّح: لم يتم تقديم رمز مميز",
+  "invalidToken": "رمز مميز غير صالح",
+  "invalidOrExpiredToken": "غير مصرّح: الرمز المميز غير صالح أو منتهي الصلاحية",
+  "notAuthenticated": "غير مصرّح: المستخدم غير مُصادَق عليه",
+  "authFailed": "فشلت المصادقة",
+  "employeeNotFound": "غير مصرّح: لم يتم العثور على الموظف",
+  "adminsOnly": "ممنوع: للمسؤولين فقط",
+  "accountBlocked": "تم حظر حسابك.",
+  "noRoleAssigned": "ممنوع: لم يتم تعيين دور",
+  "roleNotFound": "ممنوع: لم يتم العثور على الدور",
+  "roleNotAllowed": "ممنوع: الدور '{{role}}' غير مسموح به",
+  "operationNotSupported": "العملية غير مدعومة",
+  "noPermission": "ممنوع: ليس لديك صلاحية {{operation}} على {{access}}",
+  "deniedOperation": "تم رفض الوصول: ليس لديك صلاحية [{{operation}}] على [{{access}}]",
+  "deniedRead": "تم رفض الوصول: ليس لديك صلاحية 'read' على أي من: {{modules}}"
+}
