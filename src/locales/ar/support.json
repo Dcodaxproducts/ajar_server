@@ -1,0 +1,14 @@
+{
+  "created": "تم الإنشاء بنجاح",
+  "deleted": "تم الحذف بنجاح",
+  "retrieved": "تم الجلب بنجاح",
+  "notFound": "غير موجود",
+  "statusUpdated": "تم تحديث الحالة بنجاح",
+  "titleRequired": "العنوان مطلوب",
+  "invalidStatus": "حالة غير صالحة",
+  "createFailed": "حدث خطأ أثناء الإنشاء ",
+  "retrieveFailed": "حدث خطأ أثناء الجلب ",
+  "deleteFailed": "حدث خطأ أثناء الحذف ",
+  "listFailed": "حدث خطأ أثناء جلب التذاكر",
+  "updateStatusFailed": "حدث خطأ أثناء تحديث الحالة"
+}

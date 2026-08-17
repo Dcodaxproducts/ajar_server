@@ -1,0 +1,144 @@
+{
+  "notFound": "لم يتم العثور على المستخدم",
+  "alreadyExists": "المستخدم موجود بالفعل",
+  "created": "تم إنشاء المستخدم بنجاح",
+  "deleted": "تم حذف المستخدم بنجاح",
+  "detailsFetched": "تم جلب بيانات المستخدم بنجاح",
+  "notAuthenticated": "المستخدم غير مصادق عليه",
+  "unauthorized": "مستخدم غير مصرّح له",
+  "invalidRole": "دور غير صالح",
+  "adminsOnly": "غير مسموح: للمسؤولين فقط",
+  "allFieldsRequired": "جميع الحقول مطلوبة",
+  "employeeNotFound": "لم يتم العثور على الموظف",
+  "statsFetched": "تم جلب الإحصائيات بنجاح",
+  "listFetched": "تم جلب المستخدمين والإحصائيات بنجاح",
+  "statusUpdated": "تم تحديث حالة المستخدم بنجاح",
+  "invalidStatus": "قيمة الحالة غير صالحة",
+  "invalidFilter": "عامل تصفية غير صالح. استخدم 'week' أو 'month' أو 'year'.",
+  "invalidRange": "نطاق غير صالح",
+
+  "employee": {
+    "created": "تم إنشاء الموظف بنجاح",
+    "updated": "تم تحديث الموظف بنجاح",
+    "deleted": "تم حذف الموظف",
+    "detailsFetched": "تم جلب تفاصيل الموظف",
+    "listFetched": "تم جلب الموظفين بنجاح",
+    "listFetchedForLocale": "تم جلب الموظفين بنجاح للغة: {{locale}}",
+    "invalidId": "معرّف الموظف غير صالح",
+    "emailExists": "البريد الإلكتروني موجود بالفعل",
+    "invalidStatus": "قيمة الحالة غير صالحة. يجب أن تكون 'active' أو 'inactive' أو 'blocked'.",
+    "invalidRoleId": "معرّف الدور غير صالح: {{id}}",
+    "detailsForLocale": "تفاصيل الموظف للغة: {{locale}}",
+    "noTranslationsForLocale": "لا توجد ترجمات للغة: {{locale}}"
+  },
+
+  "auth": {
+    "loginSuccess": "تم تسجيل الدخول بنجاح",
+    "loginSuccessStaff": "تم تسجيل الدخول بنجاح (موظف)",
+    "invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة",
+    "blocked": "تم حظر حسابك. يرجى التواصل مع الدعم.",
+    "leaserAppOnly": "تجربة المؤجر متاحة فقط عبر تطبيق الجوال. يرجى استخدام التطبيق لإدارة حسابك.",
+    "twoFactorRequired": "أدخل رمز التحقق المكوّن من 6 أرقام أو الرمز الاحتياطي",
+    "loggedOut": "تم تسجيل الخروج بنجاح",
+    "notLoggedIn": "غير مصرّح: المستخدم غير مسجّل الدخول",
+    "invalidRefreshToken": "غير مصرّح: رمز التحديث غير صالح أو منتهي الصلاحية",
+    "sessionExpired": "انتهت الجلسة. يرجى تسجيل الدخول مرة أخرى.",
+    "tokenRefreshed": "تم تحديث الرمز بنجاح"
+  },
+
+  "otp": {
+    "sent": "تم إرسال رمز التحقق إلى بريدك الإلكتروني",
+    "resent": "تمت إعادة إرسال رمز التحقق بنجاح",
+    "verified": "تم التحقق من الرمز بنجاح",
+    "invalidOrExpired": "رمز التحقق غير صالح أو منتهي الصلاحية",
+    "notVerified": "لم يتم التحقق من الرمز"
+  },
+
+  "password": {
+    "reset": "تم إعادة تعيين كلمة المرور بنجاح",
+    "updated": "تم تحديث كلمة المرور بنجاح",
+    "oldIncorrect": "كلمة المرور القديمة غير صحيحة",
+    "sameAsOld": "يجب أن تكون كلمة المرور الجديدة مختلفة عن القديمة"
+  },
+
+  "profile": {
+    "updated": "تم تحديث الملف الشخصي بنجاح"
+  },
+
+  "fcm": {
+    "required": "رمز FCM مطلوب",
+    "saved": "تم حفظ رمز FCM بنجاح"
+  },
+
+  "document": {
+    "notFound": "لم يتم العثور على المستند",
+    "removed": "تم حذف المستند بنجاح",
+    "userFetched": "تم جلب مستندات المستخدم",
+    "listingFetched": "تم جلب مستندات الإعلان",
+    "uploaded": "تم رفع المستند بنجاح",
+    "nameRequired": "اسم المستند مطلوب",
+    "fileOrUrlRequired": "يجب تقديم ملف أو رابط",
+    "invalidStatus": "حالة غير صالحة. المسموح: approved أو rejected",
+    "userOrDocNotFound": "لم يتم العثور على المستخدم أو المستند",
+    "alreadyApproved": "المستند \"{{name}}\" معتمد بالفعل ولا يمكن إعادة رفعه",
+    "alreadySubmitted": "المستند \"{{name}}\" مُقدَّم بالفعل وقيد المراجعة",
+    "approvedSuccessfully": "تمت الموافقة على المستند بنجاح",
+    "rejectedSuccessfully": "تم رفض المستند بنجاح",
+    "usersFetched": "تم جلب المستخدمين بنجاح",
+    "singleUserFetched": "تم جلب المستخدم بنجاح"
+  },
+
+  "role": {
+    "created": "تم إنشاء الدور",
+    "updated": "تم تحديث الدور",
+    "deleted": "تم حذف الدور",
+    "fetched": "تم جلب الدور",
+    "notFound": "لم يتم العثور على الدور",
+    "alreadyExists": "الدور موجود بالفعل",
+    "listFetched": "تم جلب أدوار الموظفين بنجاح"
+  },
+
+  "social": {
+    "missingFirebaseToken": "رمز Firebase مفقود",
+    "emailNotInFirebaseToken": "لم يتم العثور على البريد الإلكتروني في رمز Firebase",
+    "googleLoginSuccess": "تم تسجيل الدخول عبر Google بنجاح",
+    "missingAppleToken": "رمز Apple مفقود",
+    "invalidAppleHeader": "ترويسة رمز Apple غير صالحة",
+    "emailNotInAppleToken": "لم يتم العثور على البريد الإلكتروني في رمز Apple",
+    "appleLoginSuccess": "تم تسجيل الدخول عبر Apple بنجاح",
+    "invalidIssuer": "جهة الإصدار غير صالحة",
+    "invalidAudience": "الجهة المستهدفة غير صالحة",
+    "authFailed": "فشلت المصادقة",
+    "oauthCallbackFailed": "فشل استدعاء OAuth",
+    "missingOrInvalidToken": "الرمز المميز مفقود أو غير صالح",
+    "tokenExpiredOrInvalid": "انتهت صلاحية الرمز المميز أو أنه غير صالح",
+    "idTokenRequired": "الرمز المميز للهوية (idToken) مطلوب",
+    "invalidGoogleToken": "رمز جوجل المميز غير صالح",
+    "googleAuthFailed": "فشلت مصادقة جوجل"
+  },
+
+  "bank": {
+    "added": "تمت إضافة الحساب البنكي بنجاح",
+    "fetched": "تم جلب الحسابات البنكية بنجاح",
+    "notFound": "لم يتم العثور على الحساب البنكي",
+    "updated": "تم تحديث الحساب البنكي بنجاح",
+    "deleted": "تم حذف الحساب البنكي بنجاح"
+  },
+
+  "wallet": {
+    "topUpUnsupported": "لم يعد شحن المحفظة مدعوماً. تتم معالجة مدفوعات الحجز عبر Stripe.",
+    "deductionUnsupported": "لم يعد الخصم من المحفظة مدعوماً. تتم معالجة مدفوعات الحجز عبر Stripe.",
+    "withdrawalUnsupported": "لم تعد طلبات السحب من المحفظة مدعومة. استخدم السحب عبر Stripe.",
+    "manualApprovalUnsupported": "لم تعد الموافقة اليدوية على السحب مدعومة. استخدم السحب عبر Stripe."
+  },
+
+  "withdrawal": {
+    "historyFetched": "تم جلب سجل السحب الخاص بك",
+    "allFetched": "تم جلب جميع طلبات السحب",
+    "historyRange": "السجل من {{from}} إلى {{to}}",
+    "requestNotFound": "لم يتم العثور على الطلب",
+    "alreadyProcessed": "تمت معالجة الطلب بالفعل",
+    "rejected": "تم رفض السحب",
+    "invalidAction": "إجراء غير صالح"
+  }
+}

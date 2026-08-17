@@ -1,0 +1,16 @@
+{
+  "created": "Article created successfully",
+  "updated": "Article updated successfully",
+  "deleted": "Deleted successfully",
+  "retrieved": "Retrieved successfully",
+  "notFound": "Not found",
+  "titleDescriptionRequired": "Title and description are required",
+  "searchKeywordRequired": "Search keyword is required",
+  "searchResults": "Search results retrieved successfully",
+  "createFailed": "Error creating article",
+  "updateFailed": "Error updating article",
+  "deleteFailed": "Error deleting article",
+  "listFailed": "Error retrieving articles",
+  "retrieveFailed": "Error retrieving article",
+  "searchFailed": "Error searching articles"
+}

@@ -1,0 +1,17 @@
+{
+  "noToken": "Unauthorized: No token provided",
+  "invalidToken": "Invalid token",
+  "invalidOrExpiredToken": "Unauthorized: Invalid or expired token",
+  "notAuthenticated": "Unauthorized: User not authenticated",
+  "authFailed": "Authentication failed",
+  "employeeNotFound": "Unauthorized: Employee not found",
+  "adminsOnly": "Forbidden: Admins only",
+  "accountBlocked": "Your account has been blocked.",
+  "noRoleAssigned": "Forbidden: No role assigned",
+  "roleNotFound": "Forbidden: Role not found",
+  "roleNotAllowed": "Forbidden: Role '{{role}}' is not allowed",
+  "operationNotSupported": "Operation not supported",
+  "noPermission": "Forbidden: You do not have {{operation}} permission on {{access}}",
+  "deniedOperation": "Access denied: You do not have permission to [{{operation}}] [{{access}}]",
+  "deniedRead": "Access denied: You do not have 'read' access to any of: {{modules}}"
+}
