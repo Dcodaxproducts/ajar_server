@@ -1,0 +1,23 @@
+{
+  "notFound": "Damage report not found",
+  "invalidId": "Invalid report ID",
+  "submitted": "Damage report submitted successfully",
+  "fetched": "Fetched successfully",
+  "updated": "Updated successfully",
+  "deleted": "Deleted successfully",
+  "alreadyExists": "A damage report has already been submitted for this booking",
+  "alreadySettled": "This damage report has already been settled",
+  "onlyAdminCanUpdate": "Only admin can update damage report status",
+  "onlyLeaserCanCreate": "Unauthorized: Only the leaser can create a damage report for this booking",
+  "bookingNotReturned": "Damage report can only be created once the item has been returned",
+  "returnPinRequired": "Confirm the item return with the return PIN before reporting damage",
+  "windowExpired": "Damage dispute window has expired for this booking",
+  "invalidStatus": "Invalid status value",
+  "rejected": "Damage report rejected successfully",
+  "resetToPending": "Damage report status updated to 'pending' successfully",
+  "approved": "Damage report approved and ${{amount}} transferred to leaser successfully",
+  "partiallyApproved": "Damage report partially approved and ${{amount}} transferred to leaser successfully",
+  "insufficientDeposit": "Insufficient security deposit. Damage charges (${{charges}}) exceed the renter's security deposit (${{deposit}}). Use partial approval to authorise a lower amount.",
+  "approvedAmountRequired": "approvedAmount must be a number greater than 0. Use 'rejected' to approve nothing.",
+  "approvedAmountTooHigh": "Approved amount (${{amount}}) cannot exceed the renter's security deposit (${{deposit}})"
+}

@@ -1,0 +1,10 @@
+{
+  "created": "Contact information created successfully",
+  "createFailed": "Failed to create contact information",
+  "listFetched": "Contacts retrieved successfully",
+  "listFailed": "Failed to retrieve contacts",
+  "fetched": "Contact retrieved successfully",
+  "fetchFailed": "Failed to retrieve contact",
+  "notFound": "Contact not found",
+  "deleted": "Contact deleted successfully"
+}

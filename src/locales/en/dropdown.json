@@ -1,0 +1,15 @@
+{
+  "notFound": "Dropdown not found",
+  "created": "Dropdown created successfully",
+  "deleted": "Dropdown deleted successfully",
+  "fetched": "Dropdown fetched successfully",
+  "allFetched": "All dropdowns fetched successfully",
+  "valueAdded": "Value added successfully",
+  "valueRemoved": "Value removed successfully",
+  "valueExists": "Value already exists",
+  "valueNotFound": "Dropdown value not found",
+  "valueSettingsUpdated": "Dropdown value settings updated successfully",
+  "onlyDocumentSettings": "Only document dropdown settings can be updated",
+  "idRequired": "_id is required",
+  "settingsFieldRequired": "hasExpiry or autoApproval is required"
+}
