@@ -12,14 +12,14 @@ export const createContact = async (req: Request, res: Response) => {
     sendResponse(
       res,
       contact,
-      "Contact information created successfully",
+      req.t("contact:created"),
       STATUS_CODES.CREATED
     );
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Failed to create contact information",
+      req.t("contact:createFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -31,14 +31,14 @@ export const getAllContacts = async (req: Request, res: Response) => {
     sendResponse(
       res,
       contacts,
-      "Contacts retrieved successfully",
+      req.t("contact:listFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Failed to retrieve contacts",
+      req.t("contact:listFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -52,21 +52,21 @@ export const getContactById = async (
     const contact = await ContactUs.findById(req.params.id);
 
     if (!contact) {
-      sendResponse(res, null, "Contact not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("contact:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
     sendResponse(
       res,
       contact,
-      "Contact retrieved successfully",
+      req.t("contact:fetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Failed to retrieve contact",
+      req.t("contact:fetchFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -82,13 +82,13 @@ export const updateContact = async (
     });
 
     if (!contact) {
-      res.status(404).json({ success: false, message: "Contact not found" });
+      res.status(404).json({ success: false, message: req.t("contact:notFound") });
       return;
     }
 
     res.status(200).json({ success: true, data: contact });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server error", error });
+    res.status(500).json({ success: false, message: req.t("common:serverError"), error });
   }
 };
 
@@ -100,14 +100,14 @@ export const deleteContact = async (
     const contact = await ContactUs.findByIdAndDelete(req.params.id);
 
     if (!contact) {
-      res.status(404).json({ success: false, message: "Contact not found" });
+      res.status(404).json({ success: false, message: req.t("contact:notFound") });
       return;
     }
 
     res
       .status(200)
-      .json({ success: true, message: "Contact deleted successfully" });
+      .json({ success: true, message: req.t("contact:deleted") });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server error", error });
+    res.status(500).json({ success: false, message: req.t("common:serverError"), error });
   }
 };

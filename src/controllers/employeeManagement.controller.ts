@@ -27,7 +27,7 @@ export const createEmployee = async (
     const existingEmail = await Employee.findOne({ email });
     if (existingEmail) {
       console.warn("Email already exists:", email);
-      sendResponse(res, null, "Email already exists", STATUS_CODES.CONFLICT);
+      sendResponse(res, null, req.t("user:employee.emailExists"), STATUS_CODES.CONFLICT);
       return;
     }
 
@@ -38,7 +38,7 @@ export const createEmployee = async (
         sendResponse(
           res,
           null,
-          `Invalid Role ID: ${allowAccess}`,
+          req.t("user:employee.invalidRoleId", { id: allowAccess }),
           STATUS_CODES.BAD_REQUEST
         );
         return;
@@ -75,7 +75,7 @@ export const createEmployee = async (
     sendResponse(
       res,
       newEmployee,
-      "Employee created successfully",
+      req.t("user:employee.created"),
       STATUS_CODES.CREATED
     );
   } catch (error) {
@@ -141,7 +141,9 @@ export const getAllEmployees = async (
         page: Number(page),
         limit: Number(limit),
       },
-      `Employees fetched successfully${locale ? ` for locale: ${locale}` : ""}`,
+      locale
+        ? req.t("user:employee.listFetchedForLocale", { locale })
+        : req.t("user:employee.listFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -160,7 +162,7 @@ export const getEmployeeById = async (
     const locale = req.headers["language"]?.toString() || null;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid Employee ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("user:employee.invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -169,7 +171,7 @@ export const getEmployeeById = async (
       .lean();
 
     if (!employee) {
-      sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:employeeNotFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -184,7 +186,7 @@ export const getEmployeeById = async (
         sendResponse(
           res,
           translated,
-          `Employee details for locale: ${locale}`,
+          req.t("user:employee.detailsForLocale", { locale }),
           STATUS_CODES.OK
         );
         return;
@@ -192,14 +194,14 @@ export const getEmployeeById = async (
         sendResponse(
           res,
           null,
-          `No translations found for locale: ${locale}`,
+          req.t("user:employee.noTranslationsForLocale", { locale }),
           STATUS_CODES.NOT_FOUND
         );
         return;
       }
     }
 
-    sendResponse(res, employee, "Employee details fetched", STATUS_CODES.OK);
+    sendResponse(res, employee, req.t("user:employee.detailsFetched"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -216,13 +218,13 @@ export const updateEmployee = async (
     const { allowAccess } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid Employee ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("user:employee.invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     const employee = await Employee.findById(id);
     if (!employee) {
-      sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:employeeNotFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -233,7 +235,7 @@ export const updateEmployee = async (
         sendResponse(
           res,
           null,
-          `Invalid Role ID: ${allowAccess}`,
+          req.t("user:employee.invalidRoleId", { id: allowAccess }),
           STATUS_CODES.BAD_REQUEST
         );
         return;
@@ -247,7 +249,7 @@ export const updateEmployee = async (
       sendResponse(
         res,
         null,
-        "Invalid status value. Must be 'active', 'inactive', or 'blocked'.",
+        req.t("user:employee.invalidStatus"),
         STATUS_CODES.BAD_REQUEST
       );
       return;
@@ -281,7 +283,7 @@ export const updateEmployee = async (
     sendResponse(
       res,
       employee,
-      "Employee updated successfully",
+      req.t("user:employee.updated"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -299,17 +301,17 @@ export const deleteEmployee = async (
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid Employee ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("user:employee.invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     const employee = await Employee.findByIdAndDelete(id);
     if (!employee) {
-      sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:employeeNotFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    sendResponse(res, employee, "Employee deleted", STATUS_CODES.OK);
+    sendResponse(res, employee, req.t("user:employee.deleted"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }

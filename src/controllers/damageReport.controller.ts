@@ -40,7 +40,7 @@ export const createDamageReport = async (
       return sendResponse(
         res,
         null,
-        "Invalid booking ID",
+        req.t("booking:invalidId"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -51,7 +51,7 @@ export const createDamageReport = async (
       return sendResponse(
         res,
         null,
-        "A damage report has already been submitted for this booking",
+        req.t("damage:alreadyExists"),
         STATUS_CODES.CONFLICT // 409 Conflict is appropriate here
       );
     }
@@ -62,7 +62,7 @@ export const createDamageReport = async (
       return sendResponse(
         res,
         null,
-        "Booking not found",
+        req.t("booking:notFound"),
         STATUS_CODES.NOT_FOUND
       );
     }
@@ -77,7 +77,7 @@ export const createDamageReport = async (
       return sendResponse(
         res,
         null,
-        "Damage report can only be created once the item has been returned",
+        req.t("damage:bookingNotReturned"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -88,7 +88,7 @@ export const createDamageReport = async (
       return sendResponse(
         res,
         null,
-        "Confirm the item return with the return PIN before reporting damage",
+        req.t("damage:returnPinRequired"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -98,7 +98,7 @@ export const createDamageReport = async (
       return sendResponse(
         res,
         null,
-        "Unauthorized: Only the leaser can create a damage report for this booking",
+        req.t("damage:onlyLeaserCanCreate"),
         STATUS_CODES.FORBIDDEN
       );
     }
@@ -114,7 +114,7 @@ export const createDamageReport = async (
       return sendResponse(
         res,
         null,
-        "Damage dispute window has expired for this booking",
+        req.t("damage:windowExpired"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -194,7 +194,7 @@ export const createDamageReport = async (
     sendResponse(
       res,
       { report },
-      "Damage report submitted successfully",
+      req.t("damage:submitted"),
       STATUS_CODES.CREATED
     );
   } catch (err) {
@@ -264,7 +264,7 @@ export const getAllDamageReports = async (
         page: paginated.page,
         limit: paginated.limit,
       },
-      "Fetched successfully",
+      req.t("damage:fetched"),
       STATUS_CODES.OK
     );
   } catch (err) {
@@ -285,7 +285,7 @@ export const getDamageReportById = async (
       return sendResponse(
         res,
         null,
-        "Invalid report ID",
+        req.t("damage:invalidId"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -307,10 +307,10 @@ export const getDamageReportById = async (
       });
 
     if (!report) {
-      return sendResponse(res, null, "Not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
-    sendResponse(res, report, "Fetched successfully", STATUS_CODES.OK);
+    sendResponse(res, report, req.t("damage:fetched"), STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }
@@ -330,7 +330,7 @@ export const updateDamageReport = async (
       return sendResponse(
         res,
         null,
-        "Invalid report ID",
+        req.t("damage:invalidId"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -342,10 +342,10 @@ export const updateDamageReport = async (
       .populate("user");
 
     if (!updatedReport) {
-      return sendResponse(res, null, "Not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
-    sendResponse(res, updatedReport, "Updated successfully", STATUS_CODES.OK);
+    sendResponse(res, updatedReport, req.t("damage:updated"), STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }
@@ -364,17 +364,17 @@ export const deleteDamageReport = async (
       return sendResponse(
         res,
         null,
-        "Invalid report ID",
+        req.t("damage:invalidId"),
         STATUS_CODES.BAD_REQUEST
       );
     }
 
     const deletedReport = await DamageReport.findByIdAndDelete(id);
     if (!deletedReport) {
-      return sendResponse(res, null, "Not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
-    sendResponse(res, null, "Deleted successfully", STATUS_CODES.OK);
+    sendResponse(res, null, req.t("damage:deleted"), STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }
@@ -398,14 +398,14 @@ export const updateDamageReportStatus = async (
     if (userRole !== "admin") {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Only admin can update damage report status", STATUS_CODES.FORBIDDEN);
+      return sendResponse(res, null, req.t("damage:onlyAdminCanUpdate"), STATUS_CODES.FORBIDDEN);
     }
 
     // Validate report ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Invalid report ID", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(res, null, req.t("damage:invalidId"), STATUS_CODES.BAD_REQUEST);
     }
 
     // Validate status value
@@ -413,7 +413,7 @@ export const updateDamageReportStatus = async (
     if (!allowedStatuses.includes(status)) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Invalid status value", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(res, null, req.t("damage:invalidStatus"), STATUS_CODES.BAD_REQUEST);
     }
 
     // Find damage report with full details
@@ -432,7 +432,7 @@ export const updateDamageReportStatus = async (
     if (!damageReport) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Damage report not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
     // Prevent re-processing already settled reports
@@ -443,7 +443,7 @@ export const updateDamageReportStatus = async (
     ) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "This damage report has already been settled", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(res, null, req.t("damage:alreadySettled"), STATUS_CODES.BAD_REQUEST);
     }
 
     const bookingData = damageReport.booking as any;
@@ -460,7 +460,7 @@ export const updateDamageReportStatus = async (
       if (!admin) {
         await session.abortTransaction();
         session.endSession();
-        return sendResponse(res, null, "Admin not found", STATUS_CODES.NOT_FOUND);
+        return sendResponse(res, null, req.t("common:adminNotFound"), STATUS_CODES.NOT_FOUND);
       }
 
       const depositAmount = bookingData?.priceDetails?.securityDeposit || 0;
@@ -491,7 +491,10 @@ export const updateDamageReportStatus = async (
           return sendResponse(
             res,
             null,
-            `Approved amount ($${parsedAmount.toFixed(2)}) cannot exceed the renter's security deposit ($${depositAmount.toFixed(2)})`,
+            req.t("damage:approvedAmountTooHigh", {
+              amount: parsedAmount.toFixed(2),
+              deposit: depositAmount.toFixed(2),
+            }),
             STATUS_CODES.BAD_REQUEST
           );
         }
@@ -503,7 +506,10 @@ export const updateDamageReportStatus = async (
         return sendResponse(
           res,
           null,
-          `Insufficient security deposit. Damage charges ($${damagedCharges.toFixed(2)}) exceed the renter's security deposit ($${depositAmount.toFixed(2)}). Use partial approval to authorise a lower amount.`,
+          req.t("damage:insufficientDeposit", {
+            charges: damagedCharges.toFixed(2),
+            deposit: depositAmount.toFixed(2),
+          }),
           STATUS_CODES.BAD_REQUEST
         );
       }
@@ -626,8 +632,8 @@ export const updateDamageReportStatus = async (
         res,
         damageReport,
         isPartial
-          ? `Damage report partially approved and $${settledAmount.toFixed(2)} transferred to leaser successfully`
-          : `Damage report approved and $${settledAmount.toFixed(2)} transferred to leaser successfully`,
+          ? req.t("damage:partiallyApproved", { amount: settledAmount.toFixed(2) })
+          : req.t("damage:approved", { amount: settledAmount.toFixed(2) }),
         STATUS_CODES.OK
       );
     }
@@ -638,7 +644,7 @@ export const updateDamageReportStatus = async (
       if (!admin) {
         await session.abortTransaction();
         session.endSession();
-        return sendResponse(res, null, "Admin not found", STATUS_CODES.NOT_FOUND);
+        return sendResponse(res, null, req.t("common:adminNotFound"), STATUS_CODES.NOT_FOUND);
       }
 
       // Declare outside so notifications can access it
@@ -717,7 +723,7 @@ export const updateDamageReportStatus = async (
         console.error("Notification Error:", err);
       }
 
-      return sendResponse(res, null, "Damage report rejected successfully", STATUS_CODES.OK);
+      return sendResponse(res, null, req.t("damage:rejected"), STATUS_CODES.OK);
     }
 
     // ================= PENDING (reset) =================
@@ -727,7 +733,7 @@ export const updateDamageReportStatus = async (
     await session.commitTransaction();
     session.endSession();
 
-    return sendResponse(res, damageReport, "Damage report status updated to 'pending' successfully", STATUS_CODES.OK);
+    return sendResponse(res, damageReport, req.t("damage:resetToPending"), STATUS_CODES.OK);
 
   } catch (err) {
     console.error("Update Damage Report Error:", err);

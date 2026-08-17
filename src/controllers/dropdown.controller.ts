@@ -17,7 +17,7 @@ export const getAllDropdowns = async (
     sendResponse(
       res,
       dropdowns,
-      "All dropdowns fetched successfully",
+      req.t("dropdown:allFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -36,14 +36,14 @@ export const getDropdownByName = async (
     const dropdown = await Dropdown.findOne({ name }).lean();
 
     if (!dropdown) {
-      sendResponse(res, null, "Dropdown not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("dropdown:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
     sendResponse(
       res,
       dropdown,
-      "Dropdown fetched successfully",
+      req.t("dropdown:fetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -68,7 +68,7 @@ export const createDropdown = async (
     sendResponse(
       res,
       dropdown,
-      "Dropdown created successfully",
+      req.t("dropdown:created"),
       STATUS_CODES.CREATED
     );
   } catch (error) {
@@ -89,13 +89,13 @@ export const addValueToDropdown = async (
     const dropdown = await Dropdown.findOne({ name });
 
     if (!dropdown) {
-      sendResponse(res, null, "Dropdown not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("dropdown:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
     // Check if value already exists
     if (dropdown.values.find((v) => v.value === value)) {
-      sendResponse(res, null, "Value already exists", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("dropdown:valueExists"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -117,7 +117,7 @@ export const addValueToDropdown = async (
     dropdown.values.push(newValue);
     await dropdown.save();
 
-    sendResponse(res, dropdown, "Value added successfully", STATUS_CODES.OK);
+    sendResponse(res, dropdown, req.t("dropdown:valueAdded"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -137,14 +137,14 @@ export const updateDropdownValueSettings = async (
       sendResponse(
         res,
         null,
-        "Only document dropdown settings can be updated",
+        req.t("dropdown:onlyDocumentSettings"),
         STATUS_CODES.BAD_REQUEST
       );
       return;
     }
 
     if (!_id) {
-      sendResponse(res, null, "_id is required", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("dropdown:idRequired"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -162,7 +162,7 @@ export const updateDropdownValueSettings = async (
       sendResponse(
         res,
         null,
-        "hasExpiry or autoApproval is required",
+        req.t("dropdown:settingsFieldRequired"),
         STATUS_CODES.BAD_REQUEST
       );
       return;
@@ -175,14 +175,14 @@ export const updateDropdownValueSettings = async (
     );
 
     if (!dropdown) {
-      sendResponse(res, null, "Dropdown value not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("dropdown:valueNotFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
     sendResponse(
       res,
       dropdown,
-      "Dropdown value settings updated successfully",
+      req.t("dropdown:valueSettingsUpdated"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -202,7 +202,7 @@ export const removeValueFromDropdown = async (
     const dropdown = await Dropdown.findOne({ name });
 
     if (!dropdown) {
-      sendResponse(res, null, "Dropdown not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("dropdown:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -222,7 +222,7 @@ export const removeValueFromDropdown = async (
     dropdown.values = dropdown.values.filter((v) => v.value !== value);
     await dropdown.save();
 
-    sendResponse(res, dropdown, "Value removed successfully", STATUS_CODES.OK);
+    sendResponse(res, dropdown, req.t("dropdown:valueRemoved"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -240,7 +240,7 @@ export const deleteDropdown = async (
     const deleted = await Dropdown.findOneAndDelete({ name });
 
     if (!deleted) {
-      sendResponse(res, null, "Dropdown not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("dropdown:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -251,7 +251,7 @@ export const deleteDropdown = async (
       await Form.updateMany({}, { $set: { leaserDocuments: [] } });
     }
 
-    sendResponse(res, null, "Dropdown deleted successfully", STATUS_CODES.OK);
+    sendResponse(res, null, req.t("dropdown:deleted"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }

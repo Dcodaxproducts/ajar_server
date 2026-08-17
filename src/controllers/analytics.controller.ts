@@ -257,7 +257,7 @@ export const getAdminAnalytics = async (
           refundIssued: { record: refundRecords },
         },
       },
-      "Admin analytics fetched successfully",
+      req.t("common:analyticsFetched"),
       STATUS_CODES.OK
     );
   } catch (err) {
