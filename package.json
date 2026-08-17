@@ -8,7 +8,7 @@
     "live": "pm2 start src/server.ts --watch --ignore-watch='public/uploads' --name my-app --interpreter ts-node",
     "build": "tsc",
     "start": "node dist/server.js",
-    "postbuild": "mkdir -p dist/config && cp src/config/*.json dist/config/"
+    "postbuild": "mkdir -p dist/config && cp src/config/*.json dist/config/ && cp -r src/locales dist/locales"
   },
   "keywords": [],
   "author": "",
@@ -34,6 +34,9 @@
     "fs": "^0.0.1-security",
     "google-auth-library": "^10.4.1",
     "helmet": "^8.0.0",
+    "i18next": "^26.3.6",
+    "i18next-fs-backend": "^2.6.7",
+    "i18next-http-middleware": "^3.9.8",
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^3.2.0",
