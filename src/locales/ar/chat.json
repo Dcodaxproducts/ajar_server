@@ -1,0 +1,28 @@
+{
+  "filesUploaded": "تم رفع الملفات بنجاح",
+  "uploadFailed": "فشل رفع الملف",
+  "conversationNotFound": "لم يتم العثور على المحادثة",
+  "notAllowed": "غير مسموح لك بالمشاركة في هذه المحادثة",
+  "messageSent": "تم إرسال الرسالة بنجاح",
+  "sendFailed": "فشل إرسال الرسالة",
+  "messageNotFound": "لم يتم العثور على الرسالة",
+  "notAuthorised": "غير مصرّح",
+  "markedDelivered": "تم تعليم الرسالة كمُسلَّمة",
+  "markDeliveredFailed": "فشل تعليم الرسالة كمُسلَّمة",
+  "noUnseen": "لا توجد رسائل غير مقروءة",
+  "markedSeen": "تم تعليم الرسائل كمقروءة",
+  "markSeenFailed": "فشل تعليم الرسائل كمقروءة",
+
+  "conversation": {
+    "receiverIdRequired": "معرّف المستلم مطلوب",
+    "invalidReceiverId": "معرّف المستلم غير صالح",
+    "receiverNotFound": "لم يتم العثور على المستلم أو تم حذفه",
+    "fetchedOrCreated": "تم جلب/إنشاء المحادثة بنجاح",
+    "createFailed": "فشل إنشاء المحادثة",
+    "listFetched": "تم جلب المحادثات بنجاح",
+    "fetched": "تم جلب المحادثة بنجاح",
+    "notFoundOrNotParticipant": "لم يتم العثور على المحادثة أو أنك لست مشاركًا فيها",
+    "notAuthorisedOrNotFound": "غير مصرّح أو لم يتم العثور على المحادثة",
+    "messagesFetched": "تم جلب الرسائل بنجاح"
+  }
+}

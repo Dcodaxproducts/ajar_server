@@ -1,0 +1,21 @@
+{
+  "serverError": "خطأ في الخادم",
+  "internalServerError": "خطأ داخلي في الخادم",
+  "unauthorized": "غير مصرّح",
+  "invalidId": "معرّف غير صالح",
+  "adminNotFound": "لم يتم العثور على المسؤول",
+  "renterNotFound": "لم يتم العثور على المستأجر",
+  "renterProfileNotFound": "لم يتم العثور على ملف المستأجر",
+  "listingNotFound": "لم يتم العثور على الإعلان",
+  "zoneNotFound": "لم يتم العثور على المنطقة الخاصة بهذا الإعلان",
+  "invalidListingId": "معرّف الإعلان غير صالح",
+  "invalidUserId": "معرّف المستخدم غير صالح",
+  "analyticsFetched": "تم جلب تحليلات المسؤول بنجاح",
+  "accountAndUserIdRequired": "معرّف الحساب ومعرّف المستخدم مطلوبان",
+  "validationError": "بيانات الطلب غير صالحة",
+  "somethingWentWrong": "حدث خطأ ما، يرجى المحاولة مرة أخرى لاحقًا",
+  "invalidIdFormat": "صيغة المعرّف غير صالحة",
+  "modelNotFound": "لم يتم العثور على {{model}}",
+  "noTranslatableFields": "لم يتم تقديم أي حقول قابلة للترجمة",
+  "translationSaved": "تم حفظ ترجمة {{model}} للغة \"{{locale}}\""
+}
