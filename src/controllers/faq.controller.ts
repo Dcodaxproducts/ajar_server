@@ -10,7 +10,7 @@ export const createFAQ = asyncHandler(async (req: Request, res: Response) => {
   const { question, answer, order } = req.body;
   const faq = await FAQ.create({ question, answer, order });
 
-  sendResponse(res, faq, "FAQ created successfully", STATUS_CODES.CREATED);
+  sendResponse(res, faq, req.t("faq:created"), STATUS_CODES.CREATED);
 });
 
 // Get all FAQs
@@ -21,7 +21,7 @@ export const getAllFAQs = asyncHandler(async (req: Request, res: Response) => {
   const query = FAQ.find().sort({ order: 1 });
   const result = await paginateQuery(query, { page, limit });
 
-  sendResponse(res, result, "FAQs fetched successfully", STATUS_CODES.OK);
+  sendResponse(res, result, req.t("faq:listFetched"), STATUS_CODES.OK);
 });
 
 // Get single FAQ by ID
@@ -31,7 +31,7 @@ export const getFAQById = asyncHandler(async (req: Request, res: Response) => {
     res.status(404);
     throw new Error("FAQ not found");
   }
-  sendResponse(res, faq, "FAQ fetched successfully", STATUS_CODES.OK);
+  sendResponse(res, faq, req.t("faq:fetched"), STATUS_CODES.OK);
 });
 
 // Update FAQ
@@ -45,7 +45,7 @@ export const updateFAQ = asyncHandler(async (req: Request, res: Response) => {
     throw new Error("FAQ not found");
   }
 
-  sendResponse(res, faq, "FAQ updated successfully", STATUS_CODES.OK);
+  sendResponse(res, faq, req.t("faq:updated"), STATUS_CODES.OK);
 });
 
 // Delete FAQ
@@ -55,5 +55,5 @@ export const deleteFAQ = asyncHandler(async (req: Request, res: Response) => {
     res.status(404);
     throw new Error("FAQ not found");
   }
-  sendResponse(res, faq, "FAQ deleted successfully", STATUS_CODES.OK);
+  sendResponse(res, faq, req.t("faq:deleted"), STATUS_CODES.OK);
 });

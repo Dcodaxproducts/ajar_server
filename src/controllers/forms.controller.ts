@@ -27,27 +27,27 @@ export const createNewForm = async (
     } = req.body;
 
     if (!name || !description) {
-      sendResponse(res, null, "Form name and description are required", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("catalog:form.nameAndDescriptionRequired"), STATUS_CODES.BAD_REQUEST);
       return
     }
 
     // Validate IDs
     if (!mongoose.Types.ObjectId.isValid(subCategory) || !mongoose.Types.ObjectId.isValid(zone)) {
-      sendResponse(res, null, "Invalid subCategoryId or zoneId", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("catalog:form.invalidZoneOrSubCategory"), STATUS_CODES.BAD_REQUEST);
       return
     }
 
     // 1. Check Uniqueness
     const formAlreadyExists = await Form.findOne({ subCategory, zone });
     if (formAlreadyExists) {
-      sendResponse(res, null, "Form already exists for this zone and sub-category", STATUS_CODES.CONFLICT);
+      sendResponse(res, null, req.t("catalog:form.alreadyExists"), STATUS_CODES.CONFLICT);
       return
     }
 
     // 2. Validate User Selected Fields & Maintain Order
     const validUserFieldsRaw = await Field.find({ _id: { $in: fields } });
     if (validUserFieldsRaw.length !== fields.length) {
-      sendResponse(res, null, "Some selected fields are invalid", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("catalog:form.someSelectedFieldsInvalid"), STATUS_CODES.BAD_REQUEST);
       return
     }
 
@@ -59,7 +59,7 @@ export const createNewForm = async (
     const requiredFields = await Field.find({ name: { $in: requiredFieldNames } });
 
     if (requiredFields.length !== requiredFieldNames.length) {
-      sendResponse(res, null, "Required system fields missing in database", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("catalog:form.systemFieldsMissing"), STATUS_CODES.BAD_REQUEST);
       return
     }
 
@@ -112,7 +112,7 @@ export const createNewForm = async (
         },
       });
 
-    sendResponse(res, populatedForm, "Form created successfully", STATUS_CODES.CREATED);
+    sendResponse(res, populatedForm, req.t("catalog:form.created"), STATUS_CODES.CREATED);
   } catch (error) {
     next(error);
   }
@@ -163,14 +163,14 @@ export const createNewForm = async (
 
 //     const subCategoryExists = await SubCategory.findById(subCategory);
 //     if (!subCategoryExists) {
-//       sendResponse(res, null, "SubCategory not found", STATUS_CODES.NOT_FOUND);
+//       sendResponse(res, null, req.t("catalog:form.subCategoryNotFound"), STATUS_CODES.NOT_FOUND);
 //       return;
 //     }
 
 //     const validUserFields = await Field.find({ _id: { $in: fields } });
 
 //     if (validUserFields.length !== fields.length) {
-//       sendResponse(res, null, "Some fields are invalid", STATUS_CODES.BAD_REQUEST);
+//       sendResponse(res, null, req.t("catalog:form.someFieldsInvalid"), STATUS_CODES.BAD_REQUEST);
 //       return;
 //     }
 
@@ -226,7 +226,7 @@ export const createNewForm = async (
 
 //     await form.save();
 
-//     sendResponse(res, form, "Form created successfully", STATUS_CODES.CREATED);
+//     sendResponse(res, form, req.t("catalog:form.created"), STATUS_CODES.CREATED);
 //   } catch (error) {
 //     next(error);
 //   }
@@ -338,7 +338,7 @@ export const getFormDetails = async (
       .lean();
 
     if (!form) {
-      sendResponse(res, null, "Form not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:form.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -442,7 +442,7 @@ export const getFormByZoneAndSubCategory = async (
       .lean();
 
     if (!form) {
-      sendResponse(res, null, "Form not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:form.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -530,7 +530,7 @@ export const getFormByZoneAndSubCategory = async (
       leaserDocuments: mapDocs(rawLeaserDocs, leaserDropdownValues), // ✅ enriched
     };
 
-    sendResponse(res, localizedForm, "Form fetched successfully", STATUS_CODES.OK);
+    sendResponse(res, localizedForm, req.t("catalog:form.fetched"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -560,7 +560,7 @@ export const updateForm = async (
     const form = await Form.findById(id);
 
     if (!form) {
-      sendResponse(res, null, "Form not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:form.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -612,7 +612,7 @@ export const updateForm = async (
         },
       });
 
-    sendResponse(res, updatedForm, "Form updated successfully", STATUS_CODES.OK);
+    sendResponse(res, updatedForm, req.t("catalog:form.updated"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -626,10 +626,10 @@ export const deleteForm = async (
   try {
     const deleted = await Form.findByIdAndDelete(req.params.id);
     if (!deleted) {
-      sendResponse(res, null, "Form not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:form.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
-    sendResponse(res, null, "Form deleted successfully", STATUS_CODES.OK);
+    sendResponse(res, null, req.t("catalog:form.deleted"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }

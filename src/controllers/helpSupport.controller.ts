@@ -15,7 +15,7 @@ export const createHelpSupport = async (req: AuthRequest, res: Response) => {
       return sendResponse(
         res,
         null,
-        "Title is required",
+        req.t("support:titleRequired"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -26,12 +26,12 @@ export const createHelpSupport = async (req: AuthRequest, res: Response) => {
       title,
     });
 
-    sendResponse(res, ticket, "Created successfully");
+    sendResponse(res, ticket, req.t("support:created"));
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Error creating ",
+      req.t("support:createFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -51,7 +51,7 @@ export const updateHelpSupportStatus = async (
       return sendResponse(
         res,
         null,
-        "Invalid status",
+        req.t("support:invalidStatus"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -63,15 +63,15 @@ export const updateHelpSupportStatus = async (
     );
 
     if (!ticket) {
-      return sendResponse(res, null, "Not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("support:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
-    sendResponse(res, ticket, "Status updated successfully");
+    sendResponse(res, ticket, req.t("support:statusUpdated"));
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Error updating status",
+      req.t("support:updateStatusFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -103,13 +103,13 @@ export const getMyHelpSupportTickets = async (
         page: paginated.page,
         limit: paginated.limit,
       },
-      "Retrieved successfully"
+      req.t("support:retrieved")
     );
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Error retrieving tickets",
+      req.t("support:listFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -126,15 +126,15 @@ export const getHelpSupportById = async (req: AuthRequest, res: Response) => {
     );
 
     if (!ticket) {
-      return sendResponse(res, null, "Not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("support:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
-    sendResponse(res, ticket, "Retrieved successfully");
+    sendResponse(res, ticket, req.t("support:retrieved"));
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Error retrieving ",
+      req.t("support:retrieveFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -151,15 +151,15 @@ export const deleteHelpSupportById = async (
     const ticket = await HelpSupport.findByIdAndDelete(id);
 
     if (!ticket) {
-      return sendResponse(res, null, "Not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("support:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
-    sendResponse(res, ticket, "Deleted successfully");
+    sendResponse(res, ticket, req.t("support:deleted"));
   } catch (error) {
     sendResponse(
       res,
       null,
-      "Error deleting ",
+      req.t("support:deleteFailed"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }

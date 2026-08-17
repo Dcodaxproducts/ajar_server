@@ -162,14 +162,14 @@ export const getFieldDetails = async (
     const locale = languageHeader?.toString() || null;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid Field ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("catalog:field.invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     const field = await Field.findById(id).lean();
 
     if (!field) {
-      sendResponse(res, null, "Field not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:field.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -204,7 +204,7 @@ export const getFieldDetails = async (
     sendResponse(
       res,
       field,
-      "Field details fetched successfully",
+      req.t("catalog:field.detailsFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -247,13 +247,13 @@ export const createNewField = async (
 
       // 1️⃣ Conditional allowed only on select & radio
       if (!["select", "radio"].includes(fieldData.type)) {
-        sendResponse(res, null, "Conditional logic is only allowed on select or radio fields", STATUS_CODES.BAD_REQUEST);
+        sendResponse(res, null, req.t("catalog:field.conditionalWrongType"), STATUS_CODES.BAD_REQUEST);
         return;
       }
 
       // 2️⃣ dependsOn must be valid
       if (!mongoose.Types.ObjectId.isValid(dependsOn)) {
-        sendResponse(res, null, "Invalid or missing conditional.dependsOn", STATUS_CODES.BAD_REQUEST);
+        sendResponse(res, null, req.t("catalog:field.conditionalMissingDependsOn"), STATUS_CODES.BAD_REQUEST);
         return;
       }
 
@@ -269,20 +269,20 @@ export const createNewField = async (
           c.value === undefined || c.value === null
       );
       if (hasInvalidCondition) {
-        sendResponse(res, null, "Each condition must have a value", STATUS_CODES.BAD_REQUEST);
+        sendResponse(res, null, req.t("catalog:field.conditionValueRequired"), STATUS_CODES.BAD_REQUEST);
         return;
       }
 
       // 5️⃣ Parent field must exist
       parentField = await Field.findById(dependsOn);
       if (!parentField) {
-        sendResponse(res, null, "Parent field not found", STATUS_CODES.NOT_FOUND);
+        sendResponse(res, null, req.t("catalog:field.parentNotFound"), STATUS_CODES.NOT_FOUND);
         return;
       }
 
       // 6️⃣ Parent must be select or radio
       if (!["select", "radio"].includes(parentField.type || "")) {
-        sendResponse(res, null, "Parent field must be of type select or radio", STATUS_CODES.BAD_REQUEST);
+        sendResponse(res, null, req.t("catalog:field.parentWrongType"), STATUS_CODES.BAD_REQUEST);
         return;
       }
 
@@ -310,7 +310,7 @@ export const createNewField = async (
     sendResponse(
       res,
       newField,
-      "Field created successfully",
+      req.t("catalog:field.created"),
       STATUS_CODES.CREATED
     );
   } catch (error) {
@@ -360,7 +360,7 @@ export const updateField = async (
     const updates = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid Field ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("catalog:field.invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -380,13 +380,13 @@ export const updateField = async (
 
       // 1️⃣ Conditional allowed only on select & radio
       if (!["select", "radio"].includes(updates.type)) {
-        sendResponse(res, null, "Conditional logic is only allowed on select or radio fields", STATUS_CODES.BAD_REQUEST);
+        sendResponse(res, null, req.t("catalog:field.conditionalWrongType"), STATUS_CODES.BAD_REQUEST);
         return;
       }
 
       // 2️⃣ dependsOn must be valid
       if (!mongoose.Types.ObjectId.isValid(dependsOn)) {
-        sendResponse(res, null, "Invalid or missing conditional.dependsOn", STATUS_CODES.BAD_REQUEST);
+        sendResponse(res, null, req.t("catalog:field.conditionalMissingDependsOn"), STATUS_CODES.BAD_REQUEST);
         return;
       }
 
@@ -402,20 +402,20 @@ export const updateField = async (
           c.value === undefined || c.value === null
       );
       if (hasInvalidCondition) {
-        sendResponse(res, null, "Each condition must have a value", STATUS_CODES.BAD_REQUEST);
+        sendResponse(res, null, req.t("catalog:field.conditionValueRequired"), STATUS_CODES.BAD_REQUEST);
         return;
       }
 
       // 5️⃣ Parent field must exist
       const parentField = await Field.findById(dependsOn);
       if (!parentField) {
-        sendResponse(res, null, "Parent field not found", STATUS_CODES.NOT_FOUND);
+        sendResponse(res, null, req.t("catalog:field.parentNotFound"), STATUS_CODES.NOT_FOUND);
         return;
       }
 
       // 6️⃣ Parent must be select or radio
       if (!["select", "radio"].includes(parentField.type || "")) {
-        sendResponse(res, null, "Parent field must be of type select or radio", STATUS_CODES.BAD_REQUEST);
+        sendResponse(res, null, req.t("catalog:field.parentWrongType"), STATUS_CODES.BAD_REQUEST);
         return;
       }
 
@@ -449,11 +449,11 @@ export const updateField = async (
     const updatedField = await Field.findById(id).lean(false);
 
     if (!updatedField) {
-      sendResponse(res, null, "Field not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:field.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    sendResponse(res, updatedField, "Field updated successfully", STATUS_CODES.OK);
+    sendResponse(res, updatedField, req.t("catalog:field.updated"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -469,14 +469,14 @@ export const deleteField = async (
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid Field ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("catalog:field.invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     const field = await Field.findById(id);
 
     if (!field) {
-      sendResponse(res, null, "Field not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:field.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -505,7 +505,7 @@ export const deleteField = async (
 
     await Form.updateMany({ fields: id }, { $pull: { fields: id } });
 
-    sendResponse(res, deleted, "Field deleted successfully", STATUS_CODES.OK);
+    sendResponse(res, deleted, req.t("catalog:field.deleted"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }

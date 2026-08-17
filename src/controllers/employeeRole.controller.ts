@@ -16,7 +16,7 @@ export const createRole = async (
 
     const existing = await Role.findOne({ name });
     if (existing) {
-      sendResponse(res, null, "Role already exists", STATUS_CODES.CONFLICT);
+      sendResponse(res, null, req.t("user:role.alreadyExists"), STATUS_CODES.CONFLICT);
       return;
     }
 
@@ -27,7 +27,7 @@ export const createRole = async (
     });
     await role.save();
 
-    sendResponse(res, role, "Role created", STATUS_CODES.CREATED);
+    sendResponse(res, role, req.t("user:role.created"), STATUS_CODES.CREATED);
   } catch (err) {
     next(err);
   }
@@ -61,7 +61,7 @@ export const getAllRoles = async (
         page: Number(page),
         limit: Number(limit),
       },
-      "Employee roles fetched successfully",
+      req.t("user:role.listFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -80,11 +80,11 @@ export const getRoleById = async (
     const role = await Role.findById(id);
 
     if (!role) {
-      sendResponse(res, null, "Role not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:role.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    sendResponse(res, role, "Role fetched", STATUS_CODES.OK);
+    sendResponse(res, role, req.t("user:role.fetched"), STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }
@@ -107,11 +107,11 @@ export const updateRole = async (
     const role = await Role.findByIdAndUpdate(id, updates, { new: true });
 
     if (!role) {
-      sendResponse(res, null, "Role not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:role.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    sendResponse(res, role, "Role updated", STATUS_CODES.OK);
+    sendResponse(res, role, req.t("user:role.updated"), STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }
@@ -128,11 +128,11 @@ export const deleteRole = async (
     const role = await Role.findByIdAndDelete(id);
 
     if (!role) {
-      sendResponse(res, null, "Role not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:role.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    sendResponse(res, role, "Role deleted", STATUS_CODES.OK);
+    sendResponse(res, role, req.t("user:role.deleted"), STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }
