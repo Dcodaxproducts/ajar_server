@@ -1,0 +1,25 @@
+{
+  "missingIntentId": "معرّف عملية الدفع مفقود",
+  "bookingNotFound": "لم يتم العثور على الحجز",
+  "unauthorizedVerify": "غير مصرّح لك بالتحقق من هذه الدفعة",
+  "holdConfirmed": "تم تأكيد حجز مبلغ الدفع",
+  "captured": "تم تحصيل مبلغ الحجز",
+  "failedOrCancelled": "فشلت عملية الدفع أو تم إلغاؤها",
+  "stillProcessing": "لا تزال عملية الدفع قيد المعالجة",
+  "onlyBookingPayments": "يمكن التحقق من مدفوعات الحجز فقط.",
+  "verificationFailed": "فشل التحقق من الدفع",
+
+  "connect": {
+    "onboardingIncomplete": "لم يتم إكمال التسجيل في Stripe",
+    "noAccount": "لا يوجد حساب Stripe مرتبط",
+    "notEligibleForPayouts": "حساب Stripe غير مؤهل للتحويلات"
+  },
+
+  "payout": {
+    "bankNotConnected": "الحساب البنكي غير مرتبط",
+    "insufficientEarnings": "الأرباح المتاحة غير كافية",
+    "noEarningFound": "لا توجد أرباح من حجوزات مكتملة قابلة للتحويل",
+    "invalidAmount": "مبلغ غير صالح. الحد الأدنى للسحب هو ${{min}}.",
+    "activeBookings": "لا يمكن السحب أثناء وجود حجوزات نشطة."
+  }
+}
