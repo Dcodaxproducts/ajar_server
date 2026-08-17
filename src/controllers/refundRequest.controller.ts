@@ -68,7 +68,7 @@ export const getRefundRequestById = asyncHandler(
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      res.status(400).json({ message: "Invalid refund request ID" });
+      res.status(400).json({ message: req.t("refund:invalidRequestId") });
       return;
     }
 
@@ -94,7 +94,7 @@ export const getRefundRequestById = asyncHandler(
       .populate("user", "name email profilePicture");
 
     if (!refund) {
-      res.status(404).json({ message: "Refund request not found" });
+      res.status(404).json({ message: req.t("refund:requestNotFound") });
       return;
     }
 
@@ -114,13 +114,13 @@ export const updateRefundRequest = asyncHandler(
       new: true,
     });
     if (!refund) {
-      res.status(404).json({ message: "Refund request not found" });
+      res.status(404).json({ message: req.t("refund:requestNotFound") });
       return;
     }
 
     res.status(200).json({
       success: true,
-      message: "Refund request updated",
+      message: req.t("refund:requestUpdated"),
       data: refund,
     });
   }
@@ -132,10 +132,10 @@ export const deleteRefundRequest = asyncHandler(
     const { id } = req.params;
     const refund = await RefundRequest.findByIdAndDelete(id);
     if (!refund) {
-      res.status(404).json({ message: "Refund request not found" });
+      res.status(404).json({ message: req.t("refund:requestNotFound") });
       return;
     }
-    res.status(200).json({ success: true, message: "Refund request deleted" });
+    res.status(200).json({ success: true, message: req.t("refund:requestDeleted") });
   }
 );
 
@@ -155,13 +155,13 @@ export const updateRefundStatus = async (
     if (!["pending", "accept", "reject"].includes(status)) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Invalid status value", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(res, null, req.t("refund:invalidStatus"), STATUS_CODES.BAD_REQUEST);
     }
 
     if (status === "reject" && (!adminNote || adminNote.trim() === "")) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "A rejection note is required to process this request", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(res, null, req.t("refund:rejectionNoteRequired"), STATUS_CODES.BAD_REQUEST);
     }
 
     const refund = await RefundRequest.findById(id)
@@ -172,20 +172,20 @@ export const updateRefundStatus = async (
     if (!refund) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Refund request not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("refund:requestNotFound"), STATUS_CODES.NOT_FOUND);
     }
 
     if (refund.status !== "pending") {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Refund request already processed", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(res, null, req.t("refund:alreadyProcessed"), STATUS_CODES.BAD_REQUEST);
     }
 
     const admin = await User.findOne({ role: "admin" });
     if (!admin) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Admin not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("common:adminNotFound"), STATUS_CODES.NOT_FOUND);
     }
 
     const booking = await Booking.findById(refund.booking)
@@ -197,7 +197,7 @@ export const updateRefundStatus = async (
     if (!booking) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, "Booking not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("booking:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
     if (adminNote) {
@@ -237,7 +237,7 @@ export const updateRefundStatus = async (
         console.error("Failed to queue refund rejection notification:", err);
       }
 
-      return sendResponse(res, refund, "Refund request rejected", STATUS_CODES.OK);
+      return sendResponse(res, refund, req.t("refund:requestRejected"), STATUS_CODES.OK);
     }
 
     // ================= ACCEPT =================
@@ -390,7 +390,7 @@ export const updateRefundStatus = async (
       console.error("Failed to queue refund notifications:", err);
     }
 
-    return sendResponse(res, refund, "Refund processed successfully", STATUS_CODES.OK);
+    return sendResponse(res, refund, req.t("refund:processed"), STATUS_CODES.OK);
 
   } catch (err) {
     await session.abortTransaction();

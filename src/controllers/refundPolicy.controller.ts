@@ -19,12 +19,12 @@ export const createRefundPolicy = asyncHandler(
     const { zone, subCategory } = req.body;
 
     if (!(await isValidObjectIdAndExists(zone, Zone))) {
-      res.status(400).json({ message: "Invalid zone ID" });
+      res.status(400).json({ message: req.t("refund:policy.invalidZoneId") });
       return;
     }
 
     if (!(await isValidObjectIdAndExists(subCategory, Category))) {
-      res.status(400).json({ message: "Invalid subCategory ID" });
+      res.status(400).json({ message: req.t("refund:policy.invalidSubCategoryId") });
       return;
     }
 
@@ -39,7 +39,7 @@ export const createRefundPolicy = asyncHandler(
 
     res.status(201).json({
       success: true,
-      message: "Refund policy created successfully",
+      message: req.t("refund:policy.created"),
       data: policy,
     });
   }
@@ -76,7 +76,7 @@ export const getRefundPoliciesByZoneAndCategory = asyncHandler(
     if (!policy) {
       res.status(404).json({
         success: false,
-        message: "No refund policy found for this zone and subCategory",
+        message: req.t("refund:policy.noneForZone"),
       });
       return;
     }
@@ -97,13 +97,13 @@ export const updateRefundPolicy = asyncHandler(
 
     // fail fast — no silent undefineds reaching the DB
     if (!zoneId || !subCategoryId) {
-      res.status(400).json({ message: "zone and subCategory are required" });
+      res.status(400).json({ message: req.t("refund:policy.zoneAndSubCategoryRequired") });
       return;
     }
 
     // mismatch guard: only fires when both sources actually supply a value
     if (req.params.zone && req.body.zone && req.params.zone !== req.body.zone) {
-      res.status(400).json({ message: "Zone mismatch between params and body" });
+      res.status(400).json({ message: req.t("refund:policy.zoneMismatch") });
       return;
     }
     if (
@@ -111,7 +111,7 @@ export const updateRefundPolicy = asyncHandler(
       req.body.subCategory &&
       req.params.subCategory !== req.body.subCategory
     ) {
-      res.status(400).json({ message: "SubCategory mismatch between params and body" });
+      res.status(400).json({ message: req.t("refund:policy.subCategoryMismatch") });
       return;
     }
 
@@ -122,11 +122,11 @@ export const updateRefundPolicy = asyncHandler(
     ]);
 
     if (!zoneExists) {
-      res.status(400).json({ message: "Invalid zone ID" });
+      res.status(400).json({ message: req.t("refund:policy.invalidZoneId") });
       return;
     }
     if (!subCategoryExists) {
-      res.status(400).json({ message: "Invalid subCategory ID" });
+      res.status(400).json({ message: req.t("refund:policy.invalidSubCategoryId") });
       return;
     }
 
@@ -153,7 +153,7 @@ export const updateRefundPolicy = asyncHandler(
 
     res.status(200).json({
       success: true,
-      message: "Refund policy saved successfully",
+      message: req.t("refund:policy.saved"),
       data: policy 
     });
   }
@@ -165,9 +165,9 @@ export const deleteRefundPolicy = asyncHandler(
     const { id } = req.params;
     const policy = await RefundPolicy.findByIdAndDelete(id);
     if (!policy) {
-      res.status(404).json({ message: "Refund policy not found" });
+      res.status(404).json({ message: req.t("refund:policy.notFound") });
       return;
     }
-    res.status(200).json({ success: true, message: "Refund policy deleted" });
+    res.status(200).json({ success: true, message: req.t("refund:policy.deleted") });
   }
 );

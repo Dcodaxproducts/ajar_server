@@ -24,14 +24,14 @@ const updateRentalPolicy = async (
       return sendResponse(
         res,
         null,
-        "Invalid zone or subCategory ID",
+        req.t("rental:invalidZoneOrSubCategory"),
         STATUS_CODES.BAD_REQUEST
       );
     }
 
     const zone = await Zone.findById(zoneId);
     if (!zone) {
-      return sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("rental:zoneNotFound"), STATUS_CODES.NOT_FOUND);
     }
 
     const hasSubCategory = (zone.subCategories || []).some(
@@ -42,7 +42,7 @@ const updateRentalPolicy = async (
       return sendResponse(
         res,
         null,
-        "SubCategory is not linked to this zone",
+        req.t("rental:subCategoryNotLinked"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -69,7 +69,7 @@ const updateRentalPolicy = async (
         return sendResponse(
           res,
           null,
-          "rentalDurationLimits must be an array of policies",
+          req.t("rental:durationLimitsMustBeArray"),
           STATUS_CODES.BAD_REQUEST
         );
       }
@@ -103,7 +103,7 @@ const updateRentalPolicy = async (
         zone: policy.zone,
         subCategory: policy.subCategory,
       },
-      `${field} updated successfully`,
+      req.t("rental:fieldUpdated", { field }),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -130,14 +130,14 @@ const getRentalPolicy = async (
       return sendResponse(
         res,
         null,
-        "Invalid zone or subCategory ID",
+        req.t("rental:invalidZoneOrSubCategory"),
         STATUS_CODES.BAD_REQUEST
       );
     }
 
     const zone = await Zone.findById(zoneId).lean();
     if (!zone) {
-      return sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("rental:zoneNotFound"), STATUS_CODES.NOT_FOUND);
     }
 
     const hasSubCategory = (zone.subCategories || []).some(
@@ -148,7 +148,7 @@ const getRentalPolicy = async (
       return sendResponse(
         res,
         null,
-        "SubCategory is not linked to this zone",
+        req.t("rental:subCategoryNotLinked"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -170,7 +170,7 @@ const getRentalPolicy = async (
     sendResponse(
       res,
       responseData,
-      `${field} fetched successfully`,
+      req.t("rental:fieldFetched", { field }),
       STATUS_CODES.OK
     );
   } catch (error) {

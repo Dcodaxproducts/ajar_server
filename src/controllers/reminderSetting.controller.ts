@@ -8,7 +8,7 @@ const ALLOWED_UNITS = ["minutes", "hours", "days"];
 
 // GET /api/reminder-settings
 export const getReminderSettings = async (
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction
 ) => {
@@ -17,7 +17,7 @@ export const getReminderSettings = async (
       .sort({ audience: 1, label: 1 })
       .lean();
 
-    return sendResponse(res, settings, "Reminder settings fetched", STATUS_CODES.OK);
+    return sendResponse(res, settings, req.t("reminder:listFetched"), STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }
@@ -42,7 +42,7 @@ export const updateReminderSetting = async (
         return sendResponse(
           res,
           null,
-          "offsetValue must be a number greater than or equal to 0",
+          req.t("reminder:invalidOffsetValue"),
           STATUS_CODES.BAD_REQUEST
         );
       }
@@ -54,7 +54,7 @@ export const updateReminderSetting = async (
         return sendResponse(
           res,
           null,
-          `offsetUnit must be one of: ${ALLOWED_UNITS.join(", ")}`,
+          req.t("reminder:invalidOffsetUnit", { allowed: ALLOWED_UNITS.join(", ") }),
           STATUS_CODES.BAD_REQUEST
         );
       }
@@ -66,7 +66,7 @@ export const updateReminderSetting = async (
         return sendResponse(
           res,
           null,
-          "enabled must be true or false",
+          req.t("reminder:invalidEnabled"),
           STATUS_CODES.BAD_REQUEST
         );
       }
@@ -82,7 +82,7 @@ export const updateReminderSetting = async (
         return sendResponse(
           res,
           null,
-          `channels must be a non-empty array of: ${ALLOWED_CHANNELS.join(", ")}`,
+          req.t("reminder:invalidChannels", { allowed: ALLOWED_CHANNELS.join(", ") }),
           STATUS_CODES.BAD_REQUEST
         );
       }
@@ -93,7 +93,7 @@ export const updateReminderSetting = async (
       return sendResponse(
         res,
         null,
-        "Nothing to update. Send offsetValue, offsetUnit, enabled or channels.",
+        req.t("reminder:nothingToUpdate"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -108,12 +108,12 @@ export const updateReminderSetting = async (
       return sendResponse(
         res,
         null,
-        "Reminder setting not found",
+        req.t("reminder:notFound"),
         STATUS_CODES.NOT_FOUND
       );
     }
 
-    return sendResponse(res, setting, "Reminder setting updated", STATUS_CODES.OK);
+    return sendResponse(res, setting, req.t("reminder:updated"), STATUS_CODES.OK);
   } catch (err) {
     next(err);
   }
