@@ -14,7 +14,7 @@ export const googleCallback: RequestHandler = async (req, res) => {
     const user = req.user as IUser;
 
     if (!user) {
-      res.status(401).json({ message: "Authentication failed" });
+      res.status(401).json({ message: req.t("user:social.authFailed") });
       return;
     }
 
@@ -38,7 +38,7 @@ export const googleCallback: RequestHandler = async (req, res) => {
     res.redirect(redirectUrl);
   } catch (error: any) {
     console.error("Google Callback Error:", error);
-    res.status(500).json({ message: "OAuth callback failed", error: error.message });
+    res.status(500).json({ message: req.t("user:social.oauthCallbackFailed"), error: error.message });
   }
 };
 
@@ -46,7 +46,7 @@ export const verifyToken: RequestHandler = (req, res) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader?.startsWith("Bearer ")) {
-    res.status(401).json({ message: "Missing or invalid token" });
+    res.status(401).json({ message: req.t("user:social.missingOrInvalidToken") });
     return;
   }
 
@@ -60,7 +60,7 @@ export const verifyToken: RequestHandler = (req, res) => {
     const payload = jwt.verify(token, JWT_SECRET);
     res.json({ ok: true, payload });
   } catch (err: any) {
-    res.status(401).json({ message: "Token expired or invalid", error: err.message });
+    res.status(401).json({ message: req.t("user:social.tokenExpiredOrInvalid"), error: err.message });
   }
 };
 
@@ -70,7 +70,7 @@ export const nextAuthGoogleLogin: RequestHandler = async (req, res) => {
     const { idToken } = req.body;
 
     if (!idToken) {
-      res.status(400).json({ message: "idToken is required" });
+      res.status(400).json({ message: req.t("user:social.idTokenRequired") });
       return;
     }
 
@@ -82,7 +82,7 @@ export const nextAuthGoogleLogin: RequestHandler = async (req, res) => {
 
     const googlePayload = ticket.getPayload();
     if (!googlePayload?.email) {
-      res.status(401).json({ message: "Invalid Google token" });
+      res.status(401).json({ message: req.t("user:social.invalidGoogleToken") });
       return;
     }
 
@@ -112,6 +112,6 @@ export const nextAuthGoogleLogin: RequestHandler = async (req, res) => {
     res.json({ data: { token } });
   } catch (error: any) {
     console.error("NextAuth Google Login Error:", error);
-    res.status(401).json({ message: "Google auth failed", error: error.message });
+    res.status(401).json({ message: req.t("user:social.googleAuthFailed"), error: error.message });
   }
 };

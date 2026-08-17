@@ -127,14 +127,14 @@ export const getZoneDetails = async (
     const locale = languageHeader?.toString() || null;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      sendResponse(res, null, "Invalid Zone ID", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("catalog:zone.invalidId"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     const zone = await Zone.findById(id).populate("subCategories").lean();
 
     if (!zone) {
-      sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:zone.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -172,7 +172,7 @@ export const getZoneDetails = async (
     sendResponse(
       res,
       zone,
-      "Zone details fetched successfully",
+      req.t("catalog:zone.detailsFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -207,7 +207,7 @@ export const createZone = async (
       sendResponse(
         res,
         null,
-        "Zone with this name already exists",
+        req.t("catalog:zone.nameExists"),
         STATUS_CODES.CONFLICT
       );
       return;
@@ -299,7 +299,7 @@ export const createZone = async (
     sendResponse(
       res,
       newZone,
-      "Zone created successfully",
+      req.t("catalog:zone.created"),
       STATUS_CODES.CREATED
     );
   } catch (error) {
@@ -426,14 +426,14 @@ export const updateZone = async (
   const zoneId = req.params.id;
 
   if (!mongoose.Types.ObjectId.isValid(zoneId)) {
-    sendResponse(res, null, "Invalid Zone ID", STATUS_CODES.BAD_REQUEST);
+    sendResponse(res, null, req.t("catalog:zone.invalidId"), STATUS_CODES.BAD_REQUEST);
     return;
   }
 
   try {
     const existingZone = await Zone.findById(zoneId);
     if (!existingZone) {
-      sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:zone.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -459,7 +459,7 @@ export const updateZone = async (
         sendResponse(
           res,
           null,
-          "Zone with this name already exists",
+          req.t("catalog:zone.nameExists"),
           STATUS_CODES.BAD_REQUEST
         );
         return;
@@ -562,7 +562,7 @@ export const updateZone = async (
     sendResponse(
       res,
       existingZone,
-      "Zone updated successfully",
+      req.t("catalog:zone.updated"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -579,14 +579,14 @@ export const deleteZone = async (
   const zoneId = req.params.id;
 
   if (!mongoose.Types.ObjectId.isValid(zoneId)) {
-    sendResponse(res, null, "Invalid Zone ID", STATUS_CODES.BAD_REQUEST);
+    sendResponse(res, null, req.t("catalog:zone.invalidId"), STATUS_CODES.BAD_REQUEST);
     return;
   }
 
   try {
     const zone = await Zone.findById(zoneId);
     if (!zone) {
-      sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:zone.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -604,7 +604,7 @@ export const deleteZone = async (
     sendResponse(
       res,
       null,
-      "Zone and related records deleted successfully",
+      req.t("catalog:zone.deleted"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -620,14 +620,14 @@ export const addSubCategoriesToZone = async (
   const zoneId = req.params.id;
 
   if (!mongoose.Types.ObjectId.isValid(zoneId)) {
-    sendResponse(res, null, "Invalid Zone ID", STATUS_CODES.BAD_REQUEST);
+    sendResponse(res, null, req.t("catalog:zone.invalidId"), STATUS_CODES.BAD_REQUEST);
     return;
   }
 
   try {
     const zone = await Zone.findById(zoneId);
     if (!zone) {
-      sendResponse(res, null, "Zone not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("catalog:zone.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -692,7 +692,7 @@ export const addSubCategoriesToZone = async (
     sendResponse(
       res,
       updatedZone,
-      "Subcategories updated successfully",
+      req.t("catalog:zone.subCategoriesUpdated"),
       STATUS_CODES.OK
     );
   } catch (error) {
