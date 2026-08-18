@@ -19,14 +19,14 @@ export const uploadUserDocuments = async (
   try {
     const userId = req.user?.id || req.user?._id;
     if (!userId) {
-      return sendResponse(res, null, "Unauthorized", STATUS_CODES.UNAUTHORIZED);
+      return sendResponse(res, null, req.t("common:unauthorized"), STATUS_CODES.UNAUTHORIZED);
     }
 
     const { expiryDate, name, fileUrl } = req.body;
     const file = req.file as Express.Multer.File; // ✅ single file, not array
 
     if (!name) {
-      return sendResponse(res, null, "Document name is required", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(res, null, req.t("user:document.nameRequired"), STATUS_CODES.BAD_REQUEST);
     }
 
     // ✅ Accept either an uploaded file OR a fileUrl from body
@@ -36,12 +36,12 @@ export const uploadUserDocuments = async (
     } else if (fileUrl && typeof fileUrl === "string") {
       newFileUrl = fileUrl;
     } else {
-      return sendResponse(res, null, "A file or URL must be provided", STATUS_CODES.BAD_REQUEST);
+      return sendResponse(res, null, req.t("user:document.fileOrUrlRequired"), STATUS_CODES.BAD_REQUEST);
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
     const existingDoc = user.documents.find((doc: any) => doc.name === name);
@@ -53,8 +53,8 @@ export const uploadUserDocuments = async (
           res,
           { document: name, status: existingDoc.status },
           existingDoc.status === "approved"
-            ? `Document "${name}" is already approved and cannot be re-uploaded`
-            : `Document "${name}" is already submitted and under review`,
+            ? req.t("user:document.alreadyApproved", { name })
+            : req.t("user:document.alreadySubmitted", { name }),
           STATUS_CODES.CONFLICT
         );
       }
@@ -76,7 +76,7 @@ export const uploadUserDocuments = async (
 
     await user.save();
 
-    return sendResponse(res, user, "Document uploaded successfully", STATUS_CODES.OK);
+    return sendResponse(res, user, req.t("user:document.uploaded"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -89,7 +89,7 @@ export const reviewUserDocument = async (
 ) => {
   try {
     if (req.user?.role !== "admin") {
-      sendResponse(res, null, "Forbidden: Admins only", STATUS_CODES.FORBIDDEN);
+      sendResponse(res, null, req.t("user:adminsOnly"), STATUS_CODES.FORBIDDEN);
       return;
     }
 
@@ -99,7 +99,7 @@ export const reviewUserDocument = async (
       sendResponse(
         res,
         null,
-        "Invalid status. Allowed: approved, rejected",
+        req.t("user:document.invalidStatus"),
         STATUS_CODES.BAD_REQUEST
       );
       return;
@@ -120,7 +120,7 @@ export const reviewUserDocument = async (
       sendResponse(
         res,
         null,
-        "User or document not found",
+        req.t("user:document.userOrDocNotFound"),
         STATUS_CODES.NOT_FOUND
       );
       return;
@@ -129,9 +129,9 @@ export const reviewUserDocument = async (
     sendResponse(
       res,
       user,
-      `Document ${
-        status === "approved" ? "approved" : "rejected"
-      } successfully`,
+      status === "approved"
+        ? req.t("user:document.approvedSuccessfully")
+        : req.t("user:document.rejectedSuccessfully"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -150,7 +150,7 @@ export const getAllUsers = async (
       return sendResponse(
         res,
         null,
-        "Forbidden: Admins only",
+        req.t("user:adminsOnly"),
         STATUS_CODES.FORBIDDEN
       );
     }
@@ -159,7 +159,7 @@ export const getAllUsers = async (
     return sendResponse(
       res,
       users,
-      "Users fetched successfully",
+      req.t("user:document.usersFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -178,13 +178,13 @@ export const getUserById = async (
 
     const user = await User.findById(id).select("-password");
     if (!user) {
-      return sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
     return sendResponse(
       res,
       user,
-      "User fetched successfully",
+      req.t("user:document.singleUserFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
