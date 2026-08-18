@@ -42,7 +42,7 @@ export const createUser = async (
       sendResponse(
         res,
         { email },
-        "User already exists",
+        req.t("user:alreadyExists"),
         STATUS_CODES.CONFLICT
       );
       return;
@@ -85,7 +85,7 @@ export const createUser = async (
     sendResponse(
       res,
       { user: userWithoutPassword },
-      "User created successfully",
+      req.t("user:created"),
       STATUS_CODES.CREATED
     );
   } catch (error) {
@@ -112,7 +112,7 @@ export const loginUser = async (
         .lean();
 
       if (!employee) {
-        sendResponse(res, null, "Employee not found", STATUS_CODES.NOT_FOUND);
+        sendResponse(res, null, req.t("user:employeeNotFound"), STATUS_CODES.NOT_FOUND);
         return;
       }
 
@@ -120,7 +120,7 @@ export const loginUser = async (
         sendResponse(
           res,
           { code: "EMPLOYEE_BLOCKED" },
-          "Your account has been blocked. Please contact support.",
+          req.t("user:auth.blocked"),
           STATUS_CODES.FORBIDDEN
         );
         return;
@@ -130,7 +130,7 @@ export const loginUser = async (
         sendResponse(
           res,
           null,
-          "Invalid email or password",
+          req.t("user:auth.invalidCredentials"),
           STATUS_CODES.UNAUTHORIZED
         );
         return;
@@ -144,7 +144,7 @@ export const loginUser = async (
       sendResponse(
         res,
         { token: accessToken, user: employee },
-        "Login successful (staff)",
+        req.t("user:auth.loginSuccessStaff"),
         STATUS_CODES.OK
       );
       return;
@@ -153,7 +153,7 @@ export const loginUser = async (
     // USER / ADMIN login
     const user = await User.findOne({ email, role });
     if (!user) {
-      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -161,7 +161,7 @@ export const loginUser = async (
       sendResponse(
         res,
         { code: "USER_BLOCKED" },
-        "Your account has been blocked. Please contact support.",
+        req.t("user:auth.blocked"),
         STATUS_CODES.FORBIDDEN
       );
       return;
@@ -173,7 +173,7 @@ export const loginUser = async (
       sendResponse(
         res,
         null,
-        "Invalid email or password",
+        req.t("user:auth.invalidCredentials"),
         STATUS_CODES.UNAUTHORIZED
       );
       return;
@@ -189,7 +189,7 @@ export const loginUser = async (
         sendResponse(
           res,
           null,
-          "The Leaser experience is only available in our mobile app. Please use the app to manage your account.",
+          req.t("user:auth.leaserAppOnly"),
           STATUS_CODES.FORBIDDEN
         );
         return
@@ -227,7 +227,7 @@ export const loginUser = async (
           require2FA: true,
           tempToken,
           email: user.email,
-          message: "Enter the 6-digit 2FA code or backup code",
+          message: req.t("user:auth.twoFactorRequired"),
         },
         "2FA required",
         206
@@ -245,7 +245,7 @@ export const loginUser = async (
     sendResponse(
       res,
       { token: accessToken, user },
-      "Login successful",
+      req.t("user:auth.loginSuccess"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -263,7 +263,7 @@ export const refreshToken = async (
     sendResponse(
       res,
       null,
-      "Unauthorized: Invalid or expired refresh token",
+      req.t("user:auth.invalidRefreshToken"),
       STATUS_CODES.UNAUTHORIZED
     );
     return;
@@ -275,7 +275,7 @@ export const refreshToken = async (
     sendResponse(
       res,
       null,
-      "Session expired. Please log in again.",
+      req.t("user:auth.sessionExpired"),
       STATUS_CODES.UNAUTHORIZED
     );
     return;
@@ -289,7 +289,7 @@ export const refreshToken = async (
   sendResponse(
     res,
     { accessToken: newAccessToken },
-    "Token refreshed successfully",
+    req.t("user:auth.tokenRefreshed"),
     STATUS_CODES.OK
   );
 };
@@ -302,7 +302,7 @@ export const logout = async (
   const { refreshToken } = req.body;
   refreshTokens.delete(refreshToken);
 
-  sendResponse(res, null, "Logged out successfully", STATUS_CODES.OK);
+  sendResponse(res, null, req.t("user:auth.loggedOut"), STATUS_CODES.OK);
 };
 
 // Save FCM token
@@ -319,7 +319,7 @@ export const saveFcmToken = async (
       return sendResponse(
         res,
         null,
-        "Unauthorized: User not logged in",
+        req.t("user:auth.notLoggedIn"),
         STATUS_CODES.UNAUTHORIZED
       );
     }
@@ -328,7 +328,7 @@ export const saveFcmToken = async (
       return sendResponse(
         res,
         null,
-        "FCM token is required",
+        req.t("user:fcm.required"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -340,13 +340,13 @@ export const saveFcmToken = async (
     ).select("-password");
 
     if (!user) {
-      return sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      return sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
     }
 
     sendResponse(
       res,
       { user },
-      "FCM token saved successfully",
+      req.t("user:fcm.saved"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -372,7 +372,7 @@ export const getUserDetails = async (
     const role = req.user?.role;
 
     if (!userId || !role) {
-      sendResponse(res, null, "User not authenticated", STATUS_CODES.UNAUTHORIZED);
+      sendResponse(res, null, req.t("user:notAuthenticated"), STATUS_CODES.UNAUTHORIZED);
       return;
     }
 
@@ -408,16 +408,16 @@ export const getUserDetails = async (
         }
       }
     } else {
-      sendResponse(res, null, "Invalid role", STATUS_CODES.UNAUTHORIZED);
+      sendResponse(res, null, req.t("user:invalidRole"), STATUS_CODES.UNAUTHORIZED);
       return;
     }
 
     if (!user) {
-      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    sendResponse(res, { user }, "User details fetched successfully", STATUS_CODES.OK);
+    sendResponse(res, { user }, req.t("user:detailsFetched"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -433,7 +433,7 @@ export const resendOtp = async (
     const user = await User.findOne({ email });
 
     if (!user) {
-      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -460,7 +460,7 @@ export const resendOtp = async (
       `,
     });
 
-    sendResponse(res, null, "OTP resent successfully", STATUS_CODES.OK);
+    sendResponse(res, null, req.t("user:otp.resent"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -483,7 +483,7 @@ export const verifyOtp = async (
       sendResponse(
         res,
         null,
-        "Invalid or expired OTP",
+        req.t("user:otp.invalidOrExpired"),
         STATUS_CODES.BAD_REQUEST
       );
       return;
@@ -502,7 +502,7 @@ export const verifyOtp = async (
         token: accessToken,
         userId: user._id,
       },
-      "OTP verified successfully",
+      req.t("user:otp.verified"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -523,7 +523,7 @@ export const forgotPassword = async (
       email: { $regex: `^${email}$`, $options: "i" },
     });
     if (!user) {
-      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -559,7 +559,7 @@ export const forgotPassword = async (
         email: user.email,
         otpExpiry: user.otp.expiry,
       },
-      "OTP sent to your email",
+      req.t("user:otp.sent"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -577,13 +577,13 @@ export const resetPassword = async (
     const user = await User.findOne({ email });
 
     if (!user) {
-      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
     // Ensure OTP was verified
     if (!user.otp.isVerified) {
-      sendResponse(res, null, "OTP not verified", STATUS_CODES.FORBIDDEN);
+      sendResponse(res, null, req.t("user:otp.notVerified"), STATUS_CODES.FORBIDDEN);
       return;
     }
 
@@ -600,7 +600,7 @@ export const resetPassword = async (
 
     await user.save();
 
-    sendResponse(res, null, "Password reset successfully", STATUS_CODES.OK);
+    sendResponse(res, null, req.t("user:password.reset"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -619,7 +619,7 @@ export const changePassword = async (
       sendResponse(
         res,
         null,
-        "User not authenticated",
+        req.t("user:notAuthenticated"),
         STATUS_CODES.UNAUTHORIZED
       );
       return;
@@ -628,7 +628,7 @@ export const changePassword = async (
     const user = await User.findById(userId);
 
     if (!user) {
-      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -638,7 +638,7 @@ export const changePassword = async (
       sendResponse(
         res,
         null,
-        "Old password is incorrect",
+        req.t("user:password.oldIncorrect"),
         STATUS_CODES.BAD_REQUEST
       );
       return;
@@ -649,7 +649,7 @@ export const changePassword = async (
       sendResponse(
         res,
         null,
-        "New password must be different from old password",
+        req.t("user:password.sameAsOld"),
         STATUS_CODES.BAD_REQUEST
       );
       return;
@@ -668,7 +668,7 @@ export const changePassword = async (
 
     await user.save();
 
-    sendResponse(res, null, "Password updated successfully", STATUS_CODES.OK);
+    sendResponse(res, null, req.t("user:password.updated"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -784,7 +784,7 @@ export const getAllUsersWithStats = async (
           totalBlockedUsers,
         },
       },
-      "Users and statistics fetched successfully",
+      req.t("user:listFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -801,7 +801,7 @@ export const updateUserProfile = async (
   try {
     const userId = req.user?.id;
     if (!userId) {
-      sendResponse(res, null, "User not authenticated", STATUS_CODES.UNAUTHORIZED);
+      sendResponse(res, null, req.t("user:notAuthenticated"), STATUS_CODES.UNAUTHORIZED);
       return;
     }
 
@@ -811,7 +811,7 @@ export const updateUserProfile = async (
     const user = await User.findById(userId);
 
     if (!user) {
-      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -901,7 +901,7 @@ export const updateUserProfile = async (
     const updatedUser = await user.save();
     const { password, ...userWithoutPassword } = updatedUser.toObject();
 
-    sendResponse(res, userWithoutPassword, "Profile updated successfully", STATUS_CODES.OK);
+    sendResponse(res, userWithoutPassword, req.t("user:profile.updated"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -954,7 +954,7 @@ export const getDashboardStats = async (
     } else if (filter === "year") {
       filterDate = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
     } else if (filter) {
-      sendResponse(res, null, "Invalid filter. Use 'week', 'month', or 'year'.", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("user:invalidFilter"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -1030,7 +1030,7 @@ export const getDashboardStats = async (
           }
           : null,
       },
-      "Stats fetched successfully",
+      req.t("user:statsFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -1063,7 +1063,7 @@ export const getDashboardStats = async (
 //     } else if (filter === "year") {
 //       filterDate = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
 //     } else if (filter) {
-//       sendResponse(res, null, "Invalid filter. Use 'week', 'month', or 'year'.", STATUS_CODES.BAD_REQUEST);
+//       sendResponse(res, null, req.t("user:invalidFilter"), STATUS_CODES.BAD_REQUEST);
 //       return;
 //     }
 
@@ -1208,7 +1208,7 @@ export const getDashboardStats = async (
 //         users: { change: userTrend, record: userRecords },
 //         earnings: { change: earningTrend, record: earningRecords }
 //       }
-//     }, "Stats fetched successfully", STATUS_CODES.OK);
+//     }, req.t("user:statsFetched"), STATUS_CODES.OK);
 
 //   } catch (error) {
 //     next(error);
@@ -1224,7 +1224,7 @@ export const updateUserStatus = async (
 ): Promise<void> => {
   try {
     if (typeof req.user?.role === "string" && req.user.role !== "admin") {
-      sendResponse(res, null, "Forbidden: Admins only", STATUS_CODES.FORBIDDEN);
+      sendResponse(res, null, req.t("user:adminsOnly"), STATUS_CODES.FORBIDDEN);
       return;
     }
 
@@ -1233,13 +1233,13 @@ export const updateUserStatus = async (
 
     const allowedStatuses = ["active", "inactive", "blocked", "unblocked"];
     if (!allowedStatuses.includes(status)) {
-      sendResponse(res, null, "Invalid status value", STATUS_CODES.BAD_REQUEST);
+      sendResponse(res, null, req.t("user:invalidStatus"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
@@ -1249,7 +1249,7 @@ export const updateUserStatus = async (
     sendResponse(
       res,
       user,
-      "User status updated successfully",
+      req.t("user:statusUpdated"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -1266,7 +1266,7 @@ export const deleteUser = async (
   try {
     // Only admin can delete users
     if (typeof req.user?.role === "string" && req.user.role !== "admin") {
-      sendResponse(res, null, "Forbidden: Admins only", STATUS_CODES.FORBIDDEN);
+      sendResponse(res, null, req.t("user:adminsOnly"), STATUS_CODES.FORBIDDEN);
       return;
     }
 
@@ -1275,11 +1275,11 @@ export const deleteUser = async (
     const user = await User.findByIdAndDelete(userId);
 
     if (!user) {
-      sendResponse(res, null, "User not found", STATUS_CODES.NOT_FOUND);
+      sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    sendResponse(res, null, "User deleted successfully", STATUS_CODES.OK);
+    sendResponse(res, null, req.t("user:deleted"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -1297,14 +1297,14 @@ export const removeUserDocument = async (req: AuthRequest, res: Response, next: 
 
     const user = await User.findById(userId);
     if (!user) {
-      res.status(404).json({ success: false, message: "User not found" });
+      res.status(404).json({ success: false, message: req.t("user:notFound") });
       return;
     }
 
     const doc = user.documents.find((d) => d.name === fileUrl);
 
     if (!doc) {
-      res.status(404).json({ success: false, message: "Document not found" });
+      res.status(404).json({ success: false, message: req.t("user:document.notFound") });
       return;
     }
 
@@ -1315,7 +1315,7 @@ export const removeUserDocument = async (req: AuthRequest, res: Response, next: 
 
     res.status(200).json({
       success: true,
-      message: "Document removed successfully",
+      message: req.t("user:document.removed"),
     });
   } catch (error) {
     next(error);
@@ -1330,7 +1330,7 @@ export const getUserDocuments = async (
   try {
     const docs = await Dropdown.findOne({ name: "userDocuments" }).lean();
     const values = docs?.values ?? [];
-    sendResponse(res, values, "User documents fetched", STATUS_CODES.OK);
+    sendResponse(res, values, req.t("user:document.userFetched"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -1344,7 +1344,7 @@ export const getListingDocuments = async (
   try {
     const docs = await Dropdown.findOne({ name: "listingDocuments" }).lean();
     const values = docs?.values ?? [];
-    sendResponse(res, values, "Listing documents fetched", STATUS_CODES.OK);
+    sendResponse(res, values, req.t("user:document.listingFetched"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }
@@ -1378,7 +1378,7 @@ export const googleLogin = async (
       sendResponse(
         res,
         null,
-        "Missing Firebase ID token",
+        req.t("user:social.missingFirebaseToken"),
         STATUS_CODES.BAD_REQUEST
       );
       return;
@@ -1393,7 +1393,7 @@ export const googleLogin = async (
       sendResponse(
         res,
         null,
-        "Email not found in Firebase token",
+        req.t("user:social.emailNotInFirebaseToken"),
         STATUS_CODES.BAD_REQUEST
       );
       return;
@@ -1457,7 +1457,7 @@ export const googleLogin = async (
           platform: platform || "mobile",
         },
       },
-      "Firebase Google login successful",
+      req.t("user:social.googleLoginSuccess"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -1507,7 +1507,7 @@ export const appleLogin = async (
       sendResponse(
         res,
         null,
-        "Missing Apple ID token",
+        req.t("user:social.missingAppleToken"),
         STATUS_CODES.BAD_REQUEST
       );
       return;
@@ -1522,7 +1522,7 @@ export const appleLogin = async (
       sendResponse(
         res,
         null,
-        "Invalid Apple token header",
+        req.t("user:social.invalidAppleHeader"),
         STATUS_CODES.UNAUTHORIZED
       );
       return;
@@ -1542,12 +1542,12 @@ export const appleLogin = async (
 
     // Validate issuer & audience
     if (applePayload.iss !== "https://appleid.apple.com") {
-      sendResponse(res, null, "Invalid issuer", STATUS_CODES.UNAUTHORIZED);
+      sendResponse(res, null, req.t("user:social.invalidIssuer"), STATUS_CODES.UNAUTHORIZED);
       return;
     }
 
     if (!ALLOWED_APPLE_AUDIENCES.has(applePayload.aud)) {
-      sendResponse(res, null, "Invalid audience", STATUS_CODES.UNAUTHORIZED);
+      sendResponse(res, null, req.t("user:social.invalidAudience"), STATUS_CODES.UNAUTHORIZED);
       return;
     }
 
@@ -1559,7 +1559,7 @@ export const appleLogin = async (
       sendResponse(
         res,
         null,
-        "Email not found in Apple token",
+        req.t("user:social.emailNotInAppleToken"),
         STATUS_CODES.BAD_REQUEST
       );
       return;
@@ -1622,7 +1622,7 @@ export const appleLogin = async (
           platform: platform || "ios",
         },
       },
-      "Apple login successful",
+      req.t("user:social.appleLoginSuccess"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -1788,19 +1788,19 @@ export const getWallet = async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Server error", error });
+    res.status(500).json({ message: req.t("common:serverError"), error });
   }
 };
 
-export const addToWallet = async (_req: AuthRequest, res: Response) => {
+export const addToWallet = async (req: AuthRequest, res: Response) => {
   return res.status(410).json({
-    message: "Wallet top-up is no longer supported. Booking payments are processed by Stripe.",
+    message: req.t("user:wallet.topUpUnsupported"),
   });
 };
 
-export const deductFromWallet = async (_req: AuthRequest, res: Response) => {
+export const deductFromWallet = async (req: AuthRequest, res: Response) => {
   return res.status(410).json({
-    message: "Wallet deductions are no longer supported. Booking payments are processed by Stripe.",
+    message: req.t("user:wallet.deductionUnsupported"),
   });
 };
 // Add bank account to user profile
@@ -1809,13 +1809,13 @@ export const addBankAccount = async (req: AuthRequest, res: Response) => {
     const userId = req.user?.id;
 
     if (!userId) {
-      return sendResponse(res, null, "Unauthorized user", 401);
+      return sendResponse(res, null, req.t("user:unauthorized"), 401);
     }
 
     const { bankName, accountName, accountNumber, ibanNumber } = req.body;
 
     if (!bankName || !accountName || !accountNumber || !ibanNumber) {
-      return sendResponse(res, null, "All fields are required", 400);
+      return sendResponse(res, null, req.t("user:allFieldsRequired"), 400);
     }
 
     const updatedUser = await User.findByIdAndUpdate(
@@ -1836,11 +1836,11 @@ export const addBankAccount = async (req: AuthRequest, res: Response) => {
     return sendResponse(
       res,
       { user: updatedUser },
-      "Bank account added successfully",
+      req.t("user:bank.added"),
       201
     );
   } catch (error) {
-    return sendResponse(res, null, "Server error", 500);
+    return sendResponse(res, null, req.t("common:serverError"), 500);
   }
 };
 
@@ -1853,7 +1853,7 @@ export const getBankAccounts = async (req: AuthRequest, res: Response) => {
       .lean();
 
     if (!user) {
-      return sendResponse(res, null, "User not found", 404);
+      return sendResponse(res, null, req.t("user:notFound"), 404);
     }
 
     return sendResponse(
@@ -1866,12 +1866,12 @@ export const getBankAccounts = async (req: AuthRequest, res: Response) => {
         },
         bankAccounts: user.bankAccounts || [],
       },
-      "Bank accounts fetched successfully",
+      req.t("user:bank.fetched"),
       200
     );
   } catch (err) {
     console.error(err);
-    sendResponse(res, null, "Server error", 500);
+    sendResponse(res, null, req.t("common:serverError"), 500);
   }
 };
 
@@ -1886,7 +1886,7 @@ export const updateBankAccount = async (req: AuthRequest, res: Response) => {
       return sendResponse(
         res,
         null,
-        "Unauthorized user",
+        req.t("user:unauthorized"),
         STATUS_CODES.UNAUTHORIZED
       );
     }
@@ -1895,7 +1895,7 @@ export const updateBankAccount = async (req: AuthRequest, res: Response) => {
       return sendResponse(
         res,
         null,
-        "All fields are required",
+        req.t("user:allFieldsRequired"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -1918,7 +1918,7 @@ export const updateBankAccount = async (req: AuthRequest, res: Response) => {
       return sendResponse(
         res,
         null,
-        "Bank account not found",
+        req.t("user:bank.notFound"),
         STATUS_CODES.NOT_FOUND
       );
     }
@@ -1926,7 +1926,7 @@ export const updateBankAccount = async (req: AuthRequest, res: Response) => {
     return sendResponse(
       res,
       { user: updatedUser },
-      "Bank account updated successfully",
+      req.t("user:bank.updated"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -1934,7 +1934,7 @@ export const updateBankAccount = async (req: AuthRequest, res: Response) => {
     return sendResponse(
       res,
       null,
-      "Server error",
+      req.t("common:serverError"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -1950,7 +1950,7 @@ export const deleteBankAccount = async (req: AuthRequest, res: Response) => {
       return sendResponse(
         res,
         null,
-        "Unauthorized user",
+        req.t("user:unauthorized"),
         STATUS_CODES.UNAUTHORIZED
       );
     }
@@ -1965,7 +1965,7 @@ export const deleteBankAccount = async (req: AuthRequest, res: Response) => {
       return sendResponse(
         res,
         null,
-        "Bank account not found",
+        req.t("user:bank.notFound"),
         STATUS_CODES.NOT_FOUND
       );
     }
@@ -1973,7 +1973,7 @@ export const deleteBankAccount = async (req: AuthRequest, res: Response) => {
     return sendResponse(
       res,
       { user: updatedUser },
-      "Bank account deleted successfully",
+      req.t("user:bank.deleted"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -1981,7 +1981,7 @@ export const deleteBankAccount = async (req: AuthRequest, res: Response) => {
     return sendResponse(
       res,
       null,
-      "Server error",
+      req.t("common:serverError"),
       STATUS_CODES.INTERNAL_SERVER_ERROR
     );
   }
@@ -1991,7 +1991,7 @@ export const instantWithdrawal = async (req: any, res: Response) => {
   return sendResponse(
     res,
     null,
-    "Wallet withdrawal requests are no longer supported. Use Stripe payout withdrawal.",
+    req.t("user:wallet.withdrawalUnsupported"),
     410
   );
 };
@@ -2011,12 +2011,12 @@ export const getUserWithdrawals = async (req: any, res: Response) => {
     return sendResponse(
       res,
       { withdrawals },
-      "Your withdrawal history fetched",
+      req.t("user:withdrawal.historyFetched"),
       200
     );
   } catch (err) {
     console.error(err);
-    return sendResponse(res, null, "Server error", 500);
+    return sendResponse(res, null, req.t("common:serverError"), 500);
   }
 };
 
@@ -2028,7 +2028,7 @@ export const getWalletHistoryByRange = async (req: any, res: Response) => {
     const validRanges: RangeType[] = ["week", "month", "year"]; //Ranges
 
     if (!range || !validRanges.includes(range as RangeType)) {
-      return sendResponse(res, null, "Invalid range", 400);
+      return sendResponse(res, null, req.t("user:invalidRange"), 400);
     }
 
     const { startDate, endDate } = getDateRange(range as RangeType);
@@ -2068,12 +2068,12 @@ export const getWalletHistoryByRange = async (req: any, res: Response) => {
     return sendResponse(
       res,
       { graph },
-      `History from ${startDate.toDateString()} to ${endDate.toDateString()}`,
+      req.t("user:withdrawal.historyRange", { from: startDate.toDateString(), to: endDate.toDateString() }),
       200
     );
   } catch (err) {
     console.error(err);
-    return sendResponse(res, null, "Server error", 500);
+    return sendResponse(res, null, req.t("common:serverError"), 500);
   }
 };
 
@@ -2087,12 +2087,12 @@ export const getAllWithdrawals = async (req: any, res: Response) => {
     return sendResponse(
       res,
       { withdrawals },
-      "All withdrawal requests fetched",
+      req.t("user:withdrawal.allFetched"),
       200
     );
   } catch (err) {
     console.error(err);
-    return sendResponse(res, null, "Server error", 500);
+    return sendResponse(res, null, req.t("common:serverError"), 500);
   }
 };
 
@@ -2104,15 +2104,15 @@ export const processWithdrawal = async (req: any, res: Response) => {
 
     const withdrawRequest = await WithdrawRequest.findById(requestId);
     if (!withdrawRequest)
-      return sendResponse(res, null, "Request not found", 404);
+      return sendResponse(res, null, req.t("user:withdrawal.requestNotFound"), 404);
     if (withdrawRequest.status !== "pending")
-      return sendResponse(res, null, "Request already processed", 400);
+      return sendResponse(res, null, req.t("user:withdrawal.alreadyProcessed"), 400);
 
     if (action === "approve") {
       return sendResponse(
         res,
         null,
-        "Manual wallet withdrawal approval is no longer supported. Use Stripe payout withdrawal.",
+        req.t("user:wallet.manualApprovalUnsupported"),
         410
       );
     } else if (action === "reject") {
@@ -2121,13 +2121,13 @@ export const processWithdrawal = async (req: any, res: Response) => {
       withdrawRequest.processedAt = new Date();
       await withdrawRequest.save();
 
-      return sendResponse(res, { withdrawRequest }, "Withdrawal rejected", 200);
+      return sendResponse(res, { withdrawRequest }, req.t("user:withdrawal.rejected"), 200);
     } else {
-      return sendResponse(res, null, "Invalid action", 400);
+      return sendResponse(res, null, req.t("user:withdrawal.invalidAction"), 400);
     }
   } catch (err) {
     console.error(err);
-    return sendResponse(res, null, "Server error", 500);
+    return sendResponse(res, null, req.t("common:serverError"), 500);
   }
 };
 
