@@ -16,19 +16,19 @@ import { sendEmail } from "../helpers/node-mailer";
 export const enable2FA_Flag = async (req: any, res: Response) => {
   try {
     const userId = req.user?.id;
-    if (!userId) return sendResponse(res, null, "Unauthorized", 401);
+    if (!userId) return sendResponse(res, null, req.t("common:unauthorized"), 401);
 
     const user = await User.findById(userId);
-    if (!user) return sendResponse(res, null, "User not found", 404);
+    if (!user) return sendResponse(res, null, req.t("user:notFound"), 404);
 
     // Do NOT enable fully yet; user must verify first
     user.twoFactor.enabled = false;  
     user.twoFactorVerified = false;     
     await user.save();
 
-    sendResponse(res, { twoFactor: user.twoFactor }, "2FA flag enabled. Please complete setup.", 200);
+    sendResponse(res, { twoFactor: user.twoFactor }, req.t("twofa:flagEnabled"), 200);
   } catch (err) {
-    sendResponse(res, null, "Server error", 500);
+    sendResponse(res, null, req.t("common:serverError"), 500);
   }
 };
 
@@ -38,7 +38,7 @@ export const enable2FA_Start = async (req: any, res: Response) => {
     const userId = req.user?.id;
 
     const user = await User.findById(userId);
-    if (!user) return sendResponse(res, null, "User not found", 404);
+    if (!user) return sendResponse(res, null, req.t("user:notFound"), 404);
 
     // 1) Generate temp secret
     const secret = await generateTempSecret(user.name, user.email);
@@ -68,11 +68,11 @@ export const enable2FA_Start = async (req: any, res: Response) => {
     sendResponse(
       res,
       { requireVerification: true },
-      "2FA setup started. Verification code sent to email.",
+      req.t("twofa:setupStarted"),
       200
     );
   } catch (err) {
-    sendResponse(res, null, "Server error", 500);
+    sendResponse(res, null, req.t("common:serverError"), 500);
   }
 };
 
@@ -83,19 +83,19 @@ export const verify2FA = async (req: any, res: Response) => {
     const userId = req.user?.id;
 
     if (!token) {
-      return sendResponse(res, null, "2FA code is required", 400);
+      return sendResponse(res, null, req.t("twofa:codeRequired"), 400);
     }
 
     const user = await User.findById(userId);
-    if (!user) return sendResponse(res, null, "User not found", 404);
+    if (!user) return sendResponse(res, null, req.t("user:notFound"), 404);
 
     // ------------------ LOGIN VERIFICATION ------------------
     if (user.twoFactor.loginCode && user.twoFactor.loginExpiry) {
       if (user.twoFactor.loginExpiry < new Date())
-        return sendResponse(res, null, "2FA login code expired", 400);
+        return sendResponse(res, null, req.t("twofa:loginCodeExpired"), 400);
 
       if (user.twoFactor.loginCode !== token)
-        return sendResponse(res, null, "Invalid 2FA login code", 400);
+        return sendResponse(res, null, req.t("twofa:invalidLoginCode"), 400);
 
       // Clear loginCode
       user.twoFactor.loginCode = null;
@@ -112,7 +112,7 @@ export const verify2FA = async (req: any, res: Response) => {
       return sendResponse(
         res,
         { token: accessToken, user },
-        "Login successful",
+        req.t("user:auth.loginSuccess"),
         200
       );
     }
@@ -122,10 +122,10 @@ export const verify2FA = async (req: any, res: Response) => {
       const temp = user.twoFactor.tempOTP;
 
       if (temp.expiresAt < new Date())
-        return sendResponse(res, null, "Verification code expired", 400);
+        return sendResponse(res, null, req.t("twofa:verificationCodeExpired"), 400);
 
       if (temp.code !== token)
-        return sendResponse(res, null, "Invalid verification code", 400);
+        return sendResponse(res, null, req.t("twofa:invalidVerificationCode"), 400);
 
       // --- ACTIVATE 2FA AFTER SUCCESSFUL VERIFICATION ---
       const secret = decrypt(user.twoFactor.tempSecret);
@@ -150,7 +150,7 @@ export const verify2FA = async (req: any, res: Response) => {
       return sendResponse(
         res,
         { token: accessToken, backupCodes, user },
-        "2FA setup verified successfully",
+        req.t("twofa:setupVerified"),
         200
       );
     }
@@ -158,12 +158,12 @@ export const verify2FA = async (req: any, res: Response) => {
     return sendResponse(
       res,
       null,
-      "No 2FA process in progress (neither setup nor login)",
+      req.t("twofa:noProcessInProgress"),
       400
     );
 
   } catch (err) {
-    sendResponse(res, null, "Server error", 500);
+    sendResponse(res, null, req.t("common:serverError"), 500);
   }
 };
 
@@ -171,7 +171,7 @@ export const verify2FA = async (req: any, res: Response) => {
 export const disable2FA = async (req: any, res: Response) => {
   try {
     const user = await User.findById(req.user.id);
-    if (!user) return sendResponse(res, null, "User not found", 404);
+    if (!user) return sendResponse(res, null, req.t("user:notFound"), 404);
 
     user.twoFactor.enabled = false;
     user.twoFactor.secret = "";
@@ -182,8 +182,8 @@ export const disable2FA = async (req: any, res: Response) => {
 
     await user.save();
 
-    sendResponse(res, null, "2FA disabled", 200);
+    sendResponse(res, null, req.t("twofa:disabled"), 200);
   } catch (err) {
-    sendResponse(res, null, "Server error", 500);
+    sendResponse(res, null, req.t("common:serverError"), 500);
   }
 };
