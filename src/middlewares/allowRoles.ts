@@ -15,7 +15,7 @@ export const allowRoles = (roles: string | string[]) => {
         sendResponse(
           res,
           null,
-          "Unauthorized: User not authenticated",
+          req.t("access:notAuthenticated"),
           STATUS_CODES.UNAUTHORIZED
         );
         return;
@@ -33,7 +33,7 @@ export const allowRoles = (roles: string | string[]) => {
         sendResponse(
           res,
           null,
-          `Forbidden: Role '${req.user.role}' is not allowed`,
+          req.t("access:roleNotAllowed", { role: req.user.role }),
           STATUS_CODES.FORBIDDEN
         );
         return;
@@ -45,7 +45,7 @@ export const allowRoles = (roles: string | string[]) => {
       sendResponse(
         res,
         null,
-        "Server error",
+        req.t("common:serverError"),
         STATUS_CODES.INTERNAL_SERVER_ERROR
       );
     }
