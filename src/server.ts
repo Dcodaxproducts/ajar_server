@@ -11,13 +11,15 @@ import { initSocket } from "./socket";
 import { startNotificationWorker } from "./workers/notification.worker";
 import { startEmailWorker } from "./workers/email.worker";
 import { seedReminderSettings } from "./queues/reminders";
+import { initI18n } from "./config/i18n";
 
 const PORT = config.PORT || 5001;
 let notificationWorker: ReturnType<typeof startNotificationWorker> | null = null;   // 👈 YE line
 let emailWorker: ReturnType<typeof startEmailWorker> | null = null;
 
 
-connectDB().then(() => {
+// Translations must be loaded before the first request reaches a handler
+Promise.all([connectDB(), initI18n()]).then(() => {
   startListingDocumentExpiryCron();
   startUserDocumentExpiryCron();
   startSecurityDepositReleaseCron();
