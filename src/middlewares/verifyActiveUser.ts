@@ -16,7 +16,7 @@ export const verifyActiveUser: RequestHandler = async (req: any, res, next) => {
 
       if (user?.status === "blocked") {
         res.status(403).json({
-          message: "Your account has been blocked.",
+          message: req.t("access:accountBlocked"),
           code: "USER_BLOCKED",
         });
         return;
@@ -27,7 +27,7 @@ export const verifyActiveUser: RequestHandler = async (req: any, res, next) => {
 
       if (user?.status === "blocked") {
         res.status(403).json({
-          message: "Your account has been blocked.",
+          message: req.t("access:accountBlocked"),
           code: "EMPLOYEE_BLOCKED",
         });
         return;
