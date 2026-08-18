@@ -17,7 +17,7 @@ export const createUserForm = async (req: Request, res: Response) => {
       return sendResponse(
         res,
         null,
-        "zone, subCategory and fields are required",
+        req.t("catalog:userForm.requiredFields"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -28,7 +28,7 @@ export const createUserForm = async (req: Request, res: Response) => {
       return sendResponse(
         res,
         null,
-        "Invalid zone ID",
+        req.t("catalog:userForm.invalidZoneId"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -42,7 +42,7 @@ export const createUserForm = async (req: Request, res: Response) => {
       return sendResponse(
         res,
         null,
-        "Invalid subCategory ID",
+        req.t("catalog:userForm.invalidSubCategoryId"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -53,7 +53,7 @@ export const createUserForm = async (req: Request, res: Response) => {
       return sendResponse(
         res,
         null,
-        "One or more fieldIds are invalid",
+        req.t("catalog:userForm.invalidFieldIds"),
         STATUS_CODES.BAD_REQUEST
       );
     }
@@ -67,7 +67,7 @@ export const createUserForm = async (req: Request, res: Response) => {
     return sendResponse(
       res,
       newUserForm,
-      "UserForm created successfully",
+      req.t("catalog:userForm.created"),
       STATUS_CODES.CREATED
     );
   } catch (error: any) {
@@ -103,7 +103,7 @@ export const getUserForms = async (req: Request, res: Response) => {
     return sendResponse(
       res,
       userForms,
-      "UserForms fetched successfully",
+      req.t("catalog:userForm.listFetched"),
       STATUS_CODES.OK
     );
   } catch (error: any) {
@@ -126,14 +126,14 @@ export const getUserFormById = async (req: Request, res: Response) => {
       return sendResponse(
         res,
         null,
-        "UserForm not found",
+        req.t("catalog:userForm.notFound"),
         STATUS_CODES.NOT_FOUND
       );
     }
     return sendResponse(
       res,
       userForm,
-      "UserForm fetched successfully",
+      req.t("catalog:userForm.fetched"),
       STATUS_CODES.OK
     );
   } catch (error: any) {
@@ -157,7 +157,7 @@ export const updateUserForm = async (req: Request, res: Response) => {
         return sendResponse(
           res,
           null,
-          "One or more fieldIds are invalid",
+          req.t("catalog:userForm.invalidFieldIds"),
           STATUS_CODES.BAD_REQUEST
         );
       }
@@ -173,7 +173,7 @@ export const updateUserForm = async (req: Request, res: Response) => {
       return sendResponse(
         res,
         null,
-        "UserForm not found",
+        req.t("catalog:userForm.notFound"),
         STATUS_CODES.NOT_FOUND
       );
     }
@@ -181,7 +181,7 @@ export const updateUserForm = async (req: Request, res: Response) => {
     return sendResponse(
       res,
       updatedUserForm,
-      "UserForm updated successfully",
+      req.t("catalog:userForm.updated"),
       STATUS_CODES.OK
     );
   } catch (error: any) {
@@ -202,14 +202,14 @@ export const deleteUserForm = async (req: Request, res: Response) => {
       return sendResponse(
         res,
         null,
-        "UserForm not found",
+        req.t("catalog:userForm.notFound"),
         STATUS_CODES.NOT_FOUND
       );
     }
     return sendResponse(
       res,
       deletedUserForm,
-      "UserForm deleted successfully",
+      req.t("catalog:userForm.deleted"),
       STATUS_CODES.OK
     );
   } catch (error: any) {
