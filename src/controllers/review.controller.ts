@@ -18,14 +18,14 @@ export const createReview = asyncHandler(
     const userId = req.user?.id;
 
     if (!bookingId) {
-      res.status(400).json({ message: "bookingId is required" });
+      res.status(400).json({ message: req.t("review:bookingIdRequired") });
       return;
     }
 
     //Check if booking exists
     const booking = await Booking.findById(bookingId);
     if (!booking) {
-      res.status(404).json({ message: "Booking not found" });
+      res.status(404).json({ message: req.t("booking:notFound") });
       return;
     }
 
@@ -34,7 +34,7 @@ export const createReview = asyncHandler(
     if (existingReview) {
       res
         .status(400)
-        .json({ message: "You have already reviewed this booking" });
+        .json({ message: req.t("review:alreadyReviewed") });
       return;
     }
 
