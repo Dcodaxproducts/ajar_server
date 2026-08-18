@@ -29,7 +29,7 @@ export const authMiddleware = async (
       sendResponse(
         res,
         null,
-        "Unauthorized: No token provided",
+        req.t("access:noToken"),
         STATUS_CODES.UNAUTHORIZED
       );
       return;
@@ -41,7 +41,7 @@ export const authMiddleware = async (
       sendResponse(
         res,
         null,
-        "Unauthorized: Invalid or expired token",
+        req.t("access:invalidOrExpiredToken"),
         STATUS_CODES.UNAUTHORIZED
       );
       return;
@@ -61,7 +61,7 @@ export const authMiddleware = async (
       sendResponse(
         res,
         null,
-        "Forbidden: No role assigned",
+        req.t("access:noRoleAssigned"),
         STATUS_CODES.FORBIDDEN
       );
       return;
@@ -72,7 +72,7 @@ export const authMiddleware = async (
       sendResponse(
         res,
         null,
-        "Forbidden: Role not found",
+        req.t("access:roleNotFound"),
         STATUS_CODES.FORBIDDEN
       );
       return;
@@ -94,7 +94,7 @@ export const authMiddleware = async (
       sendResponse(
         res,
         null,
-        "Operation not supported",
+        req.t("access:operationNotSupported"),
         STATUS_CODES.FORBIDDEN
       );
       return;
@@ -109,7 +109,10 @@ export const authMiddleware = async (
       sendResponse(
         res,
         null,
-        `Forbidden: You do not have ${operation.toUpperCase()} permission on ${accessKey}`,
+        req.t("access:noPermission", {
+          operation: operation.toUpperCase(),
+          access: accessKey,
+        }),
         STATUS_CODES.FORBIDDEN
       );
       return;
@@ -119,6 +122,6 @@ export const authMiddleware = async (
     next();
   } catch (err) {
     console.error(err);
-    sendResponse(res, null, "Server error", STATUS_CODES.INTERNAL_SERVER_ERROR);
+    sendResponse(res, null, req.t("common:serverError"), STATUS_CODES.INTERNAL_SERVER_ERROR);
   }
 };
