@@ -11,7 +11,7 @@ export const addFavourite = async (req: AuthRequest, res: Response) => {
     const userId = req.user?.id;
 
     if (!userId) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return res.status(401).json({ message: req.t("common:unauthorized") });
     }
 
     const { listingId, bookingId } = req.body;
@@ -20,13 +20,13 @@ export const addFavourite = async (req: AuthRequest, res: Response) => {
     if (!listingId && !bookingId) {
       return res
         .status(400)
-        .json({ message: "Either listingId or bookingId is required" });
+        .json({ message: req.t("favourite:idRequired") });
     }
 
     // Validate user exists
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: req.t("user:notFound") });
     }
 
     // Check if favourite already exists
@@ -40,7 +40,7 @@ export const addFavourite = async (req: AuthRequest, res: Response) => {
     });
 
     if (existingFavorite) {
-      return res.status(400).json({ message: "Already added to favourites" });
+      return res.status(400).json({ message: req.t("favourite:alreadyAdded") });
     }
 
     // Create new favourite
@@ -53,12 +53,12 @@ export const addFavourite = async (req: AuthRequest, res: Response) => {
     await newFavorite.save();
 
     return res.status(201).json({
-      message: "Added to favourites successfully",
+      message: req.t("favourite:added"),
       favourite: newFavorite,
     });
   } catch (error) {
     console.error("Error adding favourite:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: req.t("common:internalServerError") });
   }
 };
 
@@ -68,7 +68,7 @@ export const removeFavourite = async (req: AuthRequest, res: Response) => {
     const userId = req.user?.id;
 
     if (!userId) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return res.status(401).json({ message: req.t("common:unauthorized") });
     }
 
     const { listingId, bookingId } = req.body;
@@ -77,13 +77,13 @@ export const removeFavourite = async (req: AuthRequest, res: Response) => {
     if (!listingId && !bookingId) {
       return res
         .status(400)
-        .json({ message: "Either listingId or bookingId is required" });
+        .json({ message: req.t("favourite:idRequired") });
     }
 
     // Validate user exists
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: req.t("user:notFound") });
     }
 
     // Check if favourite already exists
@@ -99,7 +99,7 @@ export const removeFavourite = async (req: AuthRequest, res: Response) => {
     if (existingFavourite) {
       await existingFavourite.deleteOne();
       return res.status(200).json({
-        message: "Removed from favourites successfully",
+        message: req.t("favourite:removed"),
         action: "removed",
       });
     } else {
@@ -111,14 +111,14 @@ export const removeFavourite = async (req: AuthRequest, res: Response) => {
       await newFavourite.save();
 
       return res.status(201).json({
-        message: "Added to favourites successfully",
+        message: req.t("favourite:added"),
         action: "added",
         favourite: newFavourite,
       });
     }
   } catch (error) {
     console.error("Error toggling favourite:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: req.t("common:internalServerError") });
   }
 };
 
@@ -129,7 +129,7 @@ export const getAllFavourites = async (req: AuthRequest, res: Response) => {
     const role = req.user?.role;
 
     if (!userId || !role) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return res.status(401).json({ message: req.t("common:unauthorized") });
     }
 
     let matchStage: any = {};
@@ -291,13 +291,13 @@ export const getAllFavourites = async (req: AuthRequest, res: Response) => {
     const favourites = await FavouriteCheck.aggregate(pipeline);
 
     return res.status(200).json({
-      message: "Favourites retrieved successfully",
+      message: req.t("favourite:listFetched"),
       count: favourites.length,
       favourites,
     });
   } catch (error) {
     console.error("Error fetching favourites:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: req.t("common:internalServerError") });
   }
 };
 
@@ -310,7 +310,7 @@ export const getUserFavourites = async (req: Request, res: Response) => {
     // Validate user exists
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: req.t("user:notFound") });
     }
 
     // Build query
@@ -331,7 +331,7 @@ export const getUserFavourites = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error getting favorites:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: req.t("common:internalServerError") });
   }
 };
 
@@ -344,13 +344,13 @@ export const checkIsFavourited = async (req: Request, res: Response) => {
     // Validate user exists
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: req.t("user:notFound") });
     }
 
     if (!listingId && !bookingId) {
       return res
         .status(400)
-        .json({ message: "Must provide listingId or bookingId" });
+        .json({ message: req.t("favourite:mustProvideId") });
     }
 
     const query: any = { user: userId };
@@ -367,6 +367,6 @@ export const checkIsFavourited = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error checking favorite:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: req.t("common:internalServerError") });
   }
 };
