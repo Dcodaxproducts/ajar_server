@@ -9,13 +9,15 @@ export const languageTranslationMiddleware = (model: Model<any>) => {
     if (!locale || locale === "en") return next(); 
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid ID format" });
+      return res.status(400).json({ message: req.t("common:invalidIdFormat") });
     }
 
     try {
       const doc = await model.findById(id);
       if (!doc) {
-        return res.status(404).json({ message: `${model.modelName} not found` });
+        return res
+          .status(404)
+          .json({ message: req.t("common:modelNotFound", { model: model.modelName }) });
       }
 
       if (!Array.isArray(doc.languages)) {
@@ -26,7 +28,7 @@ export const languageTranslationMiddleware = (model: Model<any>) => {
       const translatableFields = { ...rest };
 
       if (Object.keys(translatableFields).length === 0) {
-        return res.status(400).json({ message: "No translatable fields provided" });
+        return res.status(400).json({ message: req.t("common:noTranslatableFields") });
       }
 
       // Remove translated fields from req.body so controller won’t process them again
@@ -54,7 +56,10 @@ export const languageTranslationMiddleware = (model: Model<any>) => {
       if (Object.keys(req.body).length === 0) {
         return res.status(200).json({
           success: true,
-          message: `${model.modelName} translation saved for locale "${locale}"`,
+          message: req.t("common:translationSaved", {
+            model: model.modelName,
+            locale,
+          }),
           data: doc,
         });
       }
