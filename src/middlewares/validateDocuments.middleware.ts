@@ -17,7 +17,7 @@ export const validateDocuments =
       if (!zone || !subCategory) {
          res.status(400).json({
           success: false,
-          message: "zone and subCategory are required",
+          message: req.t("catalog:validation.zoneAndSubCategoryRequired"),
         });
         return;
       }
@@ -31,7 +31,7 @@ export const validateDocuments =
       if (!form) {
          res.status(400).json({
           success: false,
-          message: `Form not found for zone/subCategory with context=${context}`,
+          message: req.t("catalog:validation.formNotFoundForContext", { context }),
         });
         return;
       }
@@ -64,7 +64,7 @@ export const validateDocuments =
         if (missingDocs.length > 0) {
            res.status(400).json({
             success: false,
-            message: "Missing required documents",
+            message: req.t("catalog:validation.missingDocuments"),
             missing: missingDocs,
           });
             return;
