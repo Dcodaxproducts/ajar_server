@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { ZodSchema, ZodError } from "zod";
-import { STATUS_CODES, ERROR_MESSAGES } from "../config/constants";
+import { STATUS_CODES } from "../config/constants";
 
 interface ValidationSchemas {
   body?: ZodSchema;
@@ -26,7 +26,7 @@ export const validateRequest =
       if (error instanceof ZodError) {
         res.status(STATUS_CODES.BAD_REQUEST).json({
           success: false,
-          message: ERROR_MESSAGES.VALIDATION_ERROR,
+          message: req.t("common:validationError"),
           errors: error.errors,
         });
       } else {
