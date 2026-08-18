@@ -21,7 +21,7 @@ export const employeeAuthMiddleware = (
     try {
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        sendResponse(res, null, "Unauthorized: No token provided", STATUS_CODES.UNAUTHORIZED);
+        sendResponse(res, null, req.t("access:noToken"), STATUS_CODES.UNAUTHORIZED);
         return;
       }
 
@@ -29,7 +29,7 @@ export const employeeAuthMiddleware = (
       const decoded = verifyAccessToken(token);
 
       if (!decoded?.id) {
-        sendResponse(res, null, "Invalid token", STATUS_CODES.UNAUTHORIZED);
+        sendResponse(res, null, req.t("access:invalidToken"), STATUS_CODES.UNAUTHORIZED);
         return;
       }
 
@@ -38,7 +38,7 @@ export const employeeAuthMiddleware = (
         .lean();
 
       if (!employee) {
-        sendResponse(res, null, "Unauthorized: Employee not found", STATUS_CODES.UNAUTHORIZED);
+        sendResponse(res, null, req.t("access:employeeNotFound"), STATUS_CODES.UNAUTHORIZED);
         return;
       }
 
@@ -56,7 +56,7 @@ export const employeeAuthMiddleware = (
           sendResponse(
             res,
             null,
-            `Access denied: You do not have permission to [${operation}] [${access}]`,
+            req.t("access:deniedOperation", { operation, access }),
             STATUS_CODES.FORBIDDEN
           );
           return;
@@ -76,7 +76,7 @@ export const employeeAuthMiddleware = (
           sendResponse(
             res,
             null,
-            `Access denied: You do not have 'read' access to any of: ${accessModules.join(", ")}`,
+            req.t("access:deniedRead", { modules: accessModules.join(", ") }),
             STATUS_CODES.FORBIDDEN
           );
           return;
@@ -88,7 +88,7 @@ export const employeeAuthMiddleware = (
       next();
     } catch (error) {
       console.error("Auth Middleware Error:", error);
-      sendResponse(res, null, "Authentication failed", STATUS_CODES.UNAUTHORIZED);
+      sendResponse(res, null, req.t("access:authFailed"), STATUS_CODES.UNAUTHORIZED);
     }
   };
 };
