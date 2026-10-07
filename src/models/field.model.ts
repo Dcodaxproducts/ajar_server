@@ -6,6 +6,11 @@ export interface ILanguageTranslation {
     name?: string;
     label?: string;
     placeholder?: string;
+    tooltip?: string;
+    validationError?: string;
+    validation?: { error?: string };
+    options?: string[] | Record<string, string>;
+    documentConfig?: Array<Record<string, unknown>> | Record<string, unknown>;
   };
 }
 
@@ -95,11 +100,7 @@ const FieldSchema = new Schema<IField>(
     languages: [
       {
         locale: { type: String, required: true },
-        translations: {
-          name: { type: String },
-          label: { type: String },
-          placeholder: { type: String },
-        },
+        translations: { type: Schema.Types.Mixed, default: {} },
       },
     ],
 

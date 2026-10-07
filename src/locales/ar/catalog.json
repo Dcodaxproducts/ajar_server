@@ -9,7 +9,6 @@
     "nameExists": "توجد منطقة بهذا الاسم بالفعل",
     "subCategoriesUpdated": "تم تحديث الفئات الفرعية بنجاح"
   },
-
   "category": {
     "notFound": "لم يتم العثور على الفئة",
     "invalidId": "معرّف الفئة غير صالح",
@@ -20,14 +19,12 @@
     "imageUpdated": "تم تحديث الصورة بنجاح",
     "noFileUploaded": "لم يتم رفع أي ملف"
   },
-
   "subCategory": {
     "notFound": "لم يتم العثور على الفئة الفرعية",
     "created": "تم إنشاء الفئة الفرعية بنجاح",
     "updated": "تم تحديث الفئة الفرعية بنجاح",
     "idsFetched": "تم جلب معرّفات وأسماء الفئات الفرعية بنجاح"
   },
-
   "field": {
     "notFound": "لم يتم العثور على الحقل",
     "invalidId": "معرّف الحقل غير صالح",
@@ -41,7 +38,6 @@
     "conditionalMissingDependsOn": "حقل الاعتماد الشرطي غير صالح أو مفقود",
     "conditionValueRequired": "يجب أن يحتوي كل شرط على قيمة"
   },
-
   "form": {
     "notFound": "لم يتم العثور على النموذج",
     "created": "تم إنشاء النموذج بنجاح",
@@ -55,15 +51,17 @@
     "systemFieldsMissing": "الحقول النظامية المطلوبة غير موجودة في قاعدة البيانات",
     "someFieldsInvalid": "بعض الحقول غير صالحة",
     "someSelectedFieldsInvalid": "بعض الحقول المختارة غير صالحة",
-    "subCategoryNotFound": "لم يتم العثور على الفئة الفرعية"
+    "subCategoryNotFound": "لم يتم العثور على الفئة الفرعية",
+    "listFetched": "تم جلب النماذج بنجاح",
+    "detailsFetched": "تم جلب تفاصيل النموذج بنجاح",
+    "invalidFields": "يجب أن تكون الحقول قائمة مرتبة من معرّفات حقول صالحة وفريدة",
+    "invalidDocuments": "يجب أن تكون اختيارات المستندات قائمة"
   },
-
   "validation": {
     "zoneAndSubCategoryRequired": "المنطقة والفئة الفرعية مطلوبتان",
     "formNotFoundForContext": "لم يتم العثور على نموذج للمنطقة/الفئة الفرعية بالسياق={{context}}",
     "missingDocuments": "المستندات المطلوبة مفقودة"
   },
-
   "userForm": {
     "notFound": "لم يتم العثور على نموذج المستخدم",
     "created": "تم إنشاء نموذج المستخدم بنجاح",

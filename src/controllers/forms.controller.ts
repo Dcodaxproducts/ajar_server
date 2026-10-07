@@ -6,6 +6,14 @@ import { Field } from "../models/field.model";
 import mongoose from "mongoose";
 import { paginateQuery } from "../utils/paginate";
 import { Dropdown } from "../models/dropdown.model";
+import { resolveRequestLocale } from "../utils/locale";
+import {
+  localizeDropdownValue,
+  localizeField,
+  localizeNamedRecord,
+  preserveCanonicalFieldOrder,
+  translationFor,
+} from "../utils/formLocalization";
 
 // CREATE NEW FORM
 export const createNewForm = async (
@@ -44,7 +52,18 @@ export const createNewForm = async (
       return
     }
 
-    // 2. Validate User Selected Fields & Maintain Order
+    if (
+      !Array.isArray(fields) ||
+      !fields.every((fieldId: unknown) =>
+        mongoose.Types.ObjectId.isValid(String(fieldId))
+      ) ||
+      new Set(fields.map((fieldId: unknown) => String(fieldId))).size !== fields.length
+    ) {
+      sendResponse(res, null, req.t("catalog:form.invalidFields"), STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    // 2. Validate user-selected fields while retaining the request sequence.
     const validUserFieldsRaw = await Field.find({ _id: { $in: fields } });
     if (validUserFieldsRaw.length !== fields.length) {
       sendResponse(res, null, req.t("catalog:form.someSelectedFieldsInvalid"), STATUS_CODES.BAD_REQUEST);
@@ -56,7 +75,13 @@ export const createNewForm = async (
 
     // 3. Required system fields
     const requiredFieldNames = ["name", "subTitle", "description", "price", "priceUnit", "rentalImages", "location","unavailability","dynamicPricing"];
-    const requiredFields = await Field.find({ name: { $in: requiredFieldNames } });
+    const requiredFieldsRaw = await Field.find({ name: { $in: requiredFieldNames } });
+    const requiredFieldsByName = new Map(
+      requiredFieldsRaw.map((field) => [field.name, field] as const)
+    );
+    const requiredFields = requiredFieldNames
+      .map((fieldName) => requiredFieldsByName.get(fieldName))
+      .filter((field): field is NonNullable<typeof field> => Boolean(field));
 
     if (requiredFields.length !== requiredFieldNames.length) {
       sendResponse(res, null, req.t("catalog:form.systemFieldsMissing"), STATUS_CODES.BAD_REQUEST);
@@ -238,12 +263,12 @@ export const getAllForms = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const lang = (req.query.language || "en").toString().toLowerCase();
+    const lang = resolveRequestLocale(req);
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    const query =
-      lang === "en" ? Form.find({}) : Form.find({ "languages.locale": lang });
+    // Missing translations fall back to English; they never hide valid forms.
+    const query = Form.find({});
 
     const populatedQuery = query
       .populate("fields")
@@ -253,11 +278,12 @@ export const getAllForms = async (
     const paginated = await paginateQuery(populatedQuery, { page, limit });
 
     const localizedForms = paginated.data.map((form) => {
+      const formObject = form.toObject() as any;
       const formTranslation = form.languages?.find(
         (entry) => entry.locale?.toLowerCase() === lang
       );
 
-      const zone = form.zone as any;
+      const zone = formObject.zone as any;
       const zoneTranslation = zone?.languages?.find(
         (entry: any) => entry.locale?.toLowerCase() === lang
       );
@@ -268,7 +294,7 @@ export const getAllForms = async (
         }
         : null;
 
-      const subCat = form.subCategory as any;
+      const subCat = formObject.subCategory as any;
       const subCatTranslation = subCat?.languages?.find(
         (entry: any) => entry.locale?.toLowerCase() === lang
       );
@@ -279,24 +305,12 @@ export const getAllForms = async (
         }
         : null;
 
-      const localizedFields = Array.isArray(form.fields)
-        ? (form.fields as any[]).map((field) => {
-          const fieldTranslation = field?.languages?.find(
-            (entry: any) => entry.locale?.toLowerCase() === lang
-          );
-          return {
-            ...field,
-            name: fieldTranslation?.translations?.name || field.name,
-            label: fieldTranslation?.translations?.label || field.label,
-            placeholder:
-              fieldTranslation?.translations?.placeholder ||
-              field.placeholder,
-          };
-        })
+      const localizedFields = Array.isArray(formObject.fields)
+        ? formObject.fields.map((field: any) => localizeField(field, lang))
         : [];
 
       return {
-        _id: form._id,
+        ...formObject,
         name: formTranslation?.translations?.name || form.name,
         description:
           formTranslation?.translations?.description || form.description,
@@ -315,7 +329,7 @@ export const getAllForms = async (
         page: paginated.page,
         limit: paginated.limit,
       },
-      `Forms found for language: ${lang}`,
+      req.t("catalog:form.listFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -329,12 +343,12 @@ export const getFormDetails = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const lang = (req.headers["language"] || "en").toString().toLowerCase();
+    const lang = resolveRequestLocale(req);
 
     const form = await Form.findById(req.params.id)
       .populate("fields")
       .populate("zone")
-      .populate("subCategory")
+      .populate({ path: "subCategory", populate: { path: "category" } })
       .lean();
 
     if (!form) {
@@ -354,18 +368,7 @@ export const getFormDetails = async (
     };
 
     translatedForm.fields = Array.isArray(form.fields)
-      ? (form.fields as any[]).map((field: any) => {
-        const fieldTranslation = field.languages?.find(
-          (entry: any) => entry.locale?.toLowerCase() === lang
-        );
-        return {
-          ...field,
-          name: fieldTranslation?.translations?.name || field.name,
-          label: fieldTranslation?.translations?.label || field.label,
-          placeholder:
-            fieldTranslation?.translations?.placeholder || field.placeholder,
-        };
-      })
+      ? (form.fields as any[]).map((field: any) => localizeField(field, lang))
       : [];
 
     const zone = form.zone as any;
@@ -380,20 +383,14 @@ export const getFormDetails = async (
       : null;
 
     const subCat = form.subCategory as any;
-    const subCatTranslation = subCat?.languages?.find(
-      (entry: any) => entry.locale?.toLowerCase() === lang
-    );
     translatedForm.subCategory = subCat
-      ? {
-        ...subCat,
-        name: subCatTranslation?.translations?.name || subCat?.name || "",
-      }
+      ? localizeNamedRecord(subCat, lang)
       : null;
 
     sendResponse(
       res,
       translatedForm,
-      `Form details fetched successfully for locale: ${lang}`,
+      req.t("catalog:form.detailsFetched"),
       STATUS_CODES.OK
     );
   } catch (error) {
@@ -408,17 +405,24 @@ export const getFormByZoneAndSubCategory = async (
 ): Promise<void> => {
   try {
     const { zone, subCategory } = req.query;
-    const lang = (req.query.language || "en").toString().toLowerCase();
-    const isAdmin = req.query.isAdmin === "true";
+    const lang = resolveRequestLocale(req);
 
     if (!zone || !subCategory) {
-      sendResponse(res, null, "zone and subCategory are required", STATUS_CODES.BAD_REQUEST);
+      sendResponse(
+        res,
+        null,
+        req.t("catalog:form.zoneAndSubCategoryRequired"),
+        STATUS_CODES.BAD_REQUEST
+      );
       return;
     }
 
-    const form = await Form.findOne({ zone, subCategory })
+    const formDocument = await Form.findOne({ zone, subCategory })
       .populate("zone")
-      .populate("subCategory")
+      .populate({
+        path: "subCategory",
+        populate: { path: "category" },
+      })
       .populate({
         path: "fields",
         populate: {
@@ -430,104 +434,66 @@ export const getFormByZoneAndSubCategory = async (
                 path: "conditional.dependsOn",
                 populate: {
                   path: "conditional.dependsOn",
-                  populate: {
-                    path: "conditional.dependsOn",
-                  },
+                  populate: { path: "conditional.dependsOn" },
                 },
               },
             },
           ],
         },
-      })
-      .lean();
+      });
 
-    if (!form) {
+    if (!formDocument) {
       sendResponse(res, null, req.t("catalog:form.notFound"), STATUS_CODES.NOT_FOUND);
       return;
     }
 
-    // ✅ Localize top-level fields + localize conditions options
-    const allLocalizedFields = (form.fields as any[]).map((field) => {
-      const fieldTranslation = field?.languages?.find(
-        (entry: any) => entry.locale?.toLowerCase() === lang
-      );
-
-      const localizedConditional = field.conditional
-        ? {
-          ...field.conditional,
-          dependsOn: field.conditional.dependsOn
-            ? (() => {
-              const parent = field.conditional.dependsOn;
-              const parentTranslation = parent?.languages?.find(
-                (entry: any) => entry.locale?.toLowerCase() === lang
-              );
-              return {
-                ...parent,
-                name: parentTranslation?.translations?.name || parent.name,
-                label: parentTranslation?.translations?.label || parent.label,
-                placeholder: parentTranslation?.translations?.placeholder || parent.placeholder,
-              };
-            })()
-            : null,
-          conditions: field.conditional.conditions || [],
-        }
-        : undefined;
-
-      return {
-        ...field,
-        name: fieldTranslation?.translations?.name || field.name,
-        label: fieldTranslation?.translations?.label || field.label,
-        placeholder: fieldTranslation?.translations?.placeholder || field.placeholder,
-        conditional: localizedConditional,
-      };
-    });
-
-    const dependsOnIds = new Set(
-      allLocalizedFields
-        .map((f) =>
-          f.conditional?.dependsOn?._id?.toString() ||
-          f.conditional?.dependsOn?.toString()
-        )
-        .filter(Boolean)
+    const canonicalFieldIds =
+      (formDocument.populated("fields") as mongoose.Types.ObjectId[] | undefined) ||
+      formDocument.fields;
+    const form = formDocument.toObject() as any;
+    const orderedFields = preserveCanonicalFieldOrder(
+      canonicalFieldIds,
+      Array.isArray(form.fields) ? form.fields : []
     );
+    const formTranslation = translationFor(form, lang);
 
-    const filteredFields = isAdmin
-      ? allLocalizedFields
-      : allLocalizedFields.filter(
-        (field) => !dependsOnIds.has(field._id.toString())
-      );
-
-    // ✅ ADDED: Enrich userDocuments & leaserDocuments (same pattern as getMarketplaceListingByIdforLeaser)
     const rawUserDocs: string[] = form.userDocuments || [];
     const rawLeaserDocs: string[] = form.leaserDocuments || [];
-
     const [userDropdown, leaserDropdown] = await Promise.all([
       Dropdown.findOne({ name: "userDocuments" }).lean(),
       Dropdown.findOne({ name: "leaserDocuments" }).lean(),
     ]);
 
-    const userDropdownValues = userDropdown?.values || [];
-    const leaserDropdownValues = leaserDropdown?.values || [];
-
-    const mapDocs = (keys: string[], dropdownValues: any[]) =>
-      keys.map((key) => {
-        const match = dropdownValues.find((v: any) => v.value === key);
-        return match
-          ? {
-            value: match.value,
-            name: match.name,
-            hasExpiry: match.hasExpiry,
-            autoApproval: match.autoApproval,
-          }
-          : { value: key, name: key, hasExpiry: false, autoApproval: false };
+    const mapDocs = (keys: string[], dropdown: any) => {
+      const values = dropdown?.values || [];
+      const dropdownTranslation = translationFor(dropdown, lang);
+      return keys.map((key) => {
+        const match = values.find((value: any) => value.value === key);
+        const fallback = {
+          value: key,
+          name: key,
+          hasExpiry: false,
+          autoApproval: false,
+        };
+        return localizeDropdownValue(match || fallback, lang, dropdownTranslation);
       });
+    };
 
     const localizedForm = {
       ...form,
-      fields: filteredFields,
+      name:
+        (typeof formTranslation.name === "string" && formTranslation.name) ||
+        form.name,
+      description:
+        (typeof formTranslation.description === "string" &&
+          formTranslation.description) ||
+        form.description,
+      fields: orderedFields.map((field: any) => localizeField(field, lang)),
+      zone: localizeNamedRecord(form.zone, lang),
+      subCategory: localizeNamedRecord(form.subCategory, lang),
       language: lang,
-      userDocuments: mapDocs(rawUserDocs, userDropdownValues),   // ✅ enriched
-      leaserDocuments: mapDocs(rawLeaserDocs, leaserDropdownValues), // ✅ enriched
+      userDocuments: mapDocs(rawUserDocs, userDropdown),
+      leaserDocuments: mapDocs(rawLeaserDocs, leaserDropdown),
     };
 
     sendResponse(res, localizedForm, req.t("catalog:form.fetched"), STATUS_CODES.OK);
@@ -545,17 +511,18 @@ export const updateForm = async (
   try {
     const id = req.params.id as string;
 
-    // Destructure everything sent from the frontend
     const {
-      fields = [],
-      userDocuments = [],
-      leaserDocuments = [],
+      fields,
+      userDocuments,
+      leaserDocuments,
       setting,
       name,
       description,
       zone,
-      subCategory
+      subCategory,
     } = req.body;
+    const hasOwn = (key: string) =>
+      Object.prototype.hasOwnProperty.call(req.body, key);
 
     const form = await Form.findById(id);
 
@@ -564,23 +531,61 @@ export const updateForm = async (
       return;
     }
 
-    // 1. Update Fields (Maintaining order)
-    form.fields = fields.map((fid: string) => new mongoose.Types.ObjectId(fid));
+    // Form.fields is the canonical template-specific sequence. Only replace it
+    // when explicitly supplied, and never derive it from global Field.order.
+    if (hasOwn("fields")) {
+      if (
+        !Array.isArray(fields) ||
+        !fields.every((fieldId: unknown) =>
+          mongoose.Types.ObjectId.isValid(String(fieldId))
+        ) ||
+        new Set(fields.map((fieldId: unknown) => String(fieldId))).size !== fields.length
+      ) {
+        sendResponse(res, null, req.t("catalog:form.invalidFields"), STATUS_CODES.BAD_REQUEST);
+        return;
+      }
 
-    // 2. Update Documents (THIS WAS MISSING)
-    form.userDocuments = userDocuments;
-    form.leaserDocuments = leaserDocuments;
-
-    // 3. Update Setting Object
-    if (setting) {
-      form.setting = setting;
+      const fieldIds = fields.map((fieldId: unknown) => String(fieldId));
+      const existingFieldCount = await Field.countDocuments({ _id: { $in: fieldIds } });
+      if (existingFieldCount !== fieldIds.length) {
+        sendResponse(res, null, req.t("catalog:form.someSelectedFieldsInvalid"), STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+      form.fields = fieldIds.map((fieldId) => new mongoose.Types.ObjectId(fieldId));
     }
 
-    // 4. Update other basic info if changed
-    if (name) form.name = name;
-    if (description) form.description = description;
-    if (zone) form.zone = new mongoose.Types.ObjectId(zone);
-    if (subCategory) form.subCategory = new mongoose.Types.ObjectId(subCategory);
+    if (hasOwn("userDocuments")) {
+      if (!Array.isArray(userDocuments)) {
+        sendResponse(res, null, req.t("catalog:form.invalidDocuments"), STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+      form.userDocuments = userDocuments;
+    }
+    if (hasOwn("leaserDocuments")) {
+      if (!Array.isArray(leaserDocuments)) {
+        sendResponse(res, null, req.t("catalog:form.invalidDocuments"), STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+      form.leaserDocuments = leaserDocuments;
+    }
+
+    if (hasOwn("setting")) form.setting = setting;
+    if (hasOwn("name")) form.name = name;
+    if (hasOwn("description")) form.description = description;
+    if (hasOwn("zone")) {
+      if (!mongoose.Types.ObjectId.isValid(String(zone))) {
+        sendResponse(res, null, req.t("catalog:form.invalidZoneOrSubCategory"), STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+      form.zone = new mongoose.Types.ObjectId(zone);
+    }
+    if (hasOwn("subCategory")) {
+      if (!mongoose.Types.ObjectId.isValid(String(subCategory))) {
+        sendResponse(res, null, req.t("catalog:form.invalidZoneOrSubCategory"), STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+      form.subCategory = new mongoose.Types.ObjectId(subCategory);
+    }
 
     // Save the changes
     await form.save();

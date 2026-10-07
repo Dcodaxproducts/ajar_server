@@ -16,5 +16,8 @@
   "bookedDatesFetched": "تم جلب التواريخ المحجوزة بنجاح",
   "bookedSlotsFetched": "تم جلب الأوقات المحجوزة بنجاح",
   "bookingsFetched": "تم جلب حجوزات الإعلان بنجاح",
-  "cleanupFailed": "حدث خطأ أثناء حذف الإعلانات غير المرتبطة"
+  "cleanupFailed": "حدث خطأ أثناء حذف الإعلانات غير المرتبطة",
+  "requiredField": "حقل {{field}} مطلوب",
+  "missingRequiredDocuments": "المستندات المطلوبة مفقودة: {{documents}}",
+  "documentExpiryRequired": "تاريخ انتهاء الصلاحية مطلوب للمستند: {{document}}"
 }

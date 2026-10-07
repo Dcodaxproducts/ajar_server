@@ -15,6 +15,8 @@ import { FavouriteCheck } from "../models/favouriteChecks.model";
 import { Dropdown } from "../models/dropdown.model";
 import { Payment } from "../models/payment.model";
 import { RentalPolicy } from "../models/rentalPolicy.model";
+import { localizeField } from "../utils/formLocalization";
+import { resolveRequestLocale } from "../utils/locale";
 
 // controllers/marketplaceListings.controller.ts]
 const toCamelCase = (str: string) =>
@@ -41,7 +43,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       if (!normalisedBody[field]) {
         return res.status(400).json({
           success: false,
-          message: `${field} is required`,
+          message: req.t("listing:requiredField", { field }),
         });
       }
     }
@@ -87,7 +89,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     if (!hasRentalImages) {
       return res.status(400).json({
         success: false,
-        message: "rentalImages is required",
+        message: req.t("listing:requiredField", { field: "rentalImages" }),
       });
     }
 
@@ -99,7 +101,9 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       if (missingDocs.length > 0) {
         return res.status(400).json({
           success: false,
-          message: `Missing required document(s): ${missingDocs.join(", ")}`,
+          message: req.t("listing:missingRequiredDocuments", {
+            documents: missingDocs.join(", "),
+          }),
           missingDocuments: missingDocs,
         });
       }
@@ -124,7 +128,9 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
         if (docRule?.hasExpiry && !rawExpiry) {
           return res.status(400).json({
             success: false,
-            message: `Expiry date is required for document: ${docRule.name || fieldName}`,
+            message: req.t("listing:documentExpiryRequired", {
+              document: docRule.name || fieldName,
+            }),
           });
         }
 
@@ -153,6 +159,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
 
     // Validate dynamic fields from form
     const fields = (form as any).fields as any[];
+    const locale = resolveRequestLocale(req);
     const requestData: any = {};
 
     for (const field of fields) {
@@ -165,9 +172,13 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       }
 
       if (field.validation?.required && (value === undefined || value === "")) {
+        const localizedField = localizeField(field, locale) as any;
         return res.status(400).json({
           success: false,
-          message: `${field.label} is required`,
+          message:
+            localizedField.validation?.error ||
+            field.validation?.error ||
+            req.t("listing:requiredField", { field: field.label || field.name }),
         });
       }
 
@@ -1538,7 +1549,9 @@ export const updateMarketplaceListing = async (
         if (docRule?.hasExpiry && !rawExpiry) {
           res.status(400).json({
             success: false,
-            message: `Expiry date is required for document: ${docRule.name || fieldName}`,
+            message: req.t("listing:documentExpiryRequired", {
+              document: docRule.name || fieldName,
+            }),
           });
           return;
         }
@@ -1577,7 +1590,10 @@ export const updateMarketplaceListing = async (
     const required = ["name", "subTitle", "price"];
     for (const field of required) {
       if (field in req.body && !req.body[field]) {
-        res.status(400).json({ success: false, message: `${field} is required` });
+        res.status(400).json({
+          success: false,
+          message: req.t("listing:requiredField", { field }),
+        });
         return;
       }
     }

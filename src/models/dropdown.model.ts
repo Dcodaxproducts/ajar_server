@@ -7,11 +7,19 @@ interface IDropdownValue {
   // Added new toggles
   hasExpiry: boolean;
   autoApproval: boolean;
+  languages?: Array<{
+    locale: string;
+    translations: { name?: string; label?: string };
+  }>;
 }
 
 interface IDropdown extends Document {
   name: string; 
   values: IDropdownValue[]; 
+  languages?: Array<{
+    locale: string;
+    translations: Record<string, unknown>;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,6 +31,12 @@ const DropdownValueSchema = new Schema<IDropdownValue>(
     // New fields with defaults
     hasExpiry: { type: Boolean, default: false },
     autoApproval: { type: Boolean, default: false },
+    languages: [
+      {
+        locale: { type: String, required: true },
+        translations: { type: Schema.Types.Mixed, default: {} },
+      },
+    ],
   },
   { _id: true }
 ); 
@@ -41,6 +55,12 @@ const DropdownSchema = new Schema<IDropdown>(
         message: "Duplicate values are not allowed inside dropdown values.",
       },
     },
+    languages: [
+      {
+        locale: { type: String, required: true },
+        translations: { type: Schema.Types.Mixed, default: {} },
+      },
+    ],
   },
   { timestamps: true }
 );

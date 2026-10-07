@@ -9,7 +9,6 @@
     "nameExists": "Zone with this name already exists",
     "subCategoriesUpdated": "Subcategories updated successfully"
   },
-
   "category": {
     "notFound": "Category not found",
     "invalidId": "Invalid Category ID",
@@ -20,14 +19,12 @@
     "imageUpdated": "Image updated successfully",
     "noFileUploaded": "No file uploaded"
   },
-
   "subCategory": {
     "notFound": "Subcategory not found",
     "created": "Subcategory created successfully",
     "updated": "SubCategory updated successfully",
     "idsFetched": "Subcategory names and IDs fetched successfully"
   },
-
   "field": {
     "notFound": "Field not found",
     "invalidId": "Invalid Field ID",
@@ -41,7 +38,6 @@
     "conditionalMissingDependsOn": "Invalid or missing conditional.dependsOn",
     "conditionValueRequired": "Each condition must have a value"
   },
-
   "form": {
     "notFound": "Form not found",
     "created": "Form created successfully",
@@ -55,15 +51,17 @@
     "systemFieldsMissing": "Required system fields missing in database",
     "someFieldsInvalid": "Some fields are invalid",
     "someSelectedFieldsInvalid": "Some selected fields are invalid",
-    "subCategoryNotFound": "SubCategory not found"
+    "subCategoryNotFound": "SubCategory not found",
+    "listFetched": "Forms fetched successfully",
+    "detailsFetched": "Form details fetched successfully",
+    "invalidFields": "fields must be an ordered array of unique valid field IDs",
+    "invalidDocuments": "Document selections must be an array"
   },
-
   "validation": {
     "zoneAndSubCategoryRequired": "zone and subCategory are required",
     "formNotFoundForContext": "Form not found for zone/subCategory with context={{context}}",
     "missingDocuments": "Missing required documents"
   },
-
   "userForm": {
     "notFound": "UserForm not found",
     "created": "UserForm created successfully",

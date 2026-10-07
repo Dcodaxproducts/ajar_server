@@ -16,5 +16,8 @@
   "bookedDatesFetched": "Booked dates fetched successfully",
   "bookedSlotsFetched": "Booked slots fetched successfully",
   "bookingsFetched": "Bookings for listing fetched successfully",
-  "cleanupFailed": "Error cleaning up orphaned listings"
+  "cleanupFailed": "Error cleaning up orphaned listings",
+  "requiredField": "{{field}} is required",
+  "missingRequiredDocuments": "Missing required document(s): {{documents}}",
+  "documentExpiryRequired": "Expiry date is required for document: {{document}}"
 }

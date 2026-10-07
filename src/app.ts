@@ -1,5 +1,5 @@
 import cors from "cors";
-import express, { Application, Request, Response } from "express";
+import express, { Application, NextFunction, Request, Response } from "express";
 import http, { Server as HTTPServer } from "http";
 import morgan from "morgan";
 import path from "path";
@@ -13,6 +13,7 @@ import { stripeWebhook } from "./controllers/payment.controller";
 import {optionalAuth} from "./middlewares/optionalAuthMiddleware";
 import { verifyActiveUser } from "./middlewares/verifyActiveUser";
 import { i18nMiddleware } from "./config/i18n";
+import { resolveRequestLocale } from "./utils/locale";
 
 export const app = express();
 export const server = http.createServer(app);
@@ -38,7 +39,12 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(express.static("public"));
 app.use(morgan("dev"));
-// Reads the "language" header and gives every handler a req.t()
+// Mobile sends "localization"; web clients historically send "language".
+// Normalize both (plus the legacy language query parameter) before i18next.
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  req.headers.language = resolveRequestLocale(req);
+  next();
+});
 app.use(i18nMiddleware);
 // app.use(globalRateLimiter);
 

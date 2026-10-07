@@ -8,7 +8,9 @@
     "live": "pm2 start src/server.ts --watch --ignore-watch='public/uploads' --name my-app --interpreter ts-node",
     "build": "tsc",
     "start": "node dist/server.js",
-    "postbuild": "mkdir -p dist/config && cp src/config/*.json dist/config/ && cp -r src/locales dist/locales"
+    "postbuild": "mkdir -p dist/config dist/locales && (cp src/config/*.json dist/config/ 2>/dev/null || true) && cp -r src/locales/. dist/locales/",
+    "test": "node --test -r ts-node/register src/tests/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
