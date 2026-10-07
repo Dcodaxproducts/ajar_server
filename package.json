@@ -7,6 +7,7 @@
     "dev": "nodemon  --ignore public/uploads src/server.ts",
     "live": "pm2 start src/server.ts --watch --ignore-watch='public/uploads' --name my-app --interpreter ts-node",
     "build": "tsc",
+    "test": "node --test -r ts-node/register src/tests/*.test.ts",
     "start": "node dist/server.js",
     "postbuild": "mkdir -p dist/config && cp src/config/*.json dist/config/ && cp -r src/locales dist/locales"
   },

@@ -65,8 +65,8 @@ export const sendEmailOrThrow = async ({
   return info.response;
 };
 
-// Swallows errors — kept for the auth emails (OTP / 2FA) that are still sent
-// directly from the request, where a throw would break the endpoint.
+// Swallows errors only for legacy direct auth emails (2FA/password reset).
+// Registration and resend OTPs use the throwing BullMQ worker path.
 export const sendEmail = async (payload: EmailPayload) => {
   try {
     return await sendEmailOrThrow(payload);

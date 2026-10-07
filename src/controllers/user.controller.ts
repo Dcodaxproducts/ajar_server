@@ -29,6 +29,11 @@ import {
   buildDashboardChartData
 } from "../utils/range";
 import { Dropdown } from "../models/dropdown.model";
+import {
+  OtpDeliveryUnavailableError,
+  OTP_DELIVERY_UNAVAILABLE,
+  persistAndQueueOtp,
+} from "../services/otpDelivery.service";
 
 export const createUser = async (
   req: Request,
@@ -71,24 +76,28 @@ export const createUser = async (
     const userObj = userData.toObject();
     const { password: _, ...userWithoutPassword } = userObj;
 
-    const otp = Math.floor(1000 + Math.random() * 9000);
-    userData.otp.code = otp.toString();
-    userData.otp.expiry = new Date(Date.now() + 5 * 60 * 1000);
-    await userData.save();
-    await sendEmail({
-      to: email,
-      name: userData.name,
-      subject: "Your OTP Code",
-      content: `Your OTP is: ${otp}`,
+    await persistAndQueueOtp({
+      recipient: userData,
+      purpose: "registration",
+      enqueue: (name, payload) => emailQueue.add(name, payload),
     });
 
     sendResponse(
       res,
       { user: userWithoutPassword },
-      req.t("user:created"),
+      req.t("user:otp.registrationQueued"),
       STATUS_CODES.CREATED
     );
   } catch (error) {
+    if (error instanceof OtpDeliveryUnavailableError) {
+      sendResponse(
+        res,
+        { code: OTP_DELIVERY_UNAVAILABLE },
+        req.t("user:otp.deliveryUnavailable"),
+        STATUS_CODES.SERVICE_UNAVAILABLE
+      );
+      return;
+    }
     next(error);
   }
 };
@@ -437,31 +446,23 @@ export const resendOtp = async (
       return;
     }
 
-    // Generate new OTP
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    user.otp = {
-      code: otp,
-      expiry: new Date(Date.now() + 5 * 60 * 1000),
-      isVerified: false,
-    };
-    await user.save();
-
-    await sendEmail({
-      to: email,
-      name: user.name,
-      subject: "Your New OTP Code",
-      content: `
-        <p>Hello ${user.name || "User"},</p>
-        <p>Your new OTP is:</p>
-        <div style="background: #f4f4f4; padding: 10px; color: #2e7d32; border-radius: 5px; border: 1px solid #ccc; display: inline-block;">
-          <strong>${otp}</strong>
-        </div>
-        <p>This OTP will expire in 5 minutes.</p>
-      `,
+    await persistAndQueueOtp({
+      recipient: user,
+      purpose: "resend",
+      enqueue: (name, payload) => emailQueue.add(name, payload),
     });
 
-    sendResponse(res, null, req.t("user:otp.resent"), STATUS_CODES.OK);
+    sendResponse(res, null, req.t("user:otp.resendQueued"), STATUS_CODES.OK);
   } catch (error) {
+    if (error instanceof OtpDeliveryUnavailableError) {
+      sendResponse(
+        res,
+        { code: OTP_DELIVERY_UNAVAILABLE },
+        req.t("user:otp.deliveryUnavailable"),
+        STATUS_CODES.SERVICE_UNAVAILABLE
+      );
+      return;
+    }
     next(error);
   }
 };
