@@ -1,14 +1,18 @@
 import { Worker, Job } from "bullmq";
 import { bullConnection } from "../queues/connection";
 import { EmailJob } from "../queues/email.queue";
-import { sendEmailOrThrow } from "../helpers/node-mailer";
+import {
+  logEmailJobFailure,
+  processEmailJob,
+} from "../services/emailJob.service";
+import { logger } from "../utils/logger";
 
 export const startEmailWorker = () => {
   const worker = new Worker<EmailJob>(
     "emails",
     async (job: Job<EmailJob>) => {
-      const response = await sendEmailOrThrow(job.data);
-      return { to: job.data.to, response };
+      const response = await processEmailJob(job.data);
+      return { response };
     },
     {
       connection: bullConnection,
@@ -19,16 +23,24 @@ export const startEmailWorker = () => {
   );
 
   worker.on("completed", (job) =>
-    console.log(`✅ [emails] job ${job.id} sent to ${job.data.to}`)
+    logger.info("Email job completed", { jobId: job.id, jobName: job.name })
   );
 
-  worker.on("failed", (job, err) =>
-    console.error(
-      `❌ [emails] job ${job?.id} failed (attempt ${job?.attemptsMade}/3):`,
-      err.message
-    )
-  );
+  worker.on("failed", (job) => {
+    // Never pass job.data or the SMTP error: either may contain OTP/PII.
+    logEmailJobFailure(
+      job
+        ? {
+            id: job.id,
+            name: job.name,
+            attempts: job.opts.attempts,
+            attemptsMade: job.attemptsMade,
+          }
+        : undefined,
+      logger
+    );
+  });
 
-  console.log("📧 Email worker started");
+  logger.info("Email worker started");
   return worker;
 };

@@ -49,6 +49,9 @@
   "otp": {
     "sent": "OTP sent to your email",
     "resent": "OTP resent successfully",
+    "registrationQueued": "Registration successful. OTP email queued for delivery",
+    "resendQueued": "OTP email queued for delivery",
+    "deliveryUnavailable": "OTP delivery is temporarily unavailable. Please try resending the OTP.",
     "verified": "OTP verified successfully",
     "invalidOrExpired": "Invalid or expired OTP",
     "notVerified": "OTP not verified"
