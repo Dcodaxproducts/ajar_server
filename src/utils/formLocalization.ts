@@ -26,14 +26,14 @@ export const translationFor = (
   );
 };
 
+const nonEmptyString = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim() ? value : undefined;
+
 const translatedString = (
   translation: Record<string, unknown>,
   key: string,
   fallback: unknown
-): unknown => {
-  const value = translation[key];
-  return typeof value === "string" && value.trim() ? value : fallback;
-};
+): unknown => nonEmptyString(translation[key]) ?? fallback;
 
 const localizeNamedItems = (
   items: unknown,
@@ -47,9 +47,13 @@ const localizeNamedItems = (
         const translated = translatedItems[index];
         if (typeof translated === "string" && translated.trim()) return translated;
         const translatedRecord = asRecord(translated);
-        return translatedRecord?.label || translatedRecord?.name || item;
+        return (
+          nonEmptyString(translatedRecord?.label) ??
+          nonEmptyString(translatedRecord?.name) ??
+          item
+        );
       }
-      return asRecord(translatedItems)?.[item] || item;
+      return nonEmptyString(asRecord(translatedItems)?.[item]) ?? item;
     }
 
     const itemRecord = asRecord(item);
@@ -66,8 +70,14 @@ const localizeNamedItems = (
     return translatedRecord
       ? {
           ...itemRecord,
-          name: translatedRecord.name || translatedRecord.label || itemRecord.name,
-          label: translatedRecord.label || translatedRecord.name || itemRecord.label,
+          name:
+            nonEmptyString(translatedRecord.name) ??
+            nonEmptyString(translatedRecord.label) ??
+            itemRecord.name,
+          label:
+            nonEmptyString(translatedRecord.label) ??
+            nonEmptyString(translatedRecord.name) ??
+            itemRecord.label,
         }
       : item;
   });
@@ -138,6 +148,26 @@ export const localizeNamedRecord = <T extends LocalizableRecord>(
   return localized;
 };
 
+export const filterFieldsForAudience = <T extends { _id?: unknown }>(
+  fields: T[],
+  isAdmin: boolean
+): T[] => {
+  if (isAdmin) return fields;
+  const dependsOnIds = new Set(
+    fields
+      .map((field) => {
+        const conditional = asRecord((field as Record<string, unknown>).conditional);
+        const dependsOn = conditional?.dependsOn;
+        if (dependsOn && typeof dependsOn === "object" && "_id" in dependsOn) {
+          return String((dependsOn as { _id?: unknown })._id);
+        }
+        return dependsOn == null ? undefined : String(dependsOn);
+      })
+      .filter((id): id is string => Boolean(id))
+  );
+  return fields.filter((field) => !dependsOnIds.has(String(field._id)));
+};
+
 export const preserveCanonicalFieldOrder = <T extends { _id?: unknown }>(
   canonicalIds: unknown[],
   populatedFields: T[]
@@ -160,10 +190,9 @@ export const localizeDropdownValue = <T extends LocalizableRecord>(
   const parentCandidate = asRecord(dropdownTranslation?.values)?.[key];
   const parentRecord = asRecord(parentCandidate);
   const name =
-    translatedString(ownTranslation, "name", undefined) ||
-    parentRecord?.name ||
-    parentRecord?.label ||
+    nonEmptyString(translatedString(ownTranslation, "name", undefined)) ??
+    nonEmptyString(parentRecord?.name) ??
+    nonEmptyString(parentRecord?.label) ??
     value.name;
   return { ...value, name } as T;
 };
-

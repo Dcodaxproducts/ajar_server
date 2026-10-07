@@ -17,6 +17,7 @@ import { Payment } from "../models/payment.model";
 import { RentalPolicy } from "../models/rentalPolicy.model";
 import { localizeField } from "../utils/formLocalization";
 import { resolveRequestLocale } from "../utils/locale";
+import { isMissingRequiredValue } from "../utils/requiredFieldValidation";
 
 // controllers/marketplaceListings.controller.ts]
 const toCamelCase = (str: string) =>
@@ -40,7 +41,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
     // Early validation for required fields
     const requiredFields = ["name", "subTitle", "price", "priceUnit"];
     for (const field of requiredFields) {
-      if (!normalisedBody[field]) {
+      if (isMissingRequiredValue(normalisedBody[field])) {
         return res.status(400).json({
           success: false,
           message: req.t("listing:requiredField", { field }),
@@ -171,7 +172,10 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
         continue;
       }
 
-      if (field.validation?.required && (value === undefined || value === "")) {
+      // TODO: condition values do not currently define a proven visibility
+      // evaluator contract. Keep existing required-field semantics until the mobile/admin
+      // condition behavior is documented and can be mirrored safely on the backend.
+      if (field.validation?.required && isMissingRequiredValue(value)) {
         const localizedField = localizeField(field, locale) as any;
         return res.status(400).json({
           success: false,
@@ -1589,7 +1593,7 @@ export const updateMarketplaceListing = async (
     // Manual validation for required text fields
     const required = ["name", "subTitle", "price"];
     for (const field of required) {
-      if (field in req.body && !req.body[field]) {
+      if (field in req.body && isMissingRequiredValue(req.body[field])) {
         res.status(400).json({
           success: false,
           message: req.t("listing:requiredField", { field }),

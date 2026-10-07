@@ -8,6 +8,11 @@ type TranslationValue =
   | Record<string, unknown>
   | Array<Record<string, unknown>>;
 
+export type PendingTranslation = {
+  locale: string;
+  translations: Record<string, unknown>;
+};
+
 const TRANSLATABLE_FIELDS: Record<string, readonly string[]> = {
   Form: ["name", "description"],
   Field: [
@@ -72,13 +77,6 @@ export const languageTranslationMiddleware = <T>(model: Model<T>) => {
     }
 
     try {
-      const doc = await model.findById(id);
-      if (!doc) {
-        return res
-          .status(404)
-          .json({ message: req.t("common:modelNotFound", { model: model.modelName }) });
-      }
-
       const translatableFields = extractTranslatableFields(
         model.modelName,
         req.body as Record<string, unknown>
@@ -90,6 +88,23 @@ export const languageTranslationMiddleware = <T>(model: Model<T>) => {
       if (Object.keys(translatableFields).length === 0) {
         if (Object.keys(req.body).length > 0) return next();
         return res.status(400).json({ message: req.t("common:noTranslatableFields") });
+      }
+
+      // Form patches can contain both translated and structural fields. Stage the
+      // translation so updateForm validates everything and persists one document once.
+      if (model.modelName === "Form") {
+        res.locals.pendingTranslation = {
+          locale,
+          translations: translatableFields,
+        } satisfies PendingTranslation;
+        return next();
+      }
+
+      const doc = await model.findById(id);
+      if (!doc) {
+        return res
+          .status(404)
+          .json({ message: req.t("common:modelNotFound", { model: model.modelName }) });
       }
 
       const translatedDoc = doc as typeof doc & {

@@ -27,4 +27,3 @@ export const resolveRequestLocale = (req: LocaleRequest): string =>
       req.query.locale ||
       req.language
   );
-

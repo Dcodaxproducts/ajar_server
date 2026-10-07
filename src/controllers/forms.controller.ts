@@ -7,7 +7,10 @@ import mongoose from "mongoose";
 import { paginateQuery } from "../utils/paginate";
 import { Dropdown } from "../models/dropdown.model";
 import { resolveRequestLocale } from "../utils/locale";
+import type { PendingTranslation } from "../middlewares/languageTranslation.middleware";
+import { isMissingRequiredValue } from "../utils/requiredFieldValidation";
 import {
+  filterFieldsForAudience,
   localizeDropdownValue,
   localizeField,
   localizeNamedRecord,
@@ -34,7 +37,7 @@ export const createNewForm = async (
       leaserDocuments,
     } = req.body;
 
-    if (!name || !description) {
+    if (isMissingRequiredValue(name) || isMissingRequiredValue(description)) {
       sendResponse(res, null, req.t("catalog:form.nameAndDescriptionRequired"), STATUS_CODES.BAD_REQUEST);
       return
     }
@@ -345,6 +348,11 @@ export const getFormDetails = async (
   try {
     const lang = resolveRequestLocale(req);
 
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      sendResponse(res, null, req.t("catalog:form.invalidIds"), STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
     const form = await Form.findById(req.params.id)
       .populate("fields")
       .populate("zone")
@@ -406,14 +414,23 @@ export const getFormByZoneAndSubCategory = async (
   try {
     const { zone, subCategory } = req.query;
     const lang = resolveRequestLocale(req);
+    const isAdmin = req.query.isAdmin === "true";
 
     if (!zone || !subCategory) {
       sendResponse(
         res,
         null,
-        req.t("catalog:form.zoneAndSubCategoryRequired"),
+        req.t("catalog:validation.zoneAndSubCategoryRequired"),
         STATUS_CODES.BAD_REQUEST
       );
+      return;
+    }
+
+    if (
+      !mongoose.Types.ObjectId.isValid(String(zone)) ||
+      !mongoose.Types.ObjectId.isValid(String(subCategory))
+    ) {
+      sendResponse(res, null, req.t("catalog:form.invalidZoneOrSubCategory"), STATUS_CODES.BAD_REQUEST);
       return;
     }
 
@@ -479,6 +496,11 @@ export const getFormByZoneAndSubCategory = async (
       });
     };
 
+    const allLocalizedFields = orderedFields.map((field: any) =>
+      localizeField(field, lang)
+    );
+    const responseFields = filterFieldsForAudience(allLocalizedFields, isAdmin);
+
     const localizedForm = {
       ...form,
       name:
@@ -488,7 +510,7 @@ export const getFormByZoneAndSubCategory = async (
         (typeof formTranslation.description === "string" &&
           formTranslation.description) ||
         form.description,
-      fields: orderedFields.map((field: any) => localizeField(field, lang)),
+      fields: responseFields,
       zone: localizeNamedRecord(form.zone, lang),
       subCategory: localizeNamedRecord(form.subCategory, lang),
       language: lang,
@@ -510,6 +532,11 @@ export const updateForm = async (
 ): Promise<void> => {
   try {
     const id = req.params.id as string;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      sendResponse(res, null, req.t("catalog:form.invalidIds"), STATUS_CODES.BAD_REQUEST);
+      return;
+    }
 
     const {
       fields,
@@ -570,8 +597,20 @@ export const updateForm = async (
     }
 
     if (hasOwn("setting")) form.setting = setting;
-    if (hasOwn("name")) form.name = name;
-    if (hasOwn("description")) form.description = description;
+    if (hasOwn("name")) {
+      if (isMissingRequiredValue(name)) {
+        sendResponse(res, null, req.t("catalog:form.nameAndDescriptionRequired"), STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+      form.name = name;
+    }
+    if (hasOwn("description")) {
+      if (isMissingRequiredValue(description)) {
+        sendResponse(res, null, req.t("catalog:form.nameAndDescriptionRequired"), STATUS_CODES.BAD_REQUEST);
+        return;
+      }
+      form.description = description;
+    }
     if (hasOwn("zone")) {
       if (!mongoose.Types.ObjectId.isValid(String(zone))) {
         sendResponse(res, null, req.t("catalog:form.invalidZoneOrSubCategory"), STATUS_CODES.BAD_REQUEST);
@@ -587,7 +626,25 @@ export const updateForm = async (
       form.subCategory = new mongoose.Types.ObjectId(subCategory);
     }
 
-    // Save the changes
+    const pendingTranslation = res.locals.pendingTranslation as
+      | PendingTranslation
+      | undefined;
+    if (pendingTranslation) {
+      if (!Array.isArray(form.languages)) form.languages = [];
+      const existingTranslation = form.languages.find(
+        (entry) => entry.locale.toLowerCase() === pendingTranslation.locale
+      );
+      if (existingTranslation) {
+        existingTranslation.translations = {
+          ...existingTranslation.translations,
+          ...pendingTranslation.translations,
+        };
+      } else {
+        form.languages.push(pendingTranslation);
+      }
+    }
+
+    // Structural changes and staged translations persist atomically in one save.
     await form.save();
 
     // Fetch the updated form with population for the response
