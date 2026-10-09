@@ -12,6 +12,8 @@ export type ListingParameter = {
   order: number;
   isMultiple: boolean;
   options?: unknown[];
+  optionItems?: Array<{ value: unknown; label: string }>;
+  displayValue?: unknown;
 };
 
 const toCamelCase = (value: string): string =>
@@ -45,6 +47,78 @@ const normalizeValue = (type: string, isMultiple: boolean, value: unknown): unkn
     if (["no", "false", "0"].includes(parsed.toLowerCase())) return false;
   }
   return parsed;
+};
+
+const displayLabel = (value: unknown): string | undefined => {
+  if (typeof value === "string" && value.trim()) return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of ["label", "name"]) {
+    if (typeof record[key] === "string" && record[key].trim()) return record[key];
+  }
+  return undefined;
+};
+
+const optionItemsFor = (
+  rawOptions: unknown,
+  localizedOptions: unknown
+): Array<{ value: unknown; label: string }> | undefined => {
+  if (!Array.isArray(rawOptions)) return undefined;
+  const localized = Array.isArray(localizedOptions) ? localizedOptions : [];
+  return rawOptions.map((value, index) => ({
+    value,
+    label: displayLabel(localized[index]) || displayLabel(value) || String(value),
+  }));
+};
+
+const optionDisplayValue = (
+  value: unknown,
+  optionItems: Array<{ value: unknown; label: string }> | undefined
+): unknown => {
+  if (!optionItems) return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => optionDisplayValue(item, optionItems));
+  }
+  const match = optionItems.find((item) => String(item.value) === String(value));
+  return match?.label || value;
+};
+
+const locationAddress = (value: unknown): string | undefined => {
+  const parsed = parseStructuredValue(value);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+  const record = parsed as Record<string, unknown>;
+  if (record.location !== undefined) {
+    const nested = locationAddress(record.location);
+    if (nested) return nested;
+  }
+  for (const key of ["address", "formattedAddress", "name", "label"]) {
+    if (typeof record[key] === "string" && record[key].trim()) return record[key];
+  }
+  return undefined;
+};
+
+const persistedLocationLabel = (
+  listing: ListingRecord,
+  key: string,
+  value: unknown
+): string | undefined => {
+  const structuredAddress = locationAddress(value);
+  if (structuredAddress) return structuredAddress;
+  const baseKey = key.replace(/(Location|PlaceId|Place|Id)$/i, "");
+  const candidateKeys = new Set([
+    `${key}Address`,
+    `${key}Label`,
+    `${baseKey}Address`,
+    `${baseKey}Label`,
+    ...(key.toLowerCase() === "location" ? ["address"] : []),
+  ]);
+  for (const candidateKey of candidateKeys) {
+    const candidate = listing[candidateKey];
+    if (typeof candidate === "string" && candidate.trim()) return candidate;
+    const nested = locationAddress(candidate);
+    if (nested) return nested;
+  }
+  return undefined;
 };
 
 export const hiddenListingParameterKeys = (fields: FieldRecord[]): string[] =>
@@ -81,11 +155,18 @@ export const buildListingParameters = (
         ? localized.label
         : originalName;
     const options = Array.isArray(localized.options) ? localized.options : undefined;
+    const optionItems = optionItemsFor(field.options, localized.options);
     const isMultiple = field.isMultiple === true || type === "images";
     const value =
       isFile && matchingFiles.length > 0
         ? matchingFiles
         : normalizeValue(type, isMultiple, listing[key]);
+    const displayValue =
+      type === "location"
+        ? persistedLocationLabel(listing, key, value)
+        : type === "select"
+          ? optionDisplayValue(value, optionItems)
+          : undefined;
 
     return [{
       key,
@@ -95,5 +176,7 @@ export const buildListingParameters = (
       order: typeof field.order === "number" ? field.order : index,
       isMultiple,
       ...(options ? { options } : {}),
+      ...(optionItems ? { optionItems } : {}),
+      ...(displayValue !== undefined ? { displayValue } : {}),
     }];
   });

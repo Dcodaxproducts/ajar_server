@@ -844,7 +844,7 @@ export const getMarketplaceListingByIdforLeaser = async (
 
   try {
     const { id } = req.params;
-    const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
+    const locale = resolveRequestLocale(req);
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       await session.abortTransaction();
@@ -908,7 +908,7 @@ export const getMarketplaceListingByIdforLeaser = async (
       subCategory: doc.subCategory?._id,
       zone: doc.zone?._id,
     })
-      .select("setting userDocuments leaserDocuments")
+      .select("fields setting userDocuments leaserDocuments")
       .session(session)
       .lean();
 
@@ -940,6 +940,25 @@ export const getMarketplaceListingByIdforLeaser = async (
 
       doc.userDocuments = mapDocs(rawUserDocs, userDropdownValues);
       doc.leaserDocuments = mapDocs(rawLeaserDocs, leaserDropdownValues);
+
+      const fields = await Field.find({ _id: { $in: form.fields || [] } })
+        .select(
+          "name type label isMultiple options order visible isFixed languages"
+        )
+        .session(session)
+        .lean();
+      const parameterFields = fields as unknown as Array<
+        Record<string, unknown> & { _id?: unknown }
+      >;
+      doc.parameters = buildListingParameters(
+        doc as Record<string, unknown>,
+        form.fields || [],
+        parameterFields,
+        locale
+      );
+      for (const hiddenKey of hiddenListingParameterKeys(parameterFields)) {
+        delete doc[hiddenKey];
+      }
     } else {
       doc.userDocuments = [];
       doc.leaserDocuments = [];

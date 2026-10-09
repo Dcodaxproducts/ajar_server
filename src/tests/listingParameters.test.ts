@@ -47,3 +47,62 @@ test("listing review parameters exclude hidden, fixed, and unsubmitted fields", 
   assert.deepEqual(buildListingParameters({ secret: "private", name: "Fixed listing name" }, ["secret", "name", "empty"], fields, "en"), []);
   assert.deepEqual(hiddenListingParameterKeys(fields), ["secret"]);
 });
+
+
+test("listing parameters expose persisted address instead of a place identifier", () => {
+  const parameters = buildListingParameters(
+    {
+      pickupLocation: "ChIJN1t_tDeuEmsRUsoyG83frY4",
+      pickupAddress: "Bus Stop 71628, Qatar",
+    },
+    ["pickup"],
+    [
+      {
+        _id: "pickup",
+        name: "pickup-location",
+        label: "Pickup Location",
+        type: "location",
+        visible: true,
+      },
+    ],
+    "en"
+  );
+
+  assert.equal(parameters[0].value, "ChIJN1t_tDeuEmsRUsoyG83frY4");
+  assert.equal(parameters[0].displayValue, "Bus Stop 71628, Qatar");
+});
+
+test("listing parameters map select codes to localized labels", () => {
+  const parameters = buildListingParameters(
+    { fuelType: ["hybrid", "electric"] },
+    ["fuel"],
+    [
+      {
+        _id: "fuel",
+        name: "fuel-type",
+        label: "Fuel type",
+        type: "select",
+        isMultiple: true,
+        visible: true,
+        options: ["hybrid", "electric"],
+        languages: [
+          {
+            locale: "ar",
+            translations: {
+              label: "نوع الوقود",
+              options: { hybrid: "هجين", electric: "كهربائي" },
+            },
+          },
+        ],
+      },
+    ],
+    "ar"
+  );
+
+  assert.equal(parameters[0].label, "نوع الوقود");
+  assert.deepEqual(parameters[0].optionItems, [
+    { value: "hybrid", label: "هجين" },
+    { value: "electric", label: "كهربائي" },
+  ]);
+  assert.deepEqual(parameters[0].displayValue, ["هجين", "كهربائي"]);
+});
