@@ -16,7 +16,7 @@ import { Form } from "../models/form.model";
 import { generatePIN } from "../utils/generatePin";
 import { Review } from "../models/review.model";
 import { isBookingDateAvailable, isBookingExpiredForApproval, lockAndCheckBookingAvailability } from "../utils/dateValidator";
-import { ACTIVE_BOOKING_STATUSES, availabilityCheckInForUnit } from "../utils/bookingAvailability";
+import { ACTIVE_BOOKING_STATUSES } from "../utils/bookingAvailability";
 import { notificationQueue } from "../queues/notification.queue";
 import { emailQueue } from "../queues/email.queue";
 import { cancelReminder, scheduleReminder } from "../queues/reminders";
@@ -390,17 +390,12 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: durationError });
     }
 
-    const availabilityCheckIn = availabilityCheckInForUnit(
-      checkInDate,
-      listing.priceUnit
-    );
-
     // This is an early UX rejection only. MongoDB cannot enforce a unique index
     // over date ranges, so the payment-hold transition revalidates again while
     // holding the listing document write lock; unpaid pending requests reserve nothing.
     const isAvailable = await isBookingDateAvailable(
       listingId,
-      availabilityCheckIn,
+      checkInDate,
       checkOutDate
     );
 
@@ -706,6 +701,23 @@ export const updateBookingStatus = async (
       (childBooking as any).extensionRequestedDate = undefined;
       await childBooking.save({ session });
 
+      const extensionActiveBookingIds = await Booking.find({
+        marketplaceListingId: extensionListing._id,
+        status: { $in: ACTIVE_BOOKING_STATUSES },
+      })
+        .session(session)
+        .distinct("_id");
+      await MarketplaceListing.findByIdAndUpdate(
+        extensionListing._id,
+        {
+          $set: {
+            currentBookingId: extensionActiveBookingIds,
+            isAvailable: extensionActiveBookingIds.length === 0,
+          },
+        },
+        { session }
+      );
+
       // Update parent booking
       parentBooking.isExtend = true;
       await parentBooking.save({ session });
@@ -888,13 +900,9 @@ export const updateBookingStatus = async (
       }
 
 
-      const approvalCheckIn = availabilityCheckInForUnit(
-        parentBooking.dates.checkIn,
-        listing.priceUnit
-      );
       const approvalAvailable = await lockAndCheckBookingAvailability(
         listing._id,
-        approvalCheckIn,
+        parentBooking.dates.checkIn,
         parentBooking.dates.checkOut,
         parentBooking._id,
         session
@@ -1035,19 +1043,24 @@ export const updateBookingStatus = async (
     }
 
     if (finalStatus === "booking_cancelled") {
-      await Booking.updateMany(
-        {
-          previousBookingId: parentBooking._id,
-          status: { $in: ["pending", "approved", "in_progress"] },
-        },
-        {
-          $set: {
-            status: "booking_cancelled",
-            cancelledFromStatus: isEarlyReturn ? "in_progress" : "approved",
-          },
-        },
-        { session }
-      );
+      const childBookings = await Booking.find({
+        previousBookingId: parentBooking._id,
+        status: { $in: ["pending", "approved", "in_progress"] },
+      }).session(session);
+
+      for (const childBooking of childBookings) {
+        if (childBooking.status === "pending") {
+          await releaseBookingPaymentHold(childBooking._id, session);
+          childBooking.status = "request_cancelled";
+          childBooking.depositStatus = "none";
+          childBooking.otp = "";
+          childBooking.returnOtp = "";
+        } else if (childBooking.status === "approved" || childBooking.status === "in_progress") {
+          childBooking.cancelledFromStatus = childBooking.status;
+          childBooking.status = "booking_cancelled";
+        }
+        await childBooking.save({ session });
+      }
     }
 
     // ========== UPDATE LISTING ==========

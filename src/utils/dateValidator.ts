@@ -16,7 +16,7 @@ export const isBookingDateAvailable = async (
     : [];
 
   const listing = await MarketplaceListing.findById(listingId)
-    .select("unavailability")
+    .select("unavailability priceUnit")
     .session(session || null)
     .lean();
   if (!listing) return false;
@@ -24,7 +24,8 @@ export const isBookingDateAvailable = async (
     blackoutDatesOverlapRange(
       parseBlackoutDates(listing.unavailability),
       newCheckIn,
-      newCheckOut
+      newCheckOut,
+      listing.priceUnit === "hour"
     )
   ) return false;
 
@@ -32,12 +33,12 @@ export const isBookingDateAvailable = async (
     marketplaceListingId: listingId,
     status: { $in: [...ACTIVE_BOOKING_STATUSES, "pending"] },
     ...(excludeArray.length > 0 && { _id: { $nin: excludeArray } }),
-    $or: [
-      {
-        "dates.checkIn": { $lte: newCheckOut },
-        "dates.checkOut": { $gte: newCheckIn },
-      },
-    ],
+    "dates.checkIn": listing.priceUnit === "hour"
+      ? { $lt: newCheckOut }
+      : { $lte: newCheckOut },
+    "dates.checkOut": listing.priceUnit === "hour"
+      ? { $gt: newCheckIn }
+      : { $gte: newCheckIn },
   }).select("_id status").session(session || null);
 
   if (!overlappingBookings.length) return true;

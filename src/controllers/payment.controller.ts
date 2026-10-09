@@ -279,6 +279,13 @@ export const stripeWebhook = async (req: Request, res: Response) => {
         );
       }
 
+      else if (event.type === "payment_intent.canceled") {
+        await Payment.findOneAndUpdate(
+          { paymentIntentId: paymentIntent.id },
+          { status: "cancelled" }
+        );
+      }
+
       res.json({ received: true });
     }
     else {
@@ -286,7 +293,7 @@ export const stripeWebhook = async (req: Request, res: Response) => {
     }
   } catch (err) {
     if (err instanceof BookingAvailabilityConflictError) {
-      return res.status(409).send("Booking dates are no longer available");
+      return res.json({ received: true });
     }
     console.error("Webhook Processing Error:", err);
     res.status(500).send("Webhook processing error");

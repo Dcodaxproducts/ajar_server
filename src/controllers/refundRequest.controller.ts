@@ -320,7 +320,7 @@ export const updateRefundStatus = async (
 
       // Extensions follow the parent out of the rental
       await Booking.updateMany(
-        { previousBookingId: booking._id, status: { $ne: "booking_cancelled" } },
+        { previousBookingId: booking._id, status: { $in: ["approved", "in_progress"] } },
         {
           $set: {
             status: "booking_cancelled",
