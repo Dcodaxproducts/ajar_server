@@ -15,9 +15,14 @@ import { FavouriteCheck } from "../models/favouriteChecks.model";
 import { Dropdown } from "../models/dropdown.model";
 import { Payment } from "../models/payment.model";
 import { RentalPolicy } from "../models/rentalPolicy.model";
+import { Field } from "../models/field.model";
 import { localizeField } from "../utils/formLocalization";
 import { resolveRequestLocale } from "../utils/locale";
 import { isMissingRequiredValue } from "../utils/requiredFieldValidation";
+import {
+  buildListingParameters,
+  hiddenListingParameterKeys,
+} from "../utils/listingParameters";
 
 // controllers/marketplaceListings.controller.ts]
 const toCamelCase = (str: string) =>
@@ -995,7 +1000,7 @@ export const getMarketplaceListingById = async (
 
   try {
     const { id } = req.params;
-    const locale = req.headers["language"]?.toString()?.toLowerCase() || "en";
+    const locale = resolveRequestLocale(req);
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       await session.abortTransaction();
@@ -1066,13 +1071,34 @@ export const getMarketplaceListingById = async (
       subCategory: doc.subCategory?._id || doc.subCategory,
       zone: zoneId,
     })
-      .select("userDocuments leaserDocuments setting")
+      .select("fields userDocuments leaserDocuments setting")
       .session(session)
       .lean();
 
     if (form) {
       (doc as any).userDocuments = form.userDocuments || [];
       (doc as any).leaserDocuments = form.leaserDocuments || [];
+
+      const fields = await Field.find({ _id: { $in: form.fields || [] } })
+        .select(
+          "name type label isMultiple options order visible isFixed languages"
+        )
+        .session(session)
+        .lean();
+      const parameterFields = fields as unknown as Array<
+        Record<string, unknown> & { _id?: unknown }
+      >;
+      Object.assign(doc, {
+        parameters: buildListingParameters(
+          doc as unknown as Record<string, unknown>,
+          form.fields || [],
+          parameterFields,
+          locale
+        ),
+      });
+      for (const hiddenKey of hiddenListingParameterKeys(parameterFields)) {
+        delete (doc as unknown as Record<string, unknown>)[hiddenKey];
+      }
 
       if (form.setting && doc.price) {
         const renterCommission = form.setting?.renterCommission?.value || 0;
