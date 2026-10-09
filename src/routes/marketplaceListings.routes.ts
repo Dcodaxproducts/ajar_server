@@ -18,6 +18,7 @@ import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 import { uploadAny } from "../utils/multer";
 import { optionalAuth } from "../middlewares/optionalAuthMiddleware";
+import { allowRoles } from "../middlewares/allowRoles";
 
 const router = express.Router();
 
@@ -61,6 +62,7 @@ router.post(
 router.patch(
   "/:listingId/status",
   useAuth,
+  asyncHandler(allowRoles("admin")),
   asyncHandler(updateListingStatus)
 );
 

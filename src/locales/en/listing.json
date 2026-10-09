@@ -12,6 +12,7 @@
   "formNotFound": "Form not found for this Zone/SubCategory",
   "invalidPriceUnit": "Invalid priceUnit. Allowed: hour, day, month, year",
   "invalidStatus": "Invalid status. Allowed values: approved, rejected",
+  "invalidFilterStatus": "Invalid listing status. Allowed values: approved, pending, rejected",
   "nameQueryRequired": "Name query is required",
   "bookedDatesFetched": "Booked dates fetched successfully",
   "bookedSlotsFetched": "Booked slots fetched successfully",

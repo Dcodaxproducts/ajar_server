@@ -103,6 +103,7 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
 );
 
 MarketplaceListingSchema.index({ leaser: 1 });
+MarketplaceListingSchema.index({ status: 1, zone: 1, createdAt: -1 });
 
 export const MarketplaceListing = model<IMarketplaceListing>(
   "MarketplaceListing",

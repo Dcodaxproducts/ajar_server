@@ -24,6 +24,13 @@ import {
   buildListingParameters,
   hiddenListingParameterKeys,
 } from "../utils/listingParameters";
+import {
+  addCanonicalApprovalStatus,
+  buildListingNameSearch,
+  listingApprovalStatusValues,
+  parseListingApprovalStatusQuery,
+  type ListingApprovalStatus,
+} from "../utils/listingApprovalStatus";
 
 // controllers/marketplaceListings.controller.ts]
 const toCamelCase = (str: string) =>
@@ -330,6 +337,7 @@ export const getAllMarketplaceListingsforLeaser = async (
       page = 1,
       limit = 10,
       zone,
+      status: statusQuery,
       subCategory,
       category,
       all,
@@ -337,10 +345,25 @@ export const getAllMarketplaceListingsforLeaser = async (
     } = req.query;
 
     const filter: any = {};
+    let requestedStatus: ListingApprovalStatus | undefined;
+    try {
+      requestedStatus = parseListingApprovalStatusQuery(statusQuery);
+    } catch {
+      await session.abortTransaction();
+      session.endSession();
+      res.status(STATUS_CODES.BAD_REQUEST).json({
+        success: false,
+        message: req.t("listing:invalidFilterStatus"),
+      });
+      return;
+    }
 
     // ROLE-BASED FILTERS
     if (req.user) {
       if (req.user.role === "admin") {
+        if (requestedStatus) {
+          filter.status = { $in: listingApprovalStatusValues(requestedStatus) };
+        }
         if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
           filter.zone = new mongoose.Types.ObjectId(String(zone));
         }
@@ -478,7 +501,7 @@ export const getAllMarketplaceListingsforLeaser = async (
         obj.description = listingLang.translations.description || obj.description;
       }
       delete obj.languages;
-      return obj;
+      return addCanonicalApprovalStatus(obj);
     });
 
     const uniqueUserIds = await MarketplaceListing.distinct("leaser", filter).session(session);
@@ -528,13 +551,27 @@ export const getAllMarketplaceListings = async (
       recent,
       minPrice,
       maxPrice,
-      search
+      search,
+      status: statusQuery,
     } = req.query;
 
     const filter: any = {};
+    let requestedStatus: ListingApprovalStatus | undefined;
+    try {
+      requestedStatus = parseListingApprovalStatusQuery(statusQuery);
+    } catch {
+      await session.abortTransaction();
+      session.endSession();
+      res.status(STATUS_CODES.BAD_REQUEST).json({
+        success: false,
+        message: req.t("listing:invalidFilterStatus"),
+      });
+      return;
+    }
 
-    if (search) {
-      filter.name = { $regex: search, $options: "i" };
+    const nameSearch = buildListingNameSearch(search);
+    if (nameSearch) {
+      filter.name = nameSearch;
     }
 
     /* ---------------- ROLE BASED FILTERS (unchanged) ---------------- */
@@ -542,6 +579,9 @@ export const getAllMarketplaceListings = async (
 
     if (req.user) {
       if (adminRoles.includes(req.user.role)) {
+        if (requestedStatus) {
+          filter.status = { $in: listingApprovalStatusValues(requestedStatus) };
+        }
         if (zone && mongoose.Types.ObjectId.isValid(String(zone))) {
           filter.zone = new mongoose.Types.ObjectId(String(zone));
         }
@@ -803,7 +843,7 @@ export const getAllMarketplaceListings = async (
           listingLang.translations.description || obj.description;
       }
       delete obj.languages;
-      return obj;
+      return addCanonicalApprovalStatus(obj);
     });
 
     const uniqueUserIds = await MarketplaceListing.distinct(
