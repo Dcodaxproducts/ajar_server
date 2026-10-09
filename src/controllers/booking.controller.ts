@@ -1400,8 +1400,29 @@ export const updateBookingStatus = async (
     );
 
   } catch (err) {
-    await session.abortTransaction();
+    if (session.inTransaction()) await session.abortTransaction();
     session.endSession();
+
+    const hasErrorLabel =
+      typeof err === "object" &&
+      err !== null &&
+      "hasErrorLabel" in err &&
+      typeof (err as { hasErrorLabel?: unknown }).hasErrorLabel === "function"
+        ? (err as { hasErrorLabel: (label: string) => boolean }).hasErrorLabel.bind(err)
+        : null;
+
+    if (
+      hasErrorLabel?.("TransientTransactionError") ||
+      hasErrorLabel?.("UnknownTransactionCommitResult")
+    ) {
+      return sendResponse(
+        res,
+        null,
+        req.t("booking:updateFailed"),
+        STATUS_CODES.CONFLICT
+      );
+    }
+
     next(err);
   }
 };

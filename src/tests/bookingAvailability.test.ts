@@ -56,6 +56,8 @@ test("calendar, cancellation, approval, and payment paths share the invariant", 
   assert.match(payments, /booking-conflict-cancel/);
   assert.match(booking, /childBooking.status = "request_cancelled"/);
   assert.match(booking, /extensionActiveBookingIds/);
+  assert.match(booking, /TransientTransactionError/);
+  assert.match(booking, /UnknownTransactionCommitResult/);
   assert.match(paymentController, /event.type === "payment_intent.canceled"/);
   assert.match(paymentController, /BookingAvailabilityConflictError[\s\S]*received: true/);
 });
