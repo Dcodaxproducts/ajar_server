@@ -5,6 +5,20 @@ import { Category } from "../models/category.model";
 import asyncHandler from "express-async-handler";
 import mongoose from "mongoose";
 import { paginateQuery } from "../utils/paginate";
+import { normalizeCancellationTiers } from "../utils/refundPolicyTiers";
+
+const parseCancellationTiers = (
+  value: unknown,
+  req: Request,
+  res: Response
+): ReturnType<typeof normalizeCancellationTiers> | undefined => {
+  try {
+    return normalizeCancellationTiers(value);
+  } catch {
+    res.status(400).json({ message: req.t("refund:policy.invalidCancellationTiers") });
+    return undefined;
+  }
+};
 
 const isValidObjectIdAndExists = async (
   id: string,
@@ -28,11 +42,14 @@ export const createRefundPolicy = asyncHandler(
       return;
     }
 
+    const tiers = parseCancellationTiers(req.body.tiers ?? [], req, res);
+    if (!tiers) return;
+
     const policy = await RefundPolicy.create({
       zone,
       subCategory,
       allowRefund: req.body.allowRefund ?? false,
-      tiers: req.body.tiers ?? [],
+      tiers,
       earlyReturnTiers: req.body.earlyReturnTiers ?? [],
       noteText: req.body.noteText ?? "",
     });
@@ -134,7 +151,11 @@ export const updateRefundPolicy = asyncHandler(
     const { allowRefund, tiers, earlyReturnTiers, noteText } = req.body;
     const patch: Record<string, unknown> = {};
     if (allowRefund !== undefined) patch.allowRefund = allowRefund;
-    if (tiers !== undefined) patch.tiers = tiers;
+    if (tiers !== undefined) {
+      const normalizedTiers = parseCancellationTiers(tiers, req, res);
+      if (!normalizedTiers) return;
+      patch.tiers = normalizedTiers;
+    }
     if (earlyReturnTiers !== undefined) patch.earlyReturnTiers = earlyReturnTiers;
     if (noteText !== undefined) patch.noteText = noteText;
 

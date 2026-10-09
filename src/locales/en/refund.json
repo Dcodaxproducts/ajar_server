@@ -28,7 +28,8 @@
     "invalidSubCategoryId": "Invalid subCategory ID",
     "zoneAndSubCategoryRequired": "zone and subCategory are required",
     "zoneMismatch": "Zone mismatch between params and body",
-    "subCategoryMismatch": "SubCategory mismatch between params and body"
+    "subCategoryMismatch": "SubCategory mismatch between params and body",
+    "invalidCancellationTiers": "Cancellation tiers must use unique, non-negative whole hours before check-in"
   },
 
   "settings": {

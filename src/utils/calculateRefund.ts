@@ -4,6 +4,7 @@ import {
   ICancellationTier,
   IEarlyReturnTier,
 } from "../models/refundPolicy.model";
+import { normalizeCancellationTiers } from "./refundPolicyTiers";
 
 export type RefundBasis = "checkIn" | "checkOut";
 
@@ -29,18 +30,24 @@ export function calculateRefund(
     return noRefund(totalPrice, "Refunds are not allowed for this category/zone", "checkIn");
   }
 
-  // can't refund a booking whose check-in already passed
-  const hoursRemaining = differenceInHours(checkInDate, now);
-  if (hoursRemaining < 0) {
+  // Compare UTC instants directly so fractional hours, offsets, and DST do not
+  // change the exact threshold boundary.
+  const millisecondsRemaining = checkInDate.getTime() - now.getTime();
+  if (millisecondsRemaining < 0) {
     return noRefund(totalPrice, "Check-in date has already passed", "checkIn");
   }
+  const hoursRemaining = Math.floor(millisecondsRemaining / (60 * 60 * 1000));
 
-  const sortedTiers = [...policy.tiers].sort(
+  // Normalize legacy persisted day thresholds to explicit hours until the
+  // reversible data migration has been applied in each environment.
+  const sortedTiers = normalizeCancellationTiers(policy.tiers).sort(
     (a, b) => b.hoursBeforeCheckIn - a.hoursBeforeCheckIn
   );
 
   const matchedTier =
-    sortedTiers.find((tier) => hoursRemaining >= tier.hoursBeforeCheckIn) ?? null;
+    sortedTiers.find(
+      (tier) => millisecondsRemaining >= tier.hoursBeforeCheckIn * 60 * 60 * 1000
+    ) ?? null;
 
   return applyTier({
     totalPrice,
