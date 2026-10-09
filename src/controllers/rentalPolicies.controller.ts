@@ -4,6 +4,7 @@ import { Zone } from "../models/zone.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { RentalPolicy } from "../models/rentalPolicy.model";
+import { isValidDisputeWindowDays } from "../services/damageDispute.service";
 
 const updateRentalPolicy = async (
   req: Request,
@@ -82,6 +83,25 @@ const updateRentalPolicy = async (
       }
 
     } else {
+      const invalidSecurityDepositRules =
+        field === "securityDepositRules" &&
+        ((req.body.disputeWindowDays !== undefined &&
+          !isValidDisputeWindowDays(req.body.disputeWindowDays)) ||
+          (req.body.depositAmount !== undefined &&
+            (!Number.isFinite(req.body.depositAmount) || req.body.depositAmount < 0)) ||
+          (req.body.depositRequired !== undefined &&
+            typeof req.body.depositRequired !== "boolean") ||
+          (req.body.depositConditions !== undefined &&
+            (typeof req.body.depositConditions !== "string" ||
+              req.body.depositConditions.length > 2000)));
+      if (invalidSecurityDepositRules) {
+        return sendResponse(
+          res,
+          null,
+          req.t("rental:invalidSecurityDepositRules"),
+          STATUS_CODES.BAD_REQUEST
+        );
+      }
       // Merge for securityDepositRules or damageLiabilityTerms
       newPolicyData[field] = {
         ...newPolicyData[field],

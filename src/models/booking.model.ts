@@ -67,7 +67,7 @@ export interface IBooking extends Document {
   refundNote?: string;
   rentalPolicyId: mongoose.Types.ObjectId;
   rentalPolicySnapshot?: Record<string, any>;
-  depositStatus?: "none" | "held" | "released" | "disputed" | "partially_refunded" | "deducted";
+  depositStatus?: "none" | "held" | "release_pending" | "released" | "disputed" | "partially_refunded" | "deducted";
   depositDisputeWindowDays?: number;
   disputeWindowEndsAt?: Date;
   depositReleasedAt?: Date;
@@ -174,10 +174,10 @@ const BookingSchema = new Schema<IBooking>(
     },
     depositStatus: {
       type: String,
-      enum: ["none", "held", "released", "disputed", "partially_refunded", "deducted"],
+      enum: ["none", "held", "release_pending", "released", "disputed", "partially_refunded", "deducted"],
       default: "none",
     },
-    depositDisputeWindowDays: { type: Number, default: 7, min: 0 },
+    depositDisputeWindowDays: { type: Number, default: 7, min: 0, max: 30 },
     disputeWindowEndsAt: { type: Date },
     depositReleasedAt: { type: Date },
     damageDisputeId: {

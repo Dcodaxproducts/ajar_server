@@ -1,13 +1,11 @@
 import express from "express";
 import {
   createDamageReport,
-  deleteDamageReport,
   getAllDamageReports,
   getDamageReportById,
-  updateDamageReport,
-  updateDamageReportStatus
+  updateDamageReportStatus,
 } from "../controllers/damageReport.controller";
-import { uploadFiles } from "../utils/multer";
+import { uploadDamageEvidence } from "../utils/multer";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { allowRoles } from "../middlewares/allowRoles";
 
@@ -20,35 +18,12 @@ function asyncHandler(fn: any) {
 
 const useAuth = authMiddleware as any;
 const adminOnly = allowRoles(["admin"]) as unknown as express.RequestHandler;
+const authenticatedUser = allowRoles(["user", "admin"]) as unknown as express.RequestHandler;
 const userOnly = allowRoles(["user"]) as unknown as express.RequestHandler;
 
-router.post(
-  "/",
-  useAuth,
-  userOnly,
-  uploadFiles(["attachments"]),
-  asyncHandler(createDamageReport)
-);
-
-// Read all
-router.get("/", useAuth, adminOnly, asyncHandler(getAllDamageReports));
-
-// Read by ID
-router.get("/:id", useAuth, adminOnly, asyncHandler(getDamageReportById));
-
-// Update
-router.patch(
-  "/:id",
-  useAuth,
-  adminOnly,
-  uploadFiles(["attachments"]),
-  asyncHandler(updateDamageReport)
-);
-
-// Delete
-router.delete("/:id", useAuth, adminOnly, asyncHandler(deleteDamageReport));
-
-// PATCH /api/damage-report/:id/status
+router.post("/", useAuth, userOnly, uploadDamageEvidence, asyncHandler(createDamageReport));
+router.get("/", useAuth, authenticatedUser, asyncHandler(getAllDamageReports));
+router.get("/:id", useAuth, authenticatedUser, asyncHandler(getDamageReportById));
 router.patch("/:id/status", useAuth, adminOnly, asyncHandler(updateDamageReportStatus));
 
 export default router;

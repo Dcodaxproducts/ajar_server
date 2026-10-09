@@ -13,10 +13,12 @@ import { zoneSchema } from "../schemas/zone.schema";
 import upload from "../utils/multer";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 import { Zone } from "../models/zone.model";
+import { allowRoles } from "../middlewares/allowRoles";
 
 const router = express.Router();
 
 const useAuth = authMiddleware as any;
+const adminOnly = allowRoles(["admin"]) as unknown as express.RequestHandler;
 
 router.get("/", getAllZones);
 router.get("/:id", getZoneDetails);
@@ -77,18 +79,21 @@ router.get(
 router.patch(
   "/:zoneId/subcategories/:subCategoryId/rental-policies/security-deposit-rules",
   useAuth,
+  adminOnly,
   asyncHandler(updateSecurityDepositRules)
 );
 
 router.patch(
   "/:zoneId/subcategories/:subCategoryId/rental-policies/damage-liability-terms",
   useAuth,
+  adminOnly,
   asyncHandler(updateDamageLiabilityTerms)
 );
 
 router.patch(
   "/:zoneId/subcategories/:subCategoryId/rental-policies/rental-duration-limits",
   useAuth,
+  adminOnly,
   asyncHandler(updateRentalDurationLimits)
 );
 

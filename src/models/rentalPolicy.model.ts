@@ -43,7 +43,7 @@ const SecurityDepositRulesSchema = new Schema<ISecurityDepositRules>(
     depositRequired: { type: Boolean, default: false },
     depositAmount: { type: Number, default: 0 },
     depositConditions: { type: String, default: "" },
-    disputeWindowDays: { type: Number, default: 7, min: 0 },
+    disputeWindowDays: { type: Number, default: 7, min: 0, max: 30 },
   },
   { _id: false }
 );

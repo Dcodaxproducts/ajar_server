@@ -12,7 +12,9 @@
     "test": "node --test -r ts-node/register src/tests/**/*.test.ts",
     "typecheck": "tsc --noEmit",
     "migrate:refund-tiers:dry-run": "node scripts/migrate-refund-policy-tiers-to-hours.mjs --apply --dry-run",
-    "migrate:refund-tiers": "node scripts/migrate-refund-policy-tiers-to-hours.mjs"
+    "migrate:refund-tiers": "node scripts/migrate-refund-policy-tiers-to-hours.mjs",
+    "backfill:damage-deposits:dry-run": "node scripts/backfill-damage-dispute-deposits.mjs --apply --dry-run",
+    "backfill:damage-deposits": "node scripts/backfill-damage-dispute-deposits.mjs"
   },
   "keywords": [],
   "author": "",

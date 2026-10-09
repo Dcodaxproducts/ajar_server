@@ -4,5 +4,7 @@
   "invalidZoneOrSubCategory": "معرّف المنطقة أو الفئة الفرعية غير صالح",
   "zoneNotFound": "لم يتم العثور على المنطقة",
   "subCategoryNotLinked": "الفئة الفرعية غير مرتبطة بهذه المنطقة",
-  "durationLimitsMustBeArray": "يجب أن تكون rentalDurationLimits مصفوفة من السياسات"
+  "durationLimitsMustBeArray": "يجب أن تكون rentalDurationLimits مصفوفة من السياسات",
+  "invalidDisputeWindow": "يجب أن تكون disputeWindowDays عدداً صحيحاً من 0 إلى 30",
+  "invalidSecurityDepositRules": "قواعد مبلغ التأمين غير صالحة؛ يجب أن يكون المبلغ غير سالب، وأن تكون disputeWindowDays عدداً صحيحاً من 0 إلى 30، وألا تتجاوز الشروط 2000 حرف"
 }

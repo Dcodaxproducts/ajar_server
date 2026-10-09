@@ -19,5 +19,12 @@
   "partiallyApproved": "Damage report partially approved and ${{amount}} transferred to leaser successfully",
   "insufficientDeposit": "Insufficient security deposit. Damage charges (${{charges}}) exceed the renter's security deposit (${{deposit}}). Use partial approval to authorise a lower amount.",
   "approvedAmountRequired": "approvedAmount must be a number greater than 0. Use 'rejected' to approve nothing.",
-  "approvedAmountTooHigh": "Approved amount (${{amount}}) cannot exceed the renter's security deposit (${{deposit}})"
+  "approvedAmountTooHigh": "Approved amount (${{amount}}) cannot exceed the renter's security deposit (${{deposit}})",
+  "alreadyExistsOrReleased": "A damage dispute already exists or the security deposit is no longer available",
+  "invalidAmount": "Damage amount must be greater than zero",
+  "amountExceedsDeposit": "Damage amount cannot exceed the held security deposit",
+  "invalidRentalText": "Damage description is required and must be at most 2000 characters",
+  "invalidIssueType": "Issue type is required and must be at most 100 characters",
+  "invalidAttachments": "Up to 5 supported image attachments are allowed",
+  "resolutionReasonRequired": "An Admin resolution reason between 3 and 1000 characters is required"
 }

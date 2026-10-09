@@ -47,6 +47,23 @@ export const uploadFile = (fieldName: string) => upload.single(fieldName);
 export const uploadFiles = (fieldNames: string[]) =>
   upload.fields(fieldNames.map((name) => ({ name, maxCount: 10 })));
 
+const damageEvidenceUpload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024, files: 5 },
+  fileFilter: (_req, file, cb) => {
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only .jpeg, .jpg, .png, and .webp formats allowed"));
+    }
+  },
+});
+
+export const uploadDamageEvidence = damageEvidenceUpload.fields([
+  { name: "attachments", maxCount: 5 },
+]);
+
 // Relaxed upload instance (accept any file type)
 const uploadRelaxed = multer({
   storage,

@@ -222,6 +222,23 @@ export const stripeWebhook = async (req: Request, res: Response) => {
       }
       return res.json({ received: true });
     }
+    if (event.type === "refund.created" || event.type === "refund.updated") {
+      const refund = event.data.object as any;
+      const refundBookingId = refund.metadata?.bookingId;
+      if (refundBookingId && refund.status === "succeeded") {
+        await Payment.findOneAndUpdate(
+          { bookingId: refundBookingId, paymentIntentId: refund.payment_intent },
+          {
+            $set: {
+              depositRefundId: refund.id,
+              refundedAt: new Date(refund.created * 1000),
+            },
+          }
+        );
+      }
+      return res.json({ received: true });
+    }
+
     const paymentIntent = event.data.object as any;
 
     const userRenterId = paymentIntent.metadata?.userRenterId;

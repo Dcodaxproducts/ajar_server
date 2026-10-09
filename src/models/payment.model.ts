@@ -18,6 +18,8 @@ export interface IPayment extends Document {
     | "failed";
   paymentIntentId?: string;
   refundId?: string;
+  depositRefundId?: string;
+  depositRefundedAmount?: number;
   transferId?: string;
   payoutId?: string;
   // What Stripe actually took, read back from the charge after capture. Lets us
@@ -60,6 +62,8 @@ const PaymentSchema = new Schema<IPayment>(
     },
     paymentIntentId: { type: String },
     refundId: { type: String },
+    depositRefundId: { type: String },
+    depositRefundedAmount: { type: Number, default: 0 },
     transferId: { type: String },
     payoutId: { type: String },
     stripeFee: { type: Number },

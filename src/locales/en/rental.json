@@ -4,5 +4,7 @@
   "invalidZoneOrSubCategory": "Invalid zone or subCategory ID",
   "zoneNotFound": "Zone not found",
   "subCategoryNotLinked": "SubCategory is not linked to this zone",
-  "durationLimitsMustBeArray": "rentalDurationLimits must be an array of policies"
+  "durationLimitsMustBeArray": "rentalDurationLimits must be an array of policies",
+  "invalidDisputeWindow": "disputeWindowDays must be a whole number from 0 to 30",
+  "invalidSecurityDepositRules": "Security-deposit rules are invalid; amount must be non-negative, disputeWindowDays a whole number from 0 to 30, and conditions at most 2000 characters"
 }

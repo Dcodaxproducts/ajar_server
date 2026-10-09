@@ -4,6 +4,7 @@ import { Payment } from "../models/payment.model";
 import { User } from "../models/user.model";
 import { createTransaction } from "./transactionLedger";
 import stripe from "./stripe";
+import { buildDepositRefundIdempotencyKey } from "../services/damageDispute.service";
 
 const MIN_STRIPE_AMOUNT_CENTS = 50;
 
@@ -32,15 +33,16 @@ export const createManualBookingPaymentIntent = async (booking: any) => {
     throw new Error("Booking amount must be at least $0.50");
   }
 
-  return stripe.paymentIntents.create({
-    amount: amountInCents,
-    currency: "usd",
-    capture_method: "manual",
-    payment_method_types: ["card"],
-    metadata: {
-      bookingId: booking._id.toString(),
+  return stripe.paymentIntents.create(
+    {
+      amount: amountInCents,
+      currency: "usd",
+      capture_method: "manual",
+      payment_method_types: ["card"],
+      metadata: { bookingId: booking._id.toString() },
     },
-  });
+    { idempotencyKey: `booking-payment-intent-${booking._id.toString()}-v1` }
+  );
 };
 
 export const recordHeldBookingPayment = async (
@@ -102,16 +104,24 @@ export const captureHeldBookingPayment = async (
     throw new Error("Stripe payment intent not found for this booking payment");
   }
 
-  const intent = await stripe.paymentIntents.retrieve(payment.paymentIntentId);
-  if (intent.status !== "requires_capture") {
-    throw new Error(`Payment is not ready to capture: ${intent.status}`);
-  }
-
-  // Expanding the balance transaction is the only way to see what Stripe
-  // actually charged — without it we just get an id
-  const captured = await stripe.paymentIntents.capture(payment.paymentIntentId, {
+  const intent = await stripe.paymentIntents.retrieve(payment.paymentIntentId, {
     expand: ["latest_charge.balance_transaction"],
   });
+
+  // Stripe may have captured successfully before a local transaction failed.
+  // Reconcile that response instead of attempting a second capture.
+  const captured = intent.status === "requires_capture"
+    ? await stripe.paymentIntents.capture(
+        payment.paymentIntentId,
+        { expand: ["latest_charge.balance_transaction"] },
+        { idempotencyKey: `booking-capture-${bookingId.toString()}-v1` }
+      )
+    : intent.status === "succeeded"
+      ? intent
+      : null;
+  if (!captured) {
+    throw new Error(`Payment is not ready to capture: ${intent.status}`);
+  }
 
   const balanceTx = (captured.latest_charge as any)?.balance_transaction as any;
 
@@ -165,7 +175,11 @@ export const releaseBookingPaymentHold = async (
   const intent = await stripe.paymentIntents.retrieve(payment.paymentIntentId);
 
   if (intent.status === "requires_capture") {
-    await stripe.paymentIntents.cancel(payment.paymentIntentId);
+    await stripe.paymentIntents.cancel(
+      payment.paymentIntentId,
+      undefined,
+      { idempotencyKey: `booking-hold-release-${bookingId.toString()}-v1` }
+    );
   }
 
   if (["requires_capture", "canceled", "requires_payment_method", "requires_confirmation"].includes(intent.status)) {
@@ -179,7 +193,8 @@ export const releaseBookingPaymentHold = async (
 export const refundBookingSecurityDeposit = async (
   bookingId: mongoose.Types.ObjectId | string,
   depositAmount: number,
-  session?: mongoose.ClientSession
+  session?: mongoose.ClientSession,
+  settlementReference = "legacy-v1"
 ) => {
   if (!depositAmount || depositAmount <= 0) return null;
 
@@ -196,13 +211,25 @@ export const refundBookingSecurityDeposit = async (
     throw new Error("Captured booking payment not found for security deposit refund");
   }
 
-  const refund = await stripe.refunds.create({
-    payment_intent: payment.paymentIntentId,
-    amount: Math.round(depositAmount * 100),
-    reason: "requested_by_customer",
-  });
+  const amountCents = Math.round(depositAmount * 100);
+  const idempotencyKey = buildDepositRefundIdempotencyKey(
+    bookingId.toString(),
+    settlementReference,
+    amountCents
+  );
+  const refund = await stripe.refunds.create(
+    {
+      payment_intent: payment.paymentIntentId,
+      amount: amountCents,
+      reason: "requested_by_customer",
+      metadata: { bookingId: bookingId.toString(), settlementReference },
+    },
+    { idempotencyKey }
+  );
 
   payment.refundId = refund.id;
+  payment.depositRefundId = refund.id;
+  payment.depositRefundedAmount = Number(depositAmount.toFixed(2));
   payment.refundedAt = new Date();
   payment.status = "partially_refunded";
   await payment.save({ session });

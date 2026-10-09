@@ -7,7 +7,7 @@ export interface IDamageReport extends Document {
   damagedCharges: number;
   attachments: string[];
   user: mongoose.Types.ObjectId;
-  status: "pending" | "approved" | "partially_approved" | "rejected";
+  status: "pending" | "processing" | "approved" | "partially_approved" | "rejected";
   // What the admin actually authorised — can be lower than damagedCharges
   approvedAmount?: number;
   resolvedBy?: mongoose.Types.ObjectId;
@@ -45,7 +45,7 @@ const DamageReportSchema = new Schema<IDamageReport>(
     },
     status: {
       type: String,
-      enum: ["pending", "approved", "partially_approved", "rejected"],
+      enum: ["pending", "processing", "approved", "partially_approved", "rejected"],
       default: "pending",
     },
     approvedAmount: {
@@ -67,7 +67,7 @@ const DamageReportSchema = new Schema<IDamageReport>(
   { timestamps: true }
 );
 
-DamageReportSchema.index({ booking: 1 });
+DamageReportSchema.index({ booking: 1 }, { unique: true });
 DamageReportSchema.index({ status: 1, createdAt: -1 });
 
 export const DamageReport = model<IDamageReport>(
