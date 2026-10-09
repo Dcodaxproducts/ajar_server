@@ -1187,7 +1187,7 @@ export const updateBookingStatus = async (
         });
       }
 
-      let renterMsg = `Your booking ${finalBooking._id?.toString()} status changed to ${finalStatus}.`;
+      let renterMsg = `Your booking for "${listingName}" was updated.`;
 
       if (finalStatus === "approved") {
         // Show renter the full breakdown: booking cost + deposit (if any)

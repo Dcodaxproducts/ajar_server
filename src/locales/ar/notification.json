@@ -1,3 +1,188 @@
 {
-  "allMarkedRead": "تم تعليم جميع الإشعارات كمقروءة"
+  "allMarkedRead": "تم تعليم جميع الإشعارات كمقروءة",
+  "booking": {
+    "genericItem": "حجزك",
+    "dateUnavailable": "التواريخ غير متاحة",
+    "pinText": " رمز التحقق: {{pin}}",
+    "events": {
+      "payment-held": {
+        "title": "تم تأكيد الدفع",
+        "message": "تم تأمين دفعتك مقابل {{itemName}} ({{dateRange}}) إلى حين مراجعة المضيف للحجز."
+      },
+      "new-booking-request": {
+        "title": "طلب حجز جديد",
+        "message": "طلب حجز مدفوع لـ {{itemName}} ({{dateRange}}) جاهز للمراجعة."
+      },
+      "booking-request-expired": {
+        "title": "انتهت صلاحية طلب الحجز",
+        "message": "انتهت صلاحية طلب حجز {{itemName}} ({{dateRange}}) قبل الموافقة."
+      },
+      "extension-rejected": {
+        "title": "تم رفض التمديد",
+        "message": "تم رفض طلب تمديد {{itemName}} ({{dateRange}})."
+      },
+      "extension-approved": {
+        "title": "تمت الموافقة على التمديد",
+        "message": "تمت الموافقة على تمديد {{itemName}} ({{dateRange}})."
+      },
+      "extension-payment-captured": {
+        "title": "تم تأكيد دفع التمديد",
+        "message": "تم تأكيد دفع تمديد {{itemName}} ({{dateRange}})."
+      },
+      "booking-approved": {
+        "title": "تمت الموافقة على الحجز",
+        "message": "تمت الموافقة على حجز {{itemName}} ({{dateRange}}).{{pinText}}"
+      },
+      "booking-fee-received": {
+        "title": "تم استلام رسوم الحجز",
+        "message": "تم استلام رسوم المنصة لحجز {{itemName}} ({{dateRange}})."
+      },
+      "security-deposit-received": {
+        "title": "تم تأمين مبلغ الضمان",
+        "message": "تم تأمين مبلغ الضمان لـ {{itemName}} ({{dateRange}}) حتى إغلاق نافذة الاعتراض."
+      },
+      "booking-completed": {
+        "title": "اكتمل الحجز",
+        "message": "اكتمل حجز {{itemName}} ({{dateRange}})."
+      },
+      "security-deposit-refunded": {
+        "title": "تم رد مبلغ الضمان",
+        "message": "تمت إعادة مبلغ ضمان {{itemName}} ({{dateRange}}) إلى المستأجر."
+      },
+      "security-deposit-released": {
+        "title": "تم تحرير مبلغ الضمان",
+        "message": "تم تحرير مبلغ ضمان {{itemName}} ({{dateRange}}) وإعادته إلى المستأجر."
+      },
+      "booking-completed-deposit-held": {
+        "title": "اكتمل الحجز",
+        "message": "اكتمل حجز {{itemName}} ({{dateRange}})، وسيبقى مبلغ الضمان مؤمناً أثناء مراجعة بلاغ الضرر."
+      },
+      "booking-cancelled-leaser": {
+        "title": "تم إلغاء الحجز",
+        "message": "تم إلغاء حجز {{itemName}} ({{dateRange}})."
+      },
+      "booking-expired": {
+        "title": "انتهت صلاحية الحجز",
+        "message": "انتهت صلاحية حجز {{itemName}} ({{dateRange}})."
+      },
+      "booking-deleted": {
+        "title": "تمت إزالة الحجز",
+        "message": "تمت إزالة حجز {{itemName}} ({{dateRange}})، وتجري معالجة أي مبلغ مستحق للاسترداد."
+      },
+      "booking-deleted-admin": {
+        "title": "أزالت الإدارة الحجز",
+        "message": "أزالت الإدارة حجز {{itemName}} ({{dateRange}})."
+      },
+      "booking-started": {
+        "title": "بدأ الحجز",
+        "message": "بدأ حجز {{itemName}} ({{dateRange}})."
+      },
+      "return-pin": {
+        "title": "رمز التحقق من الإرجاع",
+        "message": "استخدم الرمز {{pin}} عند إرجاع {{itemName}} للحجز بتاريخ {{dateRange}}."
+      },
+      "return-confirmed": {
+        "title": "تم تأكيد الإرجاع",
+        "message": "تم تأكيد إرجاع {{itemName}} للحجز بتاريخ {{dateRange}}."
+      },
+      "refund-request-submitted": {
+        "title": "تم إرسال طلب الاسترداد",
+        "message": "طلب استرداد {{itemName}} ({{dateRange}}) قيد المراجعة."
+      },
+      "new-refund-request": {
+        "title": "طلب استرداد جديد",
+        "message": "طلب استرداد {{itemName}} ({{dateRange}}) جاهز للمراجعة."
+      },
+      "refund-rejected": {
+        "title": "تم رفض الاسترداد",
+        "message": "تم رفض طلب استرداد {{itemName}} ({{dateRange}})."
+      },
+      "refund-approved": {
+        "title": "تمت الموافقة على الاسترداد",
+        "message": "تمت الموافقة على استرداد {{itemName}} ({{dateRange}})."
+      },
+      "refund-processed": {
+        "title": "تمت معالجة الاسترداد",
+        "message": "تمت معالجة استرداد {{itemName}} ({{dateRange}})."
+      },
+      "damage-report-filed": {
+        "title": "بلاغ ضرر جديد",
+        "message": "بلاغ ضرر {{itemName}} ({{dateRange}}) جاهز للمراجعة."
+      },
+      "damage-report-filed-renter": {
+        "title": "تم تقديم بلاغ ضرر",
+        "message": "تم تقديم بلاغ ضرر لـ {{itemName}} ({{dateRange}})، وسيبقى مبلغ الضمان مؤمناً أثناء المراجعة."
+      },
+      "damage-report-approved": {
+        "title": "تمت الموافقة على بلاغ الضرر",
+        "message": "تمت الموافقة على بلاغ ضرر {{itemName}} ({{dateRange}})."
+      },
+      "damage-charges-deducted": {
+        "title": "تمت معالجة رسوم الضرر",
+        "message": "تمت معالجة رسوم الضرر المعتمدة لـ {{itemName}} ({{dateRange}})."
+      },
+      "damage-report-rejected": {
+        "title": "تم رفض بلاغ الضرر",
+        "message": "تم رفض بلاغ ضرر {{itemName}} ({{dateRange}})."
+      },
+      "booking_approval_expiring": {
+        "title": "طلب الحجز أوشك على الانتهاء",
+        "message": "سينتهي طلب حجز {{itemName}} ({{dateRange}}) قريباً."
+      },
+      "pickup_reminder": {
+        "title": "تذكير بالاستلام",
+        "message": "موعد استلام {{itemName}} ({{dateRange}}) قريب."
+      },
+      "handover_reminder": {
+        "title": "تذكير بالتسليم",
+        "message": "جهّز {{itemName}} للحجز بتاريخ {{dateRange}}."
+      },
+      "review_reminder": {
+        "title": "كيف كانت تجربتك؟",
+        "message": "شارك تقييماً لـ {{itemName}} عن الفترة {{dateRange}}."
+      },
+      "returned_item_inspection": {
+        "title": "افحص العنصر المُعاد",
+        "message": "يرجى فحص {{itemName}} من الحجز بتاريخ {{dateRange}}."
+      },
+      "dispute_window_closing": {
+        "title": "نافذة اعتراض الضرر توشك على الإغلاق",
+        "message": "ستغلق نافذة اعتراض ضرر {{itemName}} ({{dateRange}}) قريباً."
+      },
+      "return_reminder": {
+        "title": "تذكير بالإرجاع",
+        "message": "استئجار {{itemName}} ({{dateRange}}) سينتهي قريباً."
+      },
+      "return_due": {
+        "title": "موعد إرجاع العنصر",
+        "message": "موعد إرجاع {{itemName}} من الحجز بتاريخ {{dateRange}} قريب."
+      },
+      "booking-status-changed": {
+        "approved": {
+          "title": "تمت الموافقة على الحجز",
+          "message": "تمت الموافقة على حجز {{itemName}} ({{dateRange}})."
+        },
+        "rejected": {
+          "title": "تم رفض الحجز",
+          "message": "تم رفض حجز {{itemName}} ({{dateRange}})."
+        },
+        "request_cancelled": {
+          "title": "تم إلغاء طلب الحجز",
+          "message": "تم إلغاء طلب حجز {{itemName}} ({{dateRange}})."
+        },
+        "booking_cancelled": {
+          "title": "تم إلغاء الحجز",
+          "message": "تم إلغاء حجز {{itemName}} ({{dateRange}})."
+        },
+        "completed": {
+          "title": "اكتمل الحجز",
+          "message": "اكتمل حجز {{itemName}} ({{dateRange}})."
+        },
+        "updated": {
+          "title": "تم تحديث الحجز",
+          "message": "تم تحديث حجز {{itemName}} ({{dateRange}})."
+        }
+      }
+    }
+  }
 }

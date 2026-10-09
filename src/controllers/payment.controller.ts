@@ -118,8 +118,8 @@ const sendPaidBookingRequestNotifications = async (booking: any) => {
     if (renter?._id) {
       const existingRenterNotification = await Notification.exists({
         user: renter._id,
-        title: "Payment Hold Confirmed",
         "data.bookingId": bookingId,
+        "data.type": "payment_held",
       });
 
       if (!existingRenterNotification) {
@@ -127,8 +127,8 @@ const sendPaidBookingRequestNotifications = async (booking: any) => {
           "payment-held",
           {
             userId: renter._id.toString(),
-            title: "Payment Hold Confirmed",
-            message: `Your payment for booking "${bookingId}" has been held successfully.`,
+            title: "Payment confirmed",
+            message: "Your payment has been secured while the host reviews the booking.",
             data: { bookingId, type: "payment_held" },
           },
           // Stripe can deliver the same webhook twice — a fixed jobId makes the

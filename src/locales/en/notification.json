@@ -1,3 +1,188 @@
 {
-  "allMarkedRead": "All notifications marked as read"
+  "allMarkedRead": "All notifications marked as read",
+  "booking": {
+    "genericItem": "your booking",
+    "dateUnavailable": "dates unavailable",
+    "pinText": " PIN: {{pin}}",
+    "events": {
+      "payment-held": {
+        "title": "Payment confirmed",
+        "message": "Your payment for {{itemName}} ({{dateRange}}) is secured while the host reviews the booking."
+      },
+      "new-booking-request": {
+        "title": "New booking request",
+        "message": "A paid booking request for {{itemName}} ({{dateRange}}) is ready for review."
+      },
+      "booking-request-expired": {
+        "title": "Booking request expired",
+        "message": "The booking request for {{itemName}} ({{dateRange}}) expired before approval."
+      },
+      "extension-rejected": {
+        "title": "Extension rejected",
+        "message": "The extension request for {{itemName}} ({{dateRange}}) was rejected."
+      },
+      "extension-approved": {
+        "title": "Extension approved",
+        "message": "The extension for {{itemName}} ({{dateRange}}) was approved."
+      },
+      "extension-payment-captured": {
+        "title": "Extension payment confirmed",
+        "message": "The extension payment for {{itemName}} ({{dateRange}}) was confirmed."
+      },
+      "booking-approved": {
+        "title": "Booking approved",
+        "message": "The booking for {{itemName}} ({{dateRange}}) was approved.{{pinText}}"
+      },
+      "booking-fee-received": {
+        "title": "Booking fee received",
+        "message": "The platform fee for {{itemName}} ({{dateRange}}) was received."
+      },
+      "security-deposit-received": {
+        "title": "Security deposit secured",
+        "message": "The security deposit for {{itemName}} ({{dateRange}}) is secured until the dispute window closes."
+      },
+      "booking-completed": {
+        "title": "Booking completed",
+        "message": "The booking for {{itemName}} ({{dateRange}}) was completed."
+      },
+      "security-deposit-refunded": {
+        "title": "Security deposit refunded",
+        "message": "The security deposit for {{itemName}} ({{dateRange}}) was returned to the renter."
+      },
+      "security-deposit-released": {
+        "title": "Security deposit released",
+        "message": "The security deposit for {{itemName}} ({{dateRange}}) was released and returned to the renter."
+      },
+      "booking-completed-deposit-held": {
+        "title": "Booking completed",
+        "message": "The booking for {{itemName}} ({{dateRange}}) is complete. The security deposit remains secured while the damage report is reviewed."
+      },
+      "booking-cancelled-leaser": {
+        "title": "Booking cancelled",
+        "message": "The booking for {{itemName}} ({{dateRange}}) was cancelled."
+      },
+      "booking-expired": {
+        "title": "Booking expired",
+        "message": "The booking for {{itemName}} ({{dateRange}}) expired."
+      },
+      "booking-deleted": {
+        "title": "Booking removed",
+        "message": "The booking for {{itemName}} ({{dateRange}}) was removed. Any eligible refund is being processed."
+      },
+      "booking-deleted-admin": {
+        "title": "Booking removed by Admin",
+        "message": "The booking for {{itemName}} ({{dateRange}}) was removed by Admin."
+      },
+      "booking-started": {
+        "title": "Booking started",
+        "message": "The booking for {{itemName}} ({{dateRange}}) has started."
+      },
+      "return-pin": {
+        "title": "Return verification PIN",
+        "message": "Use PIN {{pin}} when returning {{itemName}} for the booking dated {{dateRange}}."
+      },
+      "return-confirmed": {
+        "title": "Return confirmed",
+        "message": "The return of {{itemName}} for {{dateRange}} was confirmed."
+      },
+      "refund-request-submitted": {
+        "title": "Refund request submitted",
+        "message": "The refund request for {{itemName}} ({{dateRange}}) is under review."
+      },
+      "new-refund-request": {
+        "title": "New refund request",
+        "message": "A refund request for {{itemName}} ({{dateRange}}) is ready for review."
+      },
+      "refund-rejected": {
+        "title": "Refund rejected",
+        "message": "The refund request for {{itemName}} ({{dateRange}}) was rejected."
+      },
+      "refund-approved": {
+        "title": "Refund approved",
+        "message": "The refund for {{itemName}} ({{dateRange}}) was approved."
+      },
+      "refund-processed": {
+        "title": "Refund processed",
+        "message": "The refund for {{itemName}} ({{dateRange}}) was processed."
+      },
+      "damage-report-filed": {
+        "title": "New damage report",
+        "message": "A damage report for {{itemName}} ({{dateRange}}) is ready for review."
+      },
+      "damage-report-filed-renter": {
+        "title": "Damage report filed",
+        "message": "A damage report was filed for {{itemName}} ({{dateRange}}). The security deposit remains secured during review."
+      },
+      "damage-report-approved": {
+        "title": "Damage report approved",
+        "message": "The damage report for {{itemName}} ({{dateRange}}) was approved."
+      },
+      "damage-charges-deducted": {
+        "title": "Damage charges processed",
+        "message": "Approved damage charges for {{itemName}} ({{dateRange}}) were processed."
+      },
+      "damage-report-rejected": {
+        "title": "Damage report rejected",
+        "message": "The damage report for {{itemName}} ({{dateRange}}) was rejected."
+      },
+      "booking_approval_expiring": {
+        "title": "Booking request expiring",
+        "message": "The booking request for {{itemName}} ({{dateRange}}) will expire soon."
+      },
+      "pickup_reminder": {
+        "title": "Pickup reminder",
+        "message": "Your pickup for {{itemName}} ({{dateRange}}) is coming up."
+      },
+      "handover_reminder": {
+        "title": "Handover reminder",
+        "message": "Prepare {{itemName}} for the booking dated {{dateRange}}."
+      },
+      "review_reminder": {
+        "title": "How was your rental?",
+        "message": "Share a review for {{itemName}} from {{dateRange}}."
+      },
+      "returned_item_inspection": {
+        "title": "Inspect the returned item",
+        "message": "Please inspect {{itemName}} from the booking dated {{dateRange}}."
+      },
+      "dispute_window_closing": {
+        "title": "Damage dispute window closing",
+        "message": "The damage dispute window for {{itemName}} ({{dateRange}}) closes soon."
+      },
+      "return_reminder": {
+        "title": "Return reminder",
+        "message": "The rental of {{itemName}} ({{dateRange}}) is ending soon."
+      },
+      "return_due": {
+        "title": "Item return due",
+        "message": "{{itemName}} from the booking dated {{dateRange}} is due back soon."
+      },
+      "booking-status-changed": {
+        "approved": {
+          "title": "Booking approved",
+          "message": "The booking for {{itemName}} ({{dateRange}}) was approved."
+        },
+        "rejected": {
+          "title": "Booking rejected",
+          "message": "The booking for {{itemName}} ({{dateRange}}) was rejected."
+        },
+        "request_cancelled": {
+          "title": "Booking request cancelled",
+          "message": "The booking request for {{itemName}} ({{dateRange}}) was cancelled."
+        },
+        "booking_cancelled": {
+          "title": "Booking cancelled",
+          "message": "The booking for {{itemName}} ({{dateRange}}) was cancelled."
+        },
+        "completed": {
+          "title": "Booking completed",
+          "message": "The booking for {{itemName}} ({{dateRange}}) was completed."
+        },
+        "updated": {
+          "title": "Booking updated",
+          "message": "The booking for {{itemName}} ({{dateRange}}) was updated."
+        }
+      }
+    }
+  }
 }

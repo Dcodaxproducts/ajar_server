@@ -6,6 +6,7 @@ import {
   sendPushToUser,
   clearFcmToken,
 } from "../utils/notifications";
+import { prepareBookingNotification } from "../utils/bookingNotificationContent";
 
 // FCM errors that will never succeed on a retry — the token is gone for good
 const PERMANENT_FCM_CODES = [
@@ -19,25 +20,40 @@ export const startNotificationWorker = () => {
     "notifications",
     async (job: Job<NotificationJob>) => {
       const { userId, title, message, data } = job.data;
+      const prepared = await prepareBookingNotification(
+        job.name,
+        userId,
+        title,
+        message,
+        data ?? {}
+      );
 
       // Save in DB only on the first attempt — retries reuse the existing row
       if (!job.data.notificationId) {
         const notification = await createNotification(
           userId,
-          title,
-          message,
-          data ?? {}
+          prepared.title,
+          prepared.message,
+          prepared.data
         );
 
         await job.updateData({
           ...job.data,
+          title: prepared.title,
+          message: prepared.message,
+          data: prepared.data,
           notificationId: (notification._id as string).toString(),
         });
       }
 
       // Push is the flaky part, so only this gets retried
       try {
-        const result = await sendPushToUser(userId, title, message, data ?? {});
+        const result = await sendPushToUser(
+          userId,
+          prepared.title,
+          prepared.message,
+          prepared.data
+        );
 
         return {
           notificationId: job.data.notificationId,

@@ -2,6 +2,7 @@ import { Response } from "express";
 import { Notification } from "../models/notification.model";
 import { paginateQuery } from "../utils/paginate";
 import { MarketplaceListing } from "../models/marketplaceListings.model";
+import { sanitizeNotificationHistory } from "../utils/bookingNotificationContent";
 
 export const getNotifications = async (req: any, res: Response) => {
   try {
@@ -52,12 +53,14 @@ export const getNotifications = async (req: any, res: Response) => {
         };
       }
 
-      return notification;
+      return notification.toObject();
     });
+
+    const safeData = await sanitizeNotificationHistory(transformedData, userId);
 
     return res.status(200).json({
       success: true,
-      data: transformedData,
+      data: safeData,
       total: paginated.total,
       page: paginated.page,
       limit: paginated.limit,
