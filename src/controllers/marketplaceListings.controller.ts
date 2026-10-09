@@ -8,6 +8,7 @@ import { Zone } from "../models/zone.model";
 import { SubCategory } from "../models/category.model";
 import { Form } from "../models/form.model";
 import { Booking } from "../models/booking.model";
+import { ACTIVE_BOOKING_STATUSES } from "../utils/bookingAvailability";
 import { User } from "../models/user.model";
 import { Review } from "../models/review.model";
 import { notificationQueue } from "../queues/notification.queue";
@@ -1197,6 +1198,7 @@ export const getListingBookedDates = async (
   try {
     const { id } = req.params;
     const { month } = req.query;
+    res.set("Cache-Control", "no-store");
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       sendResponse(res, null, req.t("listing:invalidId"), STATUS_CODES.BAD_REQUEST);
@@ -1230,7 +1232,7 @@ export const getListingBookedDates = async (
 
     const overlappingBookings = await Booking.find({
       marketplaceListingId: id,
-      status: { $nin: ["request_cancelled", "rejected", "expired"] },
+      status: { $in: [...ACTIVE_BOOKING_STATUSES, "pending"] },
       "dates.checkIn": { $lte: rangeEnd },
       "dates.checkOut": { $gte: rangeStart },
     })

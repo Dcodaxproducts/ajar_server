@@ -14,6 +14,7 @@ import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { saveStripeAccountIdToUser } from "../utils/saveStripeAccountIdToUser";
 import {
+  BookingAvailabilityConflictError,
   recordHeldBookingPayment,
 } from "../utils/bookingStripePayments";
 import { createTransaction } from "../utils/transactionLedger";
@@ -284,6 +285,9 @@ export const stripeWebhook = async (req: Request, res: Response) => {
       res.json({ received: true });
     }
   } catch (err) {
+    if (err instanceof BookingAvailabilityConflictError) {
+      return res.status(409).send("Booking dates are no longer available");
+    }
     console.error("Webhook Processing Error:", err);
     res.status(500).send("Webhook processing error");
   }
@@ -359,6 +363,9 @@ export const verifyPayment = async (req: AuthRequest, res: Response) => {
     return res.status(400).json({ message: req.t("payment:onlyBookingPayments") });
 
   } catch (error: any) {
+    if (error instanceof BookingAvailabilityConflictError) {
+      return res.status(409).json({ message: req.t("booking:datesUnavailable") });
+    }
     console.error("Verify Wallet Payment Error:", error);
     res.status(500).json({ message: req.t("payment:verificationFailed") });
   }

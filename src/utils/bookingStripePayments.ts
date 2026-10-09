@@ -5,6 +5,8 @@ import { User } from "../models/user.model";
 import { createTransaction } from "./transactionLedger";
 import stripe from "./stripe";
 import { buildDepositRefundIdempotencyKey } from "../services/damageDispute.service";
+import { lockAndCheckBookingAvailability } from "./dateValidator";
+import { availabilityCheckInForUnit } from "./bookingAvailability";
 
 const MIN_STRIPE_AMOUNT_CENTS = 50;
 
@@ -45,6 +47,13 @@ export const createManualBookingPaymentIntent = async (booking: any) => {
   );
 };
 
+export class BookingAvailabilityConflictError extends Error {
+  constructor() {
+    super("Booking dates are no longer available");
+    this.name = "BookingAvailabilityConflictError";
+  }
+}
+
 export const recordHeldBookingPayment = async (
   paymentIntentId: string,
   session?: mongoose.ClientSession
@@ -55,37 +64,63 @@ export const recordHeldBookingPayment = async (
   if (!bookingId || !mongoose.Types.ObjectId.isValid(bookingId)) {
     throw new Error("Missing booking ID");
   }
-
   if (intent.status !== "requires_capture") {
     throw new Error(`Payment hold not completed: ${intent.status}`);
   }
 
-  const booking = await Booking.findById(bookingId).session(session || null);
-  if (!booking) {
-    throw new Error("Booking not found");
+  const persistHold = async (activeSession: mongoose.ClientSession) => {
+    const booking = await Booking.findById(bookingId).session(activeSession);
+    if (!booking) throw new Error("Booking not found");
+    if (booking.status !== "pending") throw new BookingAvailabilityConflictError();
+    const userId = getBookingUserId(booking.renter)?.toString();
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      throw new Error("Missing renter ID");
+    }
+
+    const available = await lockAndCheckBookingAvailability(
+      booking.marketplaceListingId as mongoose.Types.ObjectId,
+      availabilityCheckInForUnit(booking.dates.checkIn, booking.pricingMeta.unit),
+      booking.dates.checkOut,
+      booking._id,
+      activeSession
+    );
+    if (!available) throw new BookingAvailabilityConflictError();
+
+    return Payment.findOneAndUpdate(
+      { paymentIntentId: intent.id },
+      {
+        bookingId: booking._id,
+        userId,
+        amount: intent.amount / 100,
+        currency: intent.currency || "usd",
+        type: booking.previousBookingId ? "extension" : "booking",
+        status: "held",
+        paymentIntentId: intent.id,
+        method: "stripe",
+      },
+      { upsert: true, new: true, session: activeSession }
+    );
+  };
+
+  if (session) return persistHold(session);
+
+  const ownSession = await mongoose.startSession();
+  try {
+    let payment;
+    await ownSession.withTransaction(async () => {
+      payment = await persistHold(ownSession);
+    });
+    return payment;
+  } catch (error) {
+    if (error instanceof BookingAvailabilityConflictError) {
+      await stripe.paymentIntents.cancel(intent.id, {}, {
+        idempotencyKey: `booking-conflict-cancel-${bookingId}-v1`,
+      });
+    }
+    throw error;
+  } finally {
+    await ownSession.endSession();
   }
-  const userId = getBookingUserId(booking.renter)?.toString();
-
-  if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
-    throw new Error("Missing renter ID");
-  }
-
-  const amount = intent.amount / 100;
-
-  return Payment.findOneAndUpdate(
-    { paymentIntentId: intent.id },
-    {
-      bookingId: booking._id,
-      userId,
-      amount,
-      currency: intent.currency || "usd",
-      type: booking.previousBookingId ? "extension" : "booking",
-      status: "held",
-      paymentIntentId: intent.id,
-      method: "stripe",
-    },
-    { upsert: true, new: true, session }
-  );
 };
 
 export const captureHeldBookingPayment = async (

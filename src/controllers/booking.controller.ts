@@ -15,7 +15,8 @@ import { Types } from "mongoose";
 import { Form } from "../models/form.model";
 import { generatePIN } from "../utils/generatePin";
 import { Review } from "../models/review.model";
-import { isBookingDateAvailable, isBookingExpiredForApproval } from "../utils/dateValidator";
+import { isBookingDateAvailable, isBookingExpiredForApproval, lockAndCheckBookingAvailability } from "../utils/dateValidator";
+import { ACTIVE_BOOKING_STATUSES, availabilityCheckInForUnit } from "../utils/bookingAvailability";
 import { notificationQueue } from "../queues/notification.queue";
 import { emailQueue } from "../queues/email.queue";
 import { cancelReminder, scheduleReminder } from "../queues/reminders";
@@ -389,11 +390,14 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: durationError });
     }
 
-    let availabilityCheckIn = checkInDate;
-    if (listing.priceUnit === "hour") {
-      availabilityCheckIn = new Date(checkInDate.getTime() + 1);
-    }
+    const availabilityCheckIn = availabilityCheckInForUnit(
+      checkInDate,
+      listing.priceUnit
+    );
 
+    // This is an early UX rejection only. MongoDB cannot enforce a unique index
+    // over date ranges, so the payment-hold transition revalidates again while
+    // holding the listing document write lock; unpaid pending requests reserve nothing.
     const isAvailable = await isBookingDateAvailable(
       listingId,
       availabilityCheckIn,
@@ -524,7 +528,8 @@ export const updateBookingStatus = async (
     let parentBooking = await Booking.findById(id)
       .populate("renter", "email name fcmToken wallet")
       .populate("leaser", "email name fcmToken wallet")
-      .populate("marketplaceListingId");
+      .populate("marketplaceListingId")
+      .session(session);
 
     if (!parentBooking) {
       await session.abortTransaction();
@@ -550,7 +555,6 @@ export const updateBookingStatus = async (
     const isRenter = userId?.toString() === renterId;
     const isLeaser = userId?.toString() === leaserId;
 
-    const bookingIdString = parentBooking._id?.toString() as string;
     let finalStatus = status;
 
     const listingName =
@@ -668,6 +672,23 @@ export const updateBookingStatus = async (
         );
       }
 
+      const extensionListing = parentBooking.marketplaceListingId as any;
+      const siblingIds = await Booking.find({ previousBookingId: parentBooking._id })
+        .session(session)
+        .distinct("_id");
+      const extensionAvailable = await lockAndCheckBookingAvailability(
+        extensionListing._id,
+        childBooking.dates.checkIn,
+        childBooking.dates.checkOut,
+        [parentBooking._id, childBooking._id, ...siblingIds],
+        session
+      );
+      if (!extensionAvailable) {
+        await session.abortTransaction();
+        session.endSession();
+        return sendResponse(res, null, req.t("booking:extension.datesUnavailable"), STATUS_CODES.BAD_REQUEST);
+      }
+
       await captureHeldBookingPayment(childBooking._id, session);
 
       // Generate OTP PIN for extension
@@ -775,6 +796,25 @@ export const updateBookingStatus = async (
       );
     }
 
+    const cancellationStatuses = ["request_cancelled", "booking_cancelled"];
+    if (cancellationStatuses.includes(finalStatus) && parentBooking.status === finalStatus) {
+      await session.commitTransaction();
+      session.endSession();
+      return sendResponse(res, parentBooking, req.t("booking:updated"), STATUS_CODES.OK);
+    }
+
+    if (finalStatus === "request_cancelled" && parentBooking.status !== "pending") {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(res, null, req.t("booking:status.cancelNotAllowed"), STATUS_CODES.BAD_REQUEST);
+    }
+
+    if (finalStatus === "approved" && parentBooking.status !== "pending") {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(res, null, req.t("booking:status.invalid"), STATUS_CODES.BAD_REQUEST);
+    }
+
     // A booking can only be closed once the leaser has verified the return PIN
     if (
       finalStatus === "completed" &&
@@ -847,6 +887,23 @@ export const updateBookingStatus = async (
         );
       }
 
+
+      const approvalCheckIn = availabilityCheckInForUnit(
+        parentBooking.dates.checkIn,
+        listing.priceUnit
+      );
+      const approvalAvailable = await lockAndCheckBookingAvailability(
+        listing._id,
+        approvalCheckIn,
+        parentBooking.dates.checkOut,
+        parentBooking._id,
+        session
+      );
+      if (!approvalAvailable) {
+        await session.abortTransaction();
+        session.endSession();
+        return sendResponse(res, null, req.t("booking:datesUnavailable"), STATUS_CODES.BAD_REQUEST);
+      }
 
       const renter = parentBooking.renter as any;
       const leaser = parentBooking.leaser as any;
@@ -977,28 +1034,37 @@ export const updateBookingStatus = async (
       );
     }
 
+    if (finalStatus === "booking_cancelled") {
+      await Booking.updateMany(
+        {
+          previousBookingId: parentBooking._id,
+          status: { $in: ["pending", "approved", "in_progress"] },
+        },
+        {
+          $set: {
+            status: "booking_cancelled",
+            cancelledFromStatus: isEarlyReturn ? "in_progress" : "approved",
+          },
+        },
+        { session }
+      );
+    }
+
     // ========== UPDATE LISTING ==========
     const listing = await MarketplaceListing.findById(
       finalBooking.marketplaceListingId
-    );
+    ).session(session);
 
     if (listing) {
-      if (finalStatus === "approved") {
-        listing.isAvailable = false;
-        listing.currentBookingId = [
-          ...(listing.currentBookingId || []).filter(
-            (item) => item.toString() !== bookingIdString
-          ),
-          finalBooking._id as mongoose.Types.ObjectId,
-        ];
-      } else {
-        listing.isAvailable = true;
-        listing.currentBookingId = (listing.currentBookingId || []).filter(
-          (item) => item.toString() !== bookingIdString
-        );
-      }
-
-      await listing.save();
+      const activeBookingIds = await Booking.find({
+        marketplaceListingId: listing._id,
+        status: { $in: ACTIVE_BOOKING_STATUSES },
+      })
+        .session(session)
+        .distinct("_id");
+      listing.currentBookingId = activeBookingIds;
+      listing.isAvailable = activeBookingIds.length === 0;
+      await listing.save({ session });
     }
 
     await session.commitTransaction();
@@ -2170,6 +2236,25 @@ export const deleteBooking = async (
         { previousBookingId: booking._id },
       ],
     }).session(session);
+
+    const listingIdForAvailability = (booking.marketplaceListingId as any)?._id ?? booking.marketplaceListingId;
+    const remainingActiveBookingIds = await Booking.find({
+      marketplaceListingId: listingIdForAvailability,
+      status: { $in: ACTIVE_BOOKING_STATUSES },
+    })
+      .session(session)
+      .distinct("_id");
+    await MarketplaceListing.findByIdAndUpdate(
+      listingIdForAvailability,
+      {
+        $set: {
+          currentBookingId: remainingActiveBookingIds,
+          isAvailable: remainingActiveBookingIds.length === 0,
+        },
+        $inc: { availabilityVersion: 1 },
+      },
+      { session }
+    );
 
     await session.commitTransaction();
 
