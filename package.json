@@ -10,7 +10,9 @@
     "start": "node dist/server.js",
     "postbuild": "mkdir -p dist/config dist/locales && (cp src/config/*.json dist/config/ 2>/dev/null || true) && cp -r src/locales/. dist/locales/",
     "test": "node --test -r ts-node/register src/tests/**/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "migrate:refund-tiers:dry-run": "node scripts/migrate-refund-policy-tiers-to-hours.mjs --apply --dry-run",
+    "migrate:refund-tiers": "node scripts/migrate-refund-policy-tiers-to-hours.mjs"
   },
   "keywords": [],
   "author": "",

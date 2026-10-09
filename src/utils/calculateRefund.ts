@@ -4,6 +4,7 @@ import {
   ICancellationTier,
   IEarlyReturnTier,
 } from "../models/refundPolicy.model";
+import { normalizeCancellationTiers } from "./refundPolicyTiers";
 
 export type RefundBasis = "checkIn" | "checkOut";
 
@@ -35,7 +36,9 @@ export function calculateRefund(
     return noRefund(totalPrice, "Check-in date has already passed", "checkIn");
   }
 
-  const sortedTiers = [...policy.tiers].sort(
+  // Normalize legacy persisted day thresholds to explicit hours until the
+  // reversible data migration has been applied in each environment.
+  const sortedTiers = normalizeCancellationTiers(policy.tiers).sort(
     (a, b) => b.hoursBeforeCheckIn - a.hoursBeforeCheckIn
   );
 

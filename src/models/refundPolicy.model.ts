@@ -3,6 +3,8 @@ import mongoose, { Schema, Document } from "mongoose";
 // Applies before the rental starts — cancelling an approved booking
 export interface ICancellationTier {
   hoursBeforeCheckIn: number;
+  /** Transitional read compatibility only; new API writes are normalized to hours. */
+  daysBeforeCheckIn?: number;
   percentage: number;         // 0–100: portion of booking price to DEDUCT
   label?: string;             // shown on receipts/UI e.g. "Early cancellation"
 }
@@ -27,12 +29,48 @@ export interface IRefundPolicy extends Document {
 
 const cancellationTierSchema = new Schema<ICancellationTier>(
   {
-    hoursBeforeCheckIn: { type: Number, required: true, min: 0 },
+    hoursBeforeCheckIn: {
+      type: Number,
+      required: function (this: ICancellationTier) {
+        return this.daysBeforeCheckIn === undefined;
+      },
+      min: 0,
+      validate: {
+        validator: Number.isSafeInteger,
+        message: "hoursBeforeCheckIn must be a whole number",
+      },
+    },
+    // Retained only so pre-migration documents can be read and converted safely.
+    daysBeforeCheckIn: {
+      type: Number,
+      min: 0,
+      validate: {
+        validator: Number.isSafeInteger,
+        message: "daysBeforeCheckIn must be a whole number",
+      },
+    },
     percentage: { type: Number, required: true, min: 0, max: 100 },
     label: { type: String },
   },
   { _id: false }
 );
+
+const canonicalizeCancellationTier = (
+  _document: unknown,
+  returned: Record<string, unknown>
+): Record<string, unknown> => {
+  if (
+    returned.hoursBeforeCheckIn === undefined &&
+    typeof returned.daysBeforeCheckIn === "number"
+  ) {
+    returned.hoursBeforeCheckIn = returned.daysBeforeCheckIn * 24;
+  }
+  delete returned.daysBeforeCheckIn;
+  return returned;
+};
+
+cancellationTierSchema.set("toJSON", { transform: canonicalizeCancellationTier });
+cancellationTierSchema.set("toObject", { transform: canonicalizeCancellationTier });
 
 const earlyReturnTierSchema = new Schema<IEarlyReturnTier>(
   {

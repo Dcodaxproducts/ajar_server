@@ -28,7 +28,8 @@
     "invalidSubCategoryId": "معرّف الفئة الفرعية غير صالح",
     "zoneAndSubCategoryRequired": "المنطقة والفئة الفرعية مطلوبتان",
     "zoneMismatch": "عدم تطابق المنطقة بين المعاملات والمحتوى",
-    "subCategoryMismatch": "عدم تطابق الفئة الفرعية بين المعاملات والمحتوى"
+    "subCategoryMismatch": "عدم تطابق الفئة الفرعية بين المعاملات والمحتوى",
+    "invalidCancellationTiers": "يجب أن تستخدم شرائح الإلغاء ساعات صحيحة وفريدة وغير سالبة قبل تسجيل الوصول"
   },
 
   "settings": {
