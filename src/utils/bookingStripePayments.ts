@@ -214,10 +214,9 @@ export const refundBookingSecurityDeposit = async (
   const amountCents = Math.round(depositAmount * 100);
   const idempotencyKey = buildDepositRefundIdempotencyKey(
     bookingId.toString(),
-    settlementReference,
-    amountCents
+    settlementReference
   );
-  const refund = await stripe.refunds.create(
+  let refund = await stripe.refunds.create(
     {
       payment_intent: payment.paymentIntentId,
       amount: amountCents,
@@ -226,6 +225,19 @@ export const refundBookingSecurityDeposit = async (
     },
     { idempotencyKey }
   );
+
+  // Refunds can be asynchronous (for example, when the Stripe balance is
+  // insufficient). Never publish a released local state for a failed or still
+  // pending refund. Replaying the idempotent create returns the original refund
+  // id, and retrieve observes its latest state on a later retry.
+  if (refund.status !== "succeeded") {
+    refund = await stripe.refunds.retrieve(refund.id);
+  }
+  if (refund.status !== "succeeded") {
+    throw new Error(
+      `Security deposit refund ${refund.id} is not settled: ${refund.status}`
+    );
+  }
 
   payment.refundId = refund.id;
   payment.depositRefundId = refund.id;

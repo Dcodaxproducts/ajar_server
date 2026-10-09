@@ -39,9 +39,31 @@ try {
   const reports = db.collection(process.env.DAMAGE_REPORT_COLLECTION || "damagereports");
   const payments = db.collection(process.env.PAYMENT_COLLECTION || "payments");
   const backups = db.collection(backupCollectionName);
-  await backups.createIndex({ migrationId: 1, bookingId: 1 }, { unique: true });
+  if (!dryRun) {
+    await backups.createIndex({ migrationId: 1, bookingId: 1 }, { unique: true });
+  }
 
   if (apply) {
+    const duplicateReports = await reports.aggregate([
+      { $group: { _id: "$booking", count: { $sum: 1 } } },
+      { $match: { count: { $gt: 1 } } },
+    ]).toArray();
+    if (duplicateReports.length > 0) {
+      for (const duplicate of duplicateReports) {
+        writeLine(`MANUAL_REVIEW ${JSON.stringify({
+          bookingId: duplicate._id?.toString(),
+          duplicateDisputes: duplicate.count,
+        })}`);
+      }
+      throw new Error("Duplicate damage disputes must be resolved before creating the unique booking index");
+    }
+    if (!dryRun) {
+      // Build the authoritative constraint before any booking becomes releasable.
+      // This also closes the duplicate-insert race after the preflight above.
+      await reports.createIndex({ booking: 1 }, { unique: true });
+      writeLine("Verified unique damage-dispute index on booking");
+    }
+
     const candidates = await bookings.find({
       status: { $in: ["completed", "booking_cancelled"] },
       "priceDetails.securityDeposit": { $gt: 0 },
@@ -58,31 +80,55 @@ try {
         payments.findOne({
           bookingId: booking._id,
           type: { $in: ["booking", "extension"] },
-          status: { $in: ["captured", "partially_refunded", "payout_pending", "paid_out"] },
         }),
         reports.find({ booking: booking._id }).sort({ createdAt: 1 }).toArray(),
       ]);
       const windowDays = getWindowDays(booking);
       const returnedAt = getActualReturnAt(booking);
-      if (!payment || windowDays === undefined || !returnedAt || damageReports.length > 1) {
+      const capturedPayment =
+        payment && ["captured", "payout_pending", "paid_out"].includes(payment.status);
+      const hasKnownRefund = !!(
+        payment?.refundId ||
+        payment?.depositRefundId ||
+        payment?.refundedAt ||
+        Number(payment?.depositRefundedAmount || 0) > 0 ||
+        payment?.status === "partially_refunded" ||
+        payment?.status === "refunded"
+      );
+      const existingState = booking.depositStatus;
+      const unsafeExistingState =
+        existingState !== undefined && !["held", "none"].includes(existingState);
+      if (
+        !capturedPayment ||
+        hasKnownRefund ||
+        windowDays === undefined ||
+        !returnedAt ||
+        damageReports.length > 0 ||
+        unsafeExistingState
+      ) {
         manualReview.push({
           bookingId: booking._id.toString(),
-          missingCapturedPayment: !payment,
+          missingCapturedPayment: !capturedPayment,
+          knownPriorRefund: hasKnownRefund,
           missingWindowSnapshot: windowDays === undefined,
           missingReturnTimestamp: !returnedAt,
-          duplicateDisputes: damageReports.length > 1,
+          existingDisputes: damageReports.length,
+          unsafeExistingState: unsafeExistingState ? existingState : undefined,
         });
         continue;
       }
       const disputeWindowEndsAt = new Date(new Date(returnedAt).getTime() + windowDays * DAY_MS);
-      const report = damageReports[0];
-      const after = {
-        depositDisputeWindowDays: windowDays,
-        disputeWindowEndsAt,
-        depositStatus: report ? "disputed" : "held",
-        ...(report ? { damageDisputeId: report._id } : {}),
-      };
-      plan.push({ booking, after });
+      const after = {};
+      if (booking.depositDisputeWindowDays === undefined) {
+        after.depositDisputeWindowDays = windowDays;
+      }
+      if (booking.disputeWindowEndsAt === undefined) {
+        after.disputeWindowEndsAt = disputeWindowEndsAt;
+      }
+      if (booking.depositStatus === undefined) {
+        after.depositStatus = "held";
+      }
+      if (Object.keys(after).length > 0) plan.push({ booking, after });
     }
 
     writeLine(`Preflight: ${plan.length} safe updates, ${manualReview.length} manual-review records`);

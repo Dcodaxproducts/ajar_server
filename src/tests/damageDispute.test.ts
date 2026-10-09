@@ -6,6 +6,7 @@ import {
   calculateDisputeDeadline,
   isDisputeWindowOpen,
   isValidDisputeWindowDays,
+  isBookingParty,
   validateDamageDisputeInput,
 } from "../services/damageDispute.service";
 
@@ -32,11 +33,20 @@ test("damage claim must be positive and cannot exceed held deposit", () => {
   assert.equal(validateDamageDisputeInput({ ...base, damagedCharges: 1, attachmentCount: 6 }), "invalidAttachments");
 });
 
-test("refund idempotency key is deterministic per settlement", () => {
-  const first = buildDepositRefundIdempotencyKey("booking", "auto-window-v1", 5000);
-  assert.equal(first, buildDepositRefundIdempotencyKey("booking", "auto-window-v1", 5000));
-  assert.notEqual(first, buildDepositRefundIdempotencyKey("booking", "dispute-1", 5000));
+test("refund idempotency key is deterministic per settlement and outcome-independent", () => {
+  const first = buildDepositRefundIdempotencyKey("booking", "auto-window-v1");
+  assert.equal(first, buildDepositRefundIdempotencyKey("booking", "auto-window-v1"));
+  assert.notEqual(first, buildDepositRefundIdempotencyKey("booking", "dispute-1"));
+  assert.equal(first.includes("5000"), false);
   assert.ok(first.length <= 255);
+});
+
+test("only booking parties can invoke booking-scoped mutations", () => {
+  const booking = { renterId: "renter", leaserId: "lessor" };
+  assert.equal(isBookingParty({ ...booking, userId: "renter" }), true);
+  assert.equal(isBookingParty({ ...booking, userId: "lessor" }), true);
+  assert.equal(isBookingParty({ ...booking, userId: "other" }), false);
+  assert.equal(isBookingParty({ ...booking, userId: undefined }), false);
 });
 
 test("only Admin and booking parties can read a dispute", () => {

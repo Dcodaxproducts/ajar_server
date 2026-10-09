@@ -44,11 +44,12 @@ router.get("/user/booking/:id", useAuth, userOnly, asyncHandler(getRenterBooking
 router.patch(
   "/:id",
   useAuth,
+  adminOnly,
   asyncHandler(languageTranslationMiddleware(Booking)),
   asyncHandler(updateBooking)
 );
 router.patch("/:id/status", useAuth, userOnly, asyncHandler(updateBookingStatus));
-router.delete("/:id", useAuth, deleteBooking);
+router.delete("/:id", useAuth, adminOnly, deleteBooking);
 router.post("/:id/submit-pin", useAuth, userOnly, asyncHandler(submitBookingPin));
 router.post("/:id/submit-return-pin", useAuth, userOnly, asyncHandler(submitReturnPin));
 

@@ -177,6 +177,7 @@ export const getAllDamageReports = async (
       .sort({ createdAt: -1 })
       .populate({
         path: "booking",
+        select: "renter leaser marketplaceListingId dates priceDetails status depositStatus disputeWindowEndsAt damageDisputeId",
         populate: [
           { path: "renter", select: "name email" },
           { path: "leaser", select: "name email" },
@@ -362,7 +363,7 @@ export const updateDamageReportStatus = async (
           return sendResponse(
             res,
             null,
-            "approvedAmount must be a number greater than 0. Use 'rejected' to approve nothing.",
+            req.t("damage:approvedAmountRequired"),
             STATUS_CODES.BAD_REQUEST
           );
         }

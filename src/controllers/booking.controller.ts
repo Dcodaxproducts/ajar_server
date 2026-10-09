@@ -26,6 +26,7 @@ import {
 } from "../utils/calculateBookingPrice";
 import { Payment } from "../models/payment.model";
 import { DamageReport } from "../models/damageReport.model";
+import { isBookingParty } from "../services/damageDispute.service";
 import { Zone } from "../models/zone.model";
 import { IRentalDuration, RentalPolicy } from "../models/rentalPolicy.model";
 import { checkAndUpdateBookingExpiry } from "../utils/bookingExpiry";
@@ -558,8 +559,29 @@ export const updateBookingStatus = async (
         ? (parentBooking.marketplaceListingId as any).name
         : "";
 
+    if (!isBookingParty({ userId: userId?.toString(), renterId, leaserId })) {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(
+        res,
+        null,
+        req.t("access:roleNotAllowed", { role: user.role }),
+        STATUS_CODES.FORBIDDEN
+      );
+    }
+
     // ========== EXTENSION APPROVAL LOGIC ==========
     if (isExtendApproval) {
+      if (!isLeaser) {
+        await session.abortTransaction();
+        session.endSession();
+        return sendResponse(
+          res,
+          null,
+          req.t("booking:status.onlyLeaserCanChange"),
+          STATUS_CODES.FORBIDDEN
+        );
+      }
       if (status === "rejected") {
         if (!isLeaser) {
           await session.abortTransaction();
@@ -756,8 +778,7 @@ export const updateBookingStatus = async (
     // A booking can only be closed once the leaser has verified the return PIN
     if (
       finalStatus === "completed" &&
-      parentBooking.status === "in_progress" &&
-      !parentBooking.returnVerifiedAt
+      (parentBooking.status !== "in_progress" || !parentBooking.returnVerifiedAt)
     ) {
       await session.abortTransaction();
       session.endSession();
@@ -874,7 +895,8 @@ export const updateBookingStatus = async (
     // AFTER
     if (finalStatus === "completed") {
       const completedAt = new Date();
-      updateFields["bookingDates.returnDate"] = completedAt;
+      const actualReturnAt = parentBooking.returnVerifiedAt || completedAt;
+      updateFields["bookingDates.returnDate"] = actualReturnAt;
       updateFields["_depositRefunded"] = 0;
       const shouldReleaseLeaserEarning = parentBooking.status !== "completed";
 
@@ -897,7 +919,7 @@ export const updateBookingStatus = async (
 
       updateFields.depositDisputeWindowDays = disputeWindowDays;
       updateFields.disputeWindowEndsAt = new Date(
-        completedAt.getTime() + disputeWindowDays * 24 * 60 * 60 * 1000
+        actualReturnAt.getTime() + disputeWindowDays * 24 * 60 * 60 * 1000
       );
       updateFields.depositStatus = depositAmount > 0 ? "held" : "none";
     }
@@ -931,8 +953,13 @@ export const updateBookingStatus = async (
     }
 
     // ========== UPDATE BOOKING ==========
-    finalBooking = await Booking.findByIdAndUpdate(
-      id,
+    finalBooking = await Booking.findOneAndUpdate(
+      {
+        _id: id,
+        ...(finalStatus === "completed"
+          ? { status: "in_progress", returnVerifiedAt: { $exists: true } }
+          : {}),
+      },
       { $set: updateFields },
       { new: true, session }
     )
@@ -2017,19 +2044,23 @@ export const updateBooking = async (
       return;
     }
 
+    const allowedFields = new Set(["specialRequest"]);
+    const requestedFields = Object.keys(req.body);
     if (
-      "actualReturnedAt" in req.body &&
-      (!user || String(user.id) !== String(booking.leaser))
+      !user ||
+      user.role !== "admin" ||
+      requestedFields.length === 0 ||
+      requestedFields.some((field) => !allowedFields.has(field))
     ) {
       return sendResponse(
         res,
         null,
-        req.t("booking:status.onlyLeaserCanUpdateReturn"),
-        STATUS_CODES.FORBIDDEN
+        req.t("booking:status.invalid"),
+        STATUS_CODES.BAD_REQUEST
       );
     }
 
-    Object.assign(booking, req.body);
+    booking.specialRequest = req.body.specialRequest;
 
     const updatedBooking = await booking.save();
 

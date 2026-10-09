@@ -56,10 +56,19 @@ export const validateDamageDisputeInput = ({
 
 export const buildDepositRefundIdempotencyKey = (
   bookingId: string,
-  settlementReference: string,
-  amountCents: number
+  settlementReference: string
 ): string =>
-  ["deposit-refund", bookingId, settlementReference, amountCents].join("-").slice(0, 255);
+  ["deposit-refund", bookingId, settlementReference].join("-").slice(0, 255);
+
+export const isBookingParty = ({
+  userId,
+  renterId,
+  leaserId,
+}: {
+  userId: string | undefined;
+  renterId: string | undefined;
+  leaserId: string | undefined;
+}): boolean => !!userId && (userId === renterId || userId === leaserId);
 
 export const canReadDamageDispute = ({
   role,
@@ -72,5 +81,4 @@ export const canReadDamageDispute = ({
   renterId: string | undefined;
   leaserId: string | undefined;
 }): boolean =>
-  role === "admin" ||
-  (!!userId && (userId === renterId || userId === leaserId));
+  role === "admin" || isBookingParty({ userId, renterId, leaserId });
