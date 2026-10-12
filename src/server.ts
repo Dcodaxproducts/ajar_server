@@ -4,6 +4,7 @@ import { connectDB } from "./config/db";
 import { config } from "./config/env";
 import { startListingDocumentExpiryCron } from "./cron/listingDocumentExpiry.cron";
 import { startSecurityDepositReleaseCron } from "./cron/securityDepositRelease.cron";
+import { startSecurityDepositReleaseCronWhenEnabled } from "./cron/securityDepositReleaseStartup";
 import { startUserDocumentExpiryCron } from "./cron/userDocumentExpiry.cron";
 import { startUnpaidBookingCleanupCron } from "./cron/unpaidBookingCleanup.cron";
 import { startAdminPendingSummaryCron } from "./cron/adminPendingSummary.cron";
@@ -22,7 +23,7 @@ let emailWorker: ReturnType<typeof startEmailWorker> | null = null;
 Promise.all([connectDB(), initI18n()]).then(() => {
   startListingDocumentExpiryCron();
   startUserDocumentExpiryCron();
-  startSecurityDepositReleaseCron();
+  startSecurityDepositReleaseCronWhenEnabled(startSecurityDepositReleaseCron);
   startUnpaidBookingCleanupCron();
   startAdminPendingSummaryCron();
 
