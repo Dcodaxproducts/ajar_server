@@ -10,6 +10,7 @@ import { MarketplaceListing } from "../models/marketplaceListings.model";
 import { RefundManagement } from "../models/refundManagement.model";
 import { RefundPolicy } from "../models/refundPolicy.model";
 import { isPointInPolygon } from "../utils/geo";
+import { localizeZoneForResponse } from "../utils/zoneLocalization";
 
 export const getAllZones = async (
   req: Request,
@@ -31,33 +32,13 @@ export const getAllZones = async (
       limit: Number(limit),
     });
 
-    // Get the total count of all zones (unfiltered by pagination)
-    const totalCount = await Zone.countDocuments();
+    let filteredData = data as unknown as Array<Record<string, unknown>>;
 
-    let filteredData = data;
-
-    // Apply locale translations
+    // Localize when a translation exists and keep the canonical zone as fallback.
     if (locale) {
-      filteredData = filteredData
-        .filter((zone: any) =>
-          zone.languages?.some((lang: any) => lang.locale === locale)
-        )
-        .map((zone: any) => {
-          const matchedLang = zone.languages.find(
-            (lang: any) => lang.locale === locale
-          );
-
-          const zoneObj = zone.toObject();
-
-          if (matchedLang && matchedLang.translations) {
-            zoneObj.name = matchedLang.translations.name || zoneObj.name;
-            zoneObj.adminNotes =
-              matchedLang.translations.adminNotes || zoneObj.adminNotes;
-          }
-
-          delete zoneObj.languages;
-          return zoneObj;
-        });
+      filteredData = filteredData.map((zone) =>
+        localizeZoneForResponse(zone, locale)
+      );
     }
 
     // Apply lat/lng filter (supports bounding box OR polygon)
@@ -103,7 +84,7 @@ export const getAllZones = async (
       res,
       {
         zones: filteredData,
-        total: totalCount,
+        total,
         page: Number(page),
         limit: Number(limit),
       },
@@ -139,34 +120,13 @@ export const getZoneDetails = async (
     }
 
     if (locale) {
-      const matchedLang = zone.languages?.find(
-        (lang: any) => lang.locale === locale
+      sendResponse(
+        res,
+        localizeZoneForResponse(zone, locale),
+        `Zone details fetched successfully for locale: ${locale}`,
+        STATUS_CODES.OK
       );
-
-      if (matchedLang) {
-        const translatedZone = {
-          ...zone,
-          ...matchedLang.translations,
-        };
-
-        delete translatedZone.languages;
-
-        sendResponse(
-          res,
-          translatedZone,
-          `Zone details fetched successfully for locale: ${locale}`,
-          STATUS_CODES.OK
-        );
-        return;
-      } else {
-        sendResponse(
-          res,
-          null,
-          `No translations found for locale: ${locale}`,
-          STATUS_CODES.NOT_FOUND
-        );
-        return;
-      }
+      return;
     }
 
     sendResponse(
