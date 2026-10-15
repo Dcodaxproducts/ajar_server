@@ -6,6 +6,7 @@ import { createTransaction } from "./transactionLedger";
 import stripe from "./stripe";
 import { buildDepositRefundIdempotencyKey } from "../services/damageDispute.service";
 import { lockAndCheckBookingAvailability } from "./dateValidator";
+import { buildBookingRefundIdempotencyKey } from "./refundIdempotency";
 
 const MIN_STRIPE_AMOUNT_CENTS = 50;
 
@@ -313,7 +314,8 @@ export const refundBookingSecurityDeposit = async (
 export const refundBookingPaymentAmount = async (
   bookingId: mongoose.Types.ObjectId | string,
   refundAmount: number,
-  session?: mongoose.ClientSession
+  session?: mongoose.ClientSession,
+  settlementReference = "legacy-v1"
 ) => {
   if (!refundAmount || refundAmount <= 0) return null;
 
@@ -328,11 +330,27 @@ export const refundBookingPaymentAmount = async (
     throw new Error("Captured booking payment not found for refund");
   }
 
-  const refund = await stripe.refunds.create({
-    payment_intent: payment.paymentIntentId,
-    amount: Math.round(refundAmount * 100),
-    reason: "requested_by_customer",
-  });
+  let refund = await stripe.refunds.create(
+    {
+      payment_intent: payment.paymentIntentId,
+      amount: Math.round(refundAmount * 100),
+      reason: "requested_by_customer",
+      metadata: { bookingId: bookingId.toString(), settlementReference },
+    },
+    {
+      idempotencyKey: buildBookingRefundIdempotencyKey(
+        bookingId.toString(),
+        settlementReference
+      ),
+    }
+  );
+
+  if (refund.status !== "succeeded") {
+    refund = await stripe.refunds.retrieve(refund.id);
+  }
+  if (refund.status !== "succeeded") {
+    throw new Error(`Booking refund ${refund.id} is not settled: ${refund.status}`);
+  }
 
   payment.refundId = refund.id;
   payment.refundedAt = new Date();

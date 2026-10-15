@@ -15,8 +15,8 @@ import { refundBookingPaymentAmount } from "../utils/bookingStripePayments";
 // Get My Refund Requests
 export const getMyRefundRequests = asyncHandler(
   async (req: Request & { user?: any }, res: Response) => {
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
 
     const filter: any = {};
 
@@ -152,7 +152,7 @@ export const updateRefundStatus = async (
     const { id } = req.params;
     const { status, adminNote } = req.body;
 
-    if (!["pending", "accept", "reject"].includes(status)) {
+    if (!["accept", "reject"].includes(status)) {
       await session.abortTransaction();
       session.endSession();
       return sendResponse(res, null, req.t("refund:invalidStatus"), STATUS_CODES.BAD_REQUEST);
@@ -175,10 +175,30 @@ export const updateRefundStatus = async (
       return sendResponse(res, null, req.t("refund:requestNotFound"), STATUS_CODES.NOT_FOUND);
     }
 
-    if (refund.status !== "pending") {
+    if (["accept", "reject"].includes(refund.status)) {
       await session.abortTransaction();
       session.endSession();
-      return sendResponse(res, null, req.t("refund:alreadyProcessed"), STATUS_CODES.BAD_REQUEST);
+      return sendResponse(res, refund, req.t("refund:alreadyProcessed"), STATUS_CODES.CONFLICT);
+    }
+
+    if (refund.status === "processing" && status === "reject") {
+      await session.abortTransaction();
+      session.endSession();
+      return sendResponse(res, null, req.t("refund:alreadyProcessed"), STATUS_CODES.CONFLICT);
+    }
+
+    if (refund.status === "pending") {
+      const claimed = await RefundRequest.updateOne(
+        { _id: refund._id, status: "pending" },
+        { $set: { status: "processing" } },
+        { session }
+      );
+      if (claimed.modifiedCount !== 1) {
+        await session.abortTransaction();
+        session.endSession();
+        return sendResponse(res, null, req.t("refund:alreadyProcessed"), STATUS_CODES.CONFLICT);
+      }
+      refund.status = "processing";
     }
 
     const admin = await User.findOne({ role: "admin" });
@@ -260,7 +280,12 @@ export const updateRefundStatus = async (
 
     // Pre-pickup cancellation: single booking, single PaymentIntent — unchanged
     if (!isEarlyReturn && totalRenterCredit > 0) {
-      await refundBookingPaymentAmount(booking._id, totalRenterCredit, session);
+      await refundBookingPaymentAmount(
+        booking._id,
+        totalRenterCredit,
+        session,
+        `refund-request-${String(refund._id)}-v1`
+      );
       await Payment.findOneAndUpdate(
         {
           bookingId: booking._id,
@@ -275,7 +300,7 @@ export const updateRefundStatus = async (
       );
     }
 
-    refund.status = "accept";
+    refund.status = isEarlyReturn ? "processing" : "accept";
     await refund.save({ session });
     await booking.save({ session });
 
@@ -291,7 +316,12 @@ export const updateRefundStatus = async (
         if (line.refundedAt || line.refundAmount <= 0) continue;
 
         try {
-          await refundBookingPaymentAmount(line.booking, line.refundAmount);
+          await refundBookingPaymentAmount(
+            line.booking,
+            line.refundAmount,
+            undefined,
+            `refund-request-${String(refund._id)}-v1`
+          );
 
           // Always partial: the deposit is part of the same charge and is
           // settled later through the dispute window, so the PaymentIntent is
@@ -317,6 +347,27 @@ export const updateRefundStatus = async (
           );
         }
       }
+
+      const outstandingLines = refund.breakdown.filter(
+        (line) => line.refundAmount > 0 && !line.refundedAt
+      );
+      if (outstandingLines.length > 0) {
+        return sendResponse(
+          res,
+          refund,
+          req.t("refund:processingRetryRequired"),
+          STATUS_CODES.SERVICE_UNAVAILABLE
+        );
+      }
+
+      const finalized = await RefundRequest.updateOne(
+        { _id: refund._id, status: "processing" },
+        { $set: { status: "accept" } }
+      );
+      if (finalized.modifiedCount !== 1) {
+        return sendResponse(res, null, req.t("refund:alreadyProcessed"), STATUS_CODES.CONFLICT);
+      }
+      refund.status = "accept";
 
       // Extensions follow the parent out of the rental
       await Booking.updateMany(

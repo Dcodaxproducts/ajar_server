@@ -7,7 +7,7 @@ import asyncHandler from "express-async-handler";
 import { Booking } from "../models/booking.model";
 import { paginateQuery } from "../utils/paginate";
 import { RefundPolicy } from "../models/refundPolicy.model";
-import { RefundRequest } from "../models/refundRequest.model";
+import { RefundRequest, type IRefundRequest } from "../models/refundRequest.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { buildBookingRefund } from "../utils/buildBookingRefund";
@@ -198,17 +198,14 @@ export const createRefundRequest = asyncHandler(
     }
 
     // prevent duplicate refund requests
-    const existingRefund = await RefundRequest.findOne({
-      booking,
-      user: user?.id,
-    });
+    const existingRefund = await RefundRequest.findOne({ booking });
 
     if (existingRefund) {
       sendResponse(
         res,
         null,
         req.t("refund:alreadyExists"),
-        STATUS_CODES.NOT_FOUND
+        STATUS_CODES.CONFLICT
       );
       return;
     }
@@ -220,6 +217,12 @@ export const createRefundRequest = asyncHandler(
 
     if (!bookingData || !bookingData.marketplaceListingId) {
       res.status(404).json({ message: req.t("refund:bookingOrListingNotFound") });
+      return;
+    }
+
+    const renterId = bookingData.renter?._id?.toString?.() || bookingData.renter?.toString?.();
+    if (!user?.id || renterId !== user.id.toString()) {
+      res.status(403).json({ success: false, message: req.t("common:forbidden") });
       return;
     }
 
@@ -252,20 +255,30 @@ export const createRefundRequest = asyncHandler(
     // Covers the parent booking, and on an early return its extensions too
     const result = await buildBookingRefund(bookingData, policy);
 
-    // create refund request
-    const refundRequest = await RefundRequest.create({
-      booking,
-      reason,
-      note,
-      user: user?.id,
-      deduction: result.totalDeducted,
-      totalRefundAmount: result.totalRefund,
-      securityDeposit,
-      policy: policy._id,
-      status: "pending",
-      isEarlyReturn: result.isEarlyReturn,
-      breakdown: result.lines,
-    });
+    // The pre-check gives a friendly response; the unique booking index is the
+    // authoritative race guard for concurrent submissions.
+    let refundRequest: IRefundRequest;
+    try {
+      refundRequest = await RefundRequest.create({
+        booking,
+        reason,
+        note,
+        user: user?.id,
+        deduction: result.totalDeducted,
+        totalRefundAmount: result.totalRefund,
+        securityDeposit,
+        policy: policy._id,
+        status: "pending",
+        isEarlyReturn: result.isEarlyReturn,
+        breakdown: result.lines,
+      });
+    } catch (error: unknown) {
+      if (error instanceof mongoose.mongo.MongoServerError && error.code === 11000) {
+        sendResponse(res, null, req.t("refund:alreadyExists"), STATUS_CODES.CONFLICT);
+        return;
+      }
+      throw error;
+    }
 
     // link refund request back to booking
     await Booking.findByIdAndUpdate(booking, {
@@ -484,70 +497,51 @@ export const deleteRefundRequest = asyncHandler(
   }
 );
 
-// Get Refund Request by ID (User/Admin)
+// Renter reads are scoped to the authenticated request owner.
 export const getRefundRequestById = asyncHandler(
-  async (req: Request & { user?: any }, res: Response): Promise<void> => {
+  async (req: Request & { user?: { id?: string } }, res: Response): Promise<void> => {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    const userId = req.user?.id;
+    if (!userId || !mongoose.Types.ObjectId.isValid(id)) {
       res.status(400).json({ message: req.t("refund:invalidRefundId") });
       return;
     }
-
-    const refund = await RefundManagement.findById(id)
-      .populate("zone", "zoneName")
-      .populate("subCategory", "categoryName")
-      .populate("booking");
-
+    const refund = await RefundRequest.findOne({ _id: id, user: userId })
+      .populate("policy")
+      .populate({ path: "booking", populate: { path: "marketplaceListingId" } });
     if (!refund) {
       res.status(404).json({ message: req.t("refund:requestNotFound") });
       return;
     }
-
-    res.status(200).json({
-      success: true,
-      data: refund,
-    });
+    res.status(200).json({ success: true, data: refund });
   }
 );
 
-// Get All Refund Requests (User Only)
 export const getMyRefundRequests = asyncHandler(
-  async (req: Request & { user?: any }, res: Response) => {
-    //FIX: Cast req to AuthRequest
-    const { user } = req as any;
-
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
-
-    const isAdmin = user?.role === "admin";
-    const filter: any = isAdmin ? {} : { user: user?.id };
-
-    const baseQuery = RefundManagement.find(filter)
-      .populate("zone", "zoneName")
-      .populate("subCategory", "categoryName")
-      .populate("booking")
-      // Newest first, and without it paginated pages can repeat or skip rows
+  async (req: Request & { user?: { id?: string } }, res: Response) => {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, message: req.t("common:unauthorized") });
+      return;
+    }
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+    const filter = { user: userId };
+    const baseQuery = RefundRequest.find(filter)
+      .populate("policy")
+      .populate({ path: "booking", populate: { path: "marketplaceListingId" } })
       .sort({ createdAt: -1 });
-
     const { data, total } = await paginateQuery(baseQuery, { page, limit });
-
-    const [pendingRequests, rejectedRequests, acceptedRequests] =
+    const [pendingRequests, processingRequests, rejectedRequests, acceptedRequests] =
       await Promise.all([
-        RefundManagement.countDocuments({ ...filter, status: "pending" }),
-        RefundManagement.countDocuments({ ...filter, status: "reject" }),
-        RefundManagement.countDocuments({ ...filter, status: "accept" }),
+        RefundRequest.countDocuments({ ...filter, status: "pending" }),
+        RefundRequest.countDocuments({ ...filter, status: "processing" }),
+        RefundRequest.countDocuments({ ...filter, status: "reject" }),
+        RefundRequest.countDocuments({ ...filter, status: "accept" }),
       ]);
-
     res.status(200).json({
-      success: true,
-      data,
-      totalRequests: total,
-      pendingRequests,
-      rejectedRequests,
-      acceptedRequests,
-      page,
-      limit,
+      success: true, data, totalRequests: total, pendingRequests, processingRequests,
+      rejectedRequests, acceptedRequests, page, limit,
     });
   }
 );
@@ -594,6 +588,13 @@ export const getRefundPreview = asyncHandler(
 
     if (!booking || !booking.marketplaceListingId) {
       res.status(404).json({ success: false, message: req.t("booking:notFound") });
+      return;
+    }
+
+    const requesterId = req.user?.id?.toString();
+    const bookingRenterId = booking.renter?._id?.toString?.() || booking.renter?.toString?.();
+    if (!requesterId || requesterId !== bookingRenterId) {
+      res.status(403).json({ success: false, message: req.t("common:forbidden") });
       return;
     }
 

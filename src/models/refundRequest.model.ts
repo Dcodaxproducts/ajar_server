@@ -18,7 +18,7 @@ export interface IRefundRequest extends Document {
   deduction: number;
   totalRefundAmount: number;
   policy: mongoose.Types.ObjectId;
-  status: "pending" | "accept" | "reject";
+  status: "pending" | "processing" | "accept" | "reject";
   note: string;
   securityDeposit: number;
   isEarlyReturn: boolean;
@@ -62,7 +62,7 @@ const refundRequestSchema = new Schema<IRefundRequest>(
     securityDeposit: Number,
     status: {
       type: String,
-      enum: ["pending", "accept", "reject"],
+      enum: ["pending", "processing", "accept", "reject"],
       default: "pending",
     },
     note: String,
@@ -71,6 +71,12 @@ const refundRequestSchema = new Schema<IRefundRequest>(
   },
   { timestamps: true }
 );
+
+refundRequestSchema.index(
+  { booking: 1 },
+  { unique: true, name: "uniq_refund_request_booking" }
+);
+refundRequestSchema.index({ status: 1, createdAt: -1 });
 
 export const RefundRequest = mongoose.model<IRefundRequest>(
   "RefundRequest",

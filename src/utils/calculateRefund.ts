@@ -1,4 +1,3 @@
-import { differenceInHours } from "date-fns";
 import {
   IRefundPolicy,
   ICancellationTier,
@@ -16,6 +15,16 @@ export interface RefundResult {
   basis: RefundBasis;
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+
+const remainingDuration = (boundary: Date, now: Date) => {
+  const milliseconds = boundary.getTime() - now.getTime();
+  return {
+    milliseconds,
+    wholeHours: Math.floor(Math.max(0, milliseconds) / HOUR_MS),
+  };
+};
+
 /**
  * Cancellation before the rental starts — deduction is based on how long is
  * left until check-in.
@@ -31,8 +40,8 @@ export function calculateRefund(
   }
 
   // can't refund a booking whose check-in already passed
-  const hoursRemaining = differenceInHours(checkInDate, now);
-  if (hoursRemaining < 0) {
+  const remaining = remainingDuration(checkInDate, now);
+  if (remaining.milliseconds < 0) {
     return noRefund(totalPrice, "Check-in date has already passed", "checkIn");
   }
 
@@ -43,11 +52,13 @@ export function calculateRefund(
   );
 
   const matchedTier =
-    sortedTiers.find((tier) => hoursRemaining >= tier.hoursBeforeCheckIn) ?? null;
+    sortedTiers.find(
+      (tier) => remaining.milliseconds >= tier.hoursBeforeCheckIn * HOUR_MS
+    ) ?? null;
 
   return applyTier({
     totalPrice,
-    hoursRemaining,
+    hoursRemaining: remaining.wholeHours,
     matchedTier,
     percentage: matchedTier?.percentage,
     label: matchedTier?.label,
@@ -72,8 +83,8 @@ export function calculateEarlyReturnRefund(
   }
 
   // rental has already run its full course — nothing left to refund
-  const hoursRemaining = differenceInHours(checkOutDate, now);
-  if (hoursRemaining < 0) {
+  const remaining = remainingDuration(checkOutDate, now);
+  if (remaining.milliseconds < 0) {
     return noRefund(totalPrice, "Check-out date has already passed", "checkOut");
   }
 
@@ -82,11 +93,13 @@ export function calculateEarlyReturnRefund(
   );
 
   const matchedTier =
-    sortedTiers.find((tier) => hoursRemaining >= tier.hoursBeforeCheckOut) ?? null;
+    sortedTiers.find(
+      (tier) => remaining.milliseconds >= tier.hoursBeforeCheckOut * HOUR_MS
+    ) ?? null;
 
   return applyTier({
     totalPrice,
-    hoursRemaining,
+    hoursRemaining: remaining.wholeHours,
     matchedTier,
     percentage: matchedTier?.percentage,
     label: matchedTier?.label,

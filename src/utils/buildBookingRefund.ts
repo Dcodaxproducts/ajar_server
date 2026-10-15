@@ -47,8 +47,11 @@ export const buildBookingRefund = async (
   const isEarlyReturn = parentBooking.cancelledFromStatus === "in_progress";
 
   const children = isEarlyReturn
-    ? await Booking.find({ previousBookingId: parentBooking._id }).lean()
+    ? await Booking.find({ previousBookingId: parentBooking._id }).limit(101).lean()
     : [];
+  if (children.length > 100) {
+    throw new Error("Booking extension chain exceeds the supported refund bound");
+  }
 
   const bookings = [parentBooking, ...children];
 

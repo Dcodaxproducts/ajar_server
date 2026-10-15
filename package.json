@@ -14,7 +14,9 @@
     "migrate:refund-tiers:dry-run": "node scripts/migrate-refund-policy-tiers-to-hours.mjs --apply --dry-run",
     "migrate:refund-tiers": "node scripts/migrate-refund-policy-tiers-to-hours.mjs",
     "backfill:damage-deposits:dry-run": "node scripts/backfill-damage-dispute-deposits.mjs --apply --dry-run",
-    "backfill:damage-deposits": "node scripts/backfill-damage-dispute-deposits.mjs"
+    "backfill:damage-deposits": "node scripts/backfill-damage-dispute-deposits.mjs",
+    "migrate:refund-request-uniqueness:dry-run": "node scripts/migrate-refund-request-uniqueness.mjs --apply --dry-run",
+    "migrate:refund-request-uniqueness": "node scripts/migrate-refund-request-uniqueness.mjs --apply"
   },
   "keywords": [],
   "author": "",

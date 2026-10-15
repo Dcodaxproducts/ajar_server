@@ -4,6 +4,7 @@ import { RefundPolicy, type IRefundPolicy } from "../models/refundPolicy.model";
 import { calculateRefund } from "../utils/calculateRefund";
 import {
   normalizeCancellationTiers,
+  normalizeEarlyReturnTiers,
   resolveCancellationTierHours,
 } from "../utils/refundPolicyTiers";
 
@@ -45,6 +46,26 @@ test("exactly N hours qualifies while one millisecond below does not", () => {
   const tiers = [{ hoursBeforeCheckIn: 24, percentage: 50 }];
   assert.equal(calculateRefund(100, new Date("2026-10-10T00:00:00.000Z"), policy(tiers), now).refundAmount, 50);
   assert.equal(calculateRefund(100, new Date("2026-10-09T23:59:59.999Z"), policy(tiers), now).refundAmount, 100);
+});
+
+test("one millisecond after check-in is ineligible instead of rounding to zero hours", () => {
+  const tiers = [{ hoursBeforeCheckIn: 0, percentage: 0 }];
+  const result = calculateRefund(100, new Date("2026-10-09T00:00:00.000Z"), policy(tiers), new Date("2026-10-09T00:00:00.001Z"));
+  assert.equal(result.refundAmount, 0);
+  assert.equal(result.reason, "Check-in date has already passed");
+});
+
+test("early-return tiers require unique non-negative whole-hour thresholds", () => {
+  assert.deepEqual(normalizeEarlyReturnTiers([
+    { hoursBeforeCheckOut: 12, percentage: 20, label: "Early" },
+  ]), [{ hoursBeforeCheckOut: 12, percentage: 20, label: "Early" }]);
+  assert.throws(() => normalizeEarlyReturnTiers([
+    { hoursBeforeCheckOut: 12.5, percentage: 20 },
+  ]));
+  assert.throws(() => normalizeEarlyReturnTiers([
+    { hoursBeforeCheckOut: 12, percentage: 20 },
+    { hoursBeforeCheckOut: 12, percentage: 30 },
+  ]));
 });
 
 test("eligibility uses elapsed UTC duration and supports unmigrated legacy documents", () => {
