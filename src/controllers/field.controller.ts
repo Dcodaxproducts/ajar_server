@@ -7,6 +7,7 @@ import { Form } from "../models/form.model";
 import { paginateQuery } from "../utils/paginate";
 import { removeEmptyConditional } from "../utils/fieldUtils";
 import { HydratedDocument } from "mongoose";
+import { localizeFieldForList } from "../utils/localizeFieldForList";
 
 // GET all fields
 export const getAllFields = async (
@@ -15,51 +16,35 @@ export const getAllFields = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { page = 1, limit = 10 } = req.query;
+    const requestedPage = Number(req.query.page);
+    const requestedLimit = Number(req.query.limit);
+    const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const limit = Number.isSafeInteger(requestedLimit)
+      ? Math.min(50, Math.max(1, requestedLimit))
+      : 10;
     const languageHeader = req.headers["language"];
     const locale = languageHeader?.toString() || null;
 
     const baseQuery = Field.find().sort({ createdAt: -1 });
 
     const { data, total } = await paginateQuery(baseQuery, {
-      page: Number(page),
-      limit: Number(limit),
+      page,
+      limit,
     });
 
-    let filteredData = data;
-
-    if (locale) {
-      filteredData = data
-        .filter((field: any) =>
-          field.languages?.some((lang: any) => lang.locale === locale)
-        )
-        .map((field: any) => {
-          const matchedLang = field.languages.find(
-            (lang: any) => lang.locale === locale
-          );
-
-          const fieldObj = field.toObject();
-
-          if (matchedLang && matchedLang.translations) {
-            fieldObj.name = matchedLang.translations.name || fieldObj.name;
-            fieldObj.label = matchedLang.translations.label || fieldObj.label;
-            fieldObj.placeholder =
-              matchedLang.translations.placeholder || fieldObj.placeholder;
-          }
-
-          delete fieldObj.languages;
-
-          return fieldObj;
-        });
-    }
+    // A locale header selects translated presentation; it must never filter
+    // persisted fields from the admin list when a translation is missing.
+    const filteredData = data.map((field) =>
+      localizeFieldForList(field, locale)
+    );
 
     sendResponse(
       res,
       {
         fields: filteredData,
         total,
-        page: Number(page),
-        limit: Number(limit),
+        page,
+        limit,
       },
       `Fields fetched successfully${locale ? ` for locale: ${locale}` : ""}`,
       STATUS_CODES.OK

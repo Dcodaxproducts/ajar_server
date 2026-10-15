@@ -6,8 +6,7 @@ import {
   deleteRefundSettings,
   createRefundRequest,
   getMyRefundRequests,
-  updateRefundRequest,
-  deleteRefundRequest,
+  getRefundRequestById,
   updateRefundStatus,
   getRefundPreview
 } from "../controllers/refundManagement.controller";
@@ -18,20 +17,19 @@ const router = express.Router();
 
 const useAuth = authMiddleware as any;
 const userOnly = allowRoles(["user"]) as unknown as express.RequestHandler;
+const adminOnly = allowRoles(["admin"]) as unknown as express.RequestHandler;
 
 // for admin
-router.post("/admin", useAuth, createRefundSettings);
-router.get("/admin", useAuth, getAllRefundSettings);
-router.patch("/admin/:id", useAuth, updateRefundSettings);
-router.delete("/admin/:id", useAuth, deleteRefundSettings);
-router.patch("/admin/:id/status", useAuth, updateRefundStatus);
-router.patch("/admin/:id/status", useAuth, updateRefundStatus);
+router.post("/admin", useAuth, adminOnly, createRefundSettings);
+router.get("/admin", useAuth, adminOnly, getAllRefundSettings);
+router.patch("/admin/:id", useAuth, adminOnly, updateRefundSettings);
+router.delete("/admin/:id", useAuth, adminOnly, deleteRefundSettings);
+router.patch("/admin/:id/status", useAuth, adminOnly, updateRefundStatus);
 
 // for user
 router.get("/user/preview", useAuth, getRefundPreview);
 router.post("/user", useAuth, userOnly, createRefundRequest);
 router.get("/user", useAuth, userOnly, getMyRefundRequests);
-router.patch("/user/:id", useAuth, userOnly, updateRefundRequest);
-router.delete("/user/:id", useAuth, userOnly, deleteRefundRequest);
+router.get("/user/:id", useAuth, userOnly, getRefundRequestById);
 
 export default router;
