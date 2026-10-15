@@ -21,7 +21,9 @@ try {
   } else {
     const duplicates = await collection.aggregate([
       { $group: { _id: "$booking", count: { $sum: 1 }, ids: { $push: "$_id" } } },
-      { $match: { _id: { $ne: null }, count: { $gt: 1 } } },
+      // Missing/null booking values collide in a normal unique single-field
+      // index too, so they must be surfaced instead of filtered from preflight.
+      { $match: { count: { $gt: 1 } } },
       { $limit: 100 },
     ]).toArray();
     if (duplicates.length) {

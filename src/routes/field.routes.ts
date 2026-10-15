@@ -12,10 +12,12 @@ import { fieldSchema } from "../schemas/field.schema";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 import { Field } from "../models/field.model";
+import { allowRoles } from "../middlewares/allowRoles";
 
 const router = Router();
 
 const useAuth = authMiddleware as any;
+const adminOnly = allowRoles(["admin"]) as unknown as import("express").RequestHandler;
 
 router.get("/", getAllFields);
 router.get("/list", getAllFieldsWithoutPagination);
@@ -23,6 +25,7 @@ router.get("/:id", getFieldDetails);
 router.post(
   "/",
   useAuth,
+  adminOnly,
   validateRequest({ body: fieldSchema }),
   createNewField
 );
@@ -35,10 +38,12 @@ function asyncHandler(fn: any) {
 
 router.patch(
   "/:id",
+  useAuth,
+  adminOnly,
   asyncHandler(languageTranslationMiddleware(Field)),
   updateField
 );
 
-router.delete("/:id", useAuth, deleteField);
+router.delete("/:id", useAuth, adminOnly, deleteField);
 
 export default router;

@@ -797,7 +797,8 @@ export const updateBookingStatus = async (
       );
     }
 
-    if (finalStatus === "request_cancelled" && !isRenter) {
+    const cancellationStatuses = ["request_cancelled", "booking_cancelled"];
+    if (cancellationStatuses.includes(finalStatus) && !isRenter) {
       await session.abortTransaction();
       session.endSession();
       return sendResponse(
@@ -808,7 +809,6 @@ export const updateBookingStatus = async (
       );
     }
 
-    const cancellationStatuses = ["request_cancelled", "booking_cancelled"];
     if (cancellationStatuses.includes(finalStatus) && parentBooking.status === finalStatus) {
       await session.commitTransaction();
       session.endSession();

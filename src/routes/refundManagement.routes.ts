@@ -7,7 +7,6 @@ import {
   createRefundRequest,
   getMyRefundRequests,
   getRefundRequestById,
-  updateRefundStatus,
   getRefundPreview
 } from "../controllers/refundManagement.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
@@ -24,7 +23,6 @@ router.post("/admin", useAuth, adminOnly, createRefundSettings);
 router.get("/admin", useAuth, adminOnly, getAllRefundSettings);
 router.patch("/admin/:id", useAuth, adminOnly, updateRefundSettings);
 router.delete("/admin/:id", useAuth, adminOnly, deleteRefundSettings);
-router.patch("/admin/:id/status", useAuth, adminOnly, updateRefundStatus);
 
 // for user
 router.get("/user/preview", useAuth, getRefundPreview);

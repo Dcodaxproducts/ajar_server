@@ -28,11 +28,21 @@ export const localizeFieldForList = <T extends LocalizableField>(field: T, local
     : [];
   const translated = languages.find((item) => item.locale === locale)?.translations;
 
-  return {
+  const localized: LocalizedField = {
     ...value,
     name: translated?.name || value.name,
     label: translated?.label || value.label,
     placeholder: translated?.placeholder || value.placeholder,
     languages: undefined,
   };
+  const conditional = localized.conditional as
+    | { dependsOn?: LocalizableField }
+    | undefined;
+  if (conditional?.dependsOn && typeof conditional.dependsOn === "object") {
+    localized.conditional = {
+      ...conditional,
+      dependsOn: localizeFieldForList(conditional.dependsOn, locale),
+    };
+  }
+  return localized;
 };

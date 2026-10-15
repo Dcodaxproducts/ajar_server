@@ -5,7 +5,10 @@ import { Category } from "../models/category.model";
 import asyncHandler from "express-async-handler";
 import mongoose from "mongoose";
 import { paginateQuery } from "../utils/paginate";
-import { normalizeCancellationTiers } from "../utils/refundPolicyTiers";
+import {
+  normalizeCancellationTiers,
+  normalizeEarlyReturnTiers,
+} from "../utils/refundPolicyTiers";
 
 const parseCancellationTiers = (
   value: unknown,
@@ -14,6 +17,15 @@ const parseCancellationTiers = (
 ): ReturnType<typeof normalizeCancellationTiers> | undefined => {
   try {
     return normalizeCancellationTiers(value);
+  } catch {
+    res.status(400).json({ message: req.t("refund:policy.invalidCancellationTiers") });
+    return undefined;
+  }
+};
+
+const parseEarlyReturnTiers = (value: unknown, req: Request, res: Response) => {
+  try {
+    return normalizeEarlyReturnTiers(value);
   } catch {
     res.status(400).json({ message: req.t("refund:policy.invalidCancellationTiers") });
     return undefined;
@@ -44,13 +56,17 @@ export const createRefundPolicy = asyncHandler(
 
     const tiers = parseCancellationTiers(req.body.tiers ?? [], req, res);
     if (!tiers) return;
+    const earlyReturnTiers = parseEarlyReturnTiers(
+      req.body.earlyReturnTiers ?? [], req, res
+    );
+    if (!earlyReturnTiers) return;
 
     const policy = await RefundPolicy.create({
       zone,
       subCategory,
       allowRefund: req.body.allowRefund ?? false,
       tiers,
-      earlyReturnTiers: req.body.earlyReturnTiers ?? [],
+      earlyReturnTiers,
       noteText: req.body.noteText ?? "",
     });
 
@@ -65,8 +81,12 @@ export const createRefundPolicy = asyncHandler(
 // Get All Refund Policies
 export const getAllRefundPolicies = asyncHandler(
   async (req: Request, res: Response) => {
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
+    const requestedPage = Number(req.query.page);
+    const requestedLimit = Number(req.query.limit);
+    const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const limit = Number.isSafeInteger(requestedLimit)
+      ? Math.min(50, Math.max(1, requestedLimit))
+      : 10;
 
     const baseQuery = RefundPolicy.find()
       .populate("zone", "zoneName")
@@ -156,7 +176,13 @@ export const updateRefundPolicy = asyncHandler(
       if (!normalizedTiers) return;
       patch.tiers = normalizedTiers;
     }
-    if (earlyReturnTiers !== undefined) patch.earlyReturnTiers = earlyReturnTiers;
+    if (earlyReturnTiers !== undefined) {
+      const normalizedEarlyReturnTiers = parseEarlyReturnTiers(
+        earlyReturnTiers, req, res
+      );
+      if (!normalizedEarlyReturnTiers) return;
+      patch.earlyReturnTiers = normalizedEarlyReturnTiers;
+    }
     if (noteText !== undefined) patch.noteText = noteText;
 
     // single DB round-trip — findOne + update/create was two

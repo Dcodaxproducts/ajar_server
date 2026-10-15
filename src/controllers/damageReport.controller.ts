@@ -156,25 +156,60 @@ export const getAllDamageReports = async (
 ) => {
   try {
     const { id: userId, role } = req.user!;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const requestedPage = Number(req.query.page);
+    const requestedLimit = Number(req.query.limit);
+    const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const limit = Number.isSafeInteger(requestedLimit)
+      ? Math.min(50, Math.max(1, requestedLimit))
+      : 10;
     const status = req.query.status as string;
 
-    const queryObj: any = {};
-
-    if (role !== "admin") {
-      const bookings = await Booking.find({
-        $or: [{ leaser: userId }, { renter: userId }],
-      }).select("_id");
-      queryObj.booking = { $in: bookings.map((booking) => booking._id) };
-    }
-
+    const queryObj: Record<string, unknown> = {};
     const allowedStatuses = ["pending", "approved", "partially_approved", "rejected"];
     if (status && allowedStatuses.includes(status)) queryObj.status = status;
 
-    //Query with population
+    let scopedTotal: number | undefined;
+    if (role !== "admin") {
+      const userObjectId = new mongoose.Types.ObjectId(userId);
+      const [scope] = await DamageReport.aggregate<{
+        rows: Array<{ _id: mongoose.Types.ObjectId }>;
+        total: Array<{ value: number }>;
+      }>([
+        { $match: queryObj },
+        {
+          $lookup: {
+            from: Booking.collection.name,
+            localField: "booking",
+            foreignField: "_id",
+            as: "bookingAccess",
+          },
+        },
+        {
+          $match: {
+            $or: [
+              { "bookingAccess.leaser": userObjectId },
+              { "bookingAccess.renter": userObjectId },
+            ],
+          },
+        },
+        { $sort: { createdAt: -1, _id: -1 } },
+        {
+          $facet: {
+            rows: [
+              { $skip: (page - 1) * limit },
+              { $limit: limit },
+              { $project: { _id: 1 } },
+            ],
+            total: [{ $count: "value" }],
+          },
+        },
+      ]);
+      queryObj._id = { $in: (scope?.rows ?? []).map((row) => row._id) };
+      scopedTotal = scope?.total[0]?.value ?? 0;
+    }
+
     const query = DamageReport.find(queryObj)
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: -1, _id: -1 })
       .populate({
         path: "booking",
         select: "renter leaser marketplaceListingId dates priceDetails status depositStatus disputeWindowEndsAt damageDisputeId",
@@ -186,7 +221,9 @@ export const getAllDamageReports = async (
       })
       .populate("user", "name email role");
 
-    const paginated = await paginateQuery(query, { page, limit });
+    const paginated = role === "admin"
+      ? await paginateQuery(query, { page, limit })
+      : { data: await query, total: scopedTotal ?? 0, page, limit };
 
     sendResponse(
       res,
@@ -357,7 +394,11 @@ export const updateDamageReportStatus = async (
       if (isPartial) {
         const parsedAmount = Number(approvedAmount);
 
-        if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+        if (
+          !Number.isFinite(parsedAmount) ||
+          parsedAmount <= 0 ||
+          Math.round(parsedAmount * 100) !== parsedAmount * 100
+        ) {
           await session.abortTransaction();
           session.endSession();
           return sendResponse(
@@ -404,11 +445,16 @@ export const updateDamageReportStatus = async (
         const payment = await Payment.findOne({
           bookingId: bookingData._id,
           type: { $in: ["booking", "extension"] },
-          status: { $in: ["captured", "partially_refunded", "paid_out"] },
+          status: {
+            $in: ["captured", "partially_refunded", "payout_pending", "paid_out"],
+          },
         }).session(session);
 
-        if (payment) {
-          await createTransaction({
+        if (!payment) {
+          throw new Error("Captured booking payment not found for damage settlement");
+        }
+
+        await createTransaction({
             paymentId: payment._id as mongoose.Types.ObjectId,
             userId: leaserId,
             amount: settledAmount,
@@ -417,15 +463,14 @@ export const updateDamageReportStatus = async (
             session,
           });
 
-          await createTransaction({
-            paymentId: payment._id as mongoose.Types.ObjectId,
-            userId: admin._id as mongoose.Types.ObjectId,
-            amount: settledAmount,
-            type: "debit",
-            source: "damage_charge",
-            session,
-          });
-        }
+        await createTransaction({
+          paymentId: payment._id as mongoose.Types.ObjectId,
+          userId: admin._id as mongoose.Types.ObjectId,
+          amount: settledAmount,
+          type: "debit",
+          source: "damage_charge",
+          session,
+        });
       }
 
       if (remainingDeposit > 0) {

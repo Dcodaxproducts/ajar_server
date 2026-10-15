@@ -71,6 +71,8 @@ export interface IBooking extends Document {
   depositDisputeWindowDays?: number;
   disputeWindowEndsAt?: Date;
   depositReleasedAt?: Date;
+  depositReleaseLockToken?: string;
+  depositReleaseLockedAt?: Date;
   damageDisputeId?: mongoose.Types.ObjectId;
   // Which state the booking was cancelled from — separates a pre-pickup
   // cancellation from an early return, which settle very differently
@@ -180,6 +182,8 @@ const BookingSchema = new Schema<IBooking>(
     depositDisputeWindowDays: { type: Number, default: 7, min: 0, max: 30 },
     disputeWindowEndsAt: { type: Date },
     depositReleasedAt: { type: Date },
+    depositReleaseLockToken: { type: String },
+    depositReleaseLockedAt: { type: Date },
     damageDisputeId: {
       type: Schema.Types.ObjectId,
       ref: "DamageReport",

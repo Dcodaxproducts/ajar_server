@@ -7,6 +7,12 @@ export interface CancellationTierInput {
   label?: unknown;
 }
 
+export interface EarlyReturnTierInput {
+  hoursBeforeCheckOut?: unknown;
+  percentage?: unknown;
+  label?: unknown;
+}
+
 export function wholeNonNegativeNumber(value: unknown, field: string): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
     throw new TypeError(`${field} must be a non-negative whole number`);
@@ -64,6 +70,41 @@ export function normalizeCancellationTiers(value: unknown): ICancellationTier[] 
   const hours = tiers.map((tier) => tier.hoursBeforeCheckIn);
   if (hours.length !== new Set(hours).size) {
     throw new TypeError("Duplicate hoursBeforeCheckIn values in tiers");
+  }
+  return tiers;
+}
+
+export function normalizeEarlyReturnTiers(value: unknown) {
+  if (!Array.isArray(value)) {
+    throw new TypeError("earlyReturnTiers must be an array");
+  }
+  const tiers = value.map((raw, index) => {
+    if (typeof raw !== "object" || raw === null) {
+      throw new TypeError(`earlyReturnTiers[${index}] must be an object`);
+    }
+    const tier = raw as EarlyReturnTierInput;
+    const percentage = wholeNonNegativeNumber(
+      tier.percentage,
+      `earlyReturnTiers[${index}].percentage`
+    );
+    if (percentage > 100) {
+      throw new TypeError(`earlyReturnTiers[${index}].percentage must not exceed 100`);
+    }
+    if (tier.label !== undefined && typeof tier.label !== "string") {
+      throw new TypeError(`earlyReturnTiers[${index}].label must be a string`);
+    }
+    return {
+      hoursBeforeCheckOut: wholeNonNegativeNumber(
+        tier.hoursBeforeCheckOut,
+        `earlyReturnTiers[${index}].hoursBeforeCheckOut`
+      ),
+      percentage,
+      ...(tier.label === undefined ? {} : { label: tier.label }),
+    };
+  });
+  const hours = tiers.map((tier) => tier.hoursBeforeCheckOut);
+  if (hours.length !== new Set(hours).size) {
+    throw new TypeError("Duplicate hoursBeforeCheckOut values in earlyReturnTiers");
   }
   return tiers;
 }

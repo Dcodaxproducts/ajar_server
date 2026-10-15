@@ -9,6 +9,9 @@ import { removeEmptyConditional } from "../utils/fieldUtils";
 import { HydratedDocument } from "mongoose";
 import { localizeFieldForList } from "../utils/localizeFieldForList";
 
+const escapeRegex = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // GET all fields
 export const getAllFields = async (
   req: Request,
@@ -24,8 +27,22 @@ export const getAllFields = async (
       : 10;
     const languageHeader = req.headers["language"];
     const locale = languageHeader?.toString() || null;
+    const search = typeof req.query.search === "string"
+      ? req.query.search.trim().slice(0, 100)
+      : "";
+    const searchPattern = search ? new RegExp(escapeRegex(search), "i") : null;
+    const filter = searchPattern
+      ? {
+          $or: [
+            { name: searchPattern },
+            { label: searchPattern },
+            { "languages.translations.name": searchPattern },
+            { "languages.translations.label": searchPattern },
+          ],
+        }
+      : {};
 
-    const baseQuery = Field.find().sort({ createdAt: -1 });
+    const baseQuery = Field.find(filter).sort({ createdAt: -1, _id: -1 });
 
     const { data, total } = await paginateQuery(baseQuery, {
       page,
@@ -54,7 +71,7 @@ export const getAllFields = async (
   }
 };
 
-// GET all fields without pagination
+// GET bounded field selector page
 export const getAllFieldsWithoutPagination = async (
   req: Request,
   res: Response,
@@ -63,7 +80,13 @@ export const getAllFieldsWithoutPagination = async (
   try {
     const languageHeader = req.headers["language"];
     const locale = languageHeader?.toString() || null;
-    const isChoiceField = req.query.isChoiceField;
+    const isChoiceField = req.query.isChoiceField === "true";
+    const requestedPage = Number(req.query.page);
+    const requestedLimit = Number(req.query.limit);
+    const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const limit = Number.isSafeInteger(requestedLimit)
+      ? Math.min(200, Math.max(1, requestedLimit))
+      : 100;
 
     const queryFilter: any = {};
 
@@ -72,7 +95,7 @@ export const getAllFieldsWithoutPagination = async (
     }
 
     // 1. Añadimos la población profunda (deep populate)
-    const fields = await Field.find(queryFilter).populate({
+    const fieldsQuery = Field.find(queryFilter).sort({ createdAt: -1, _id: -1 }).populate({
       path: "conditional.dependsOn",
       populate: {
         path: "conditional.dependsOn",
@@ -87,46 +110,12 @@ export const getAllFieldsWithoutPagination = async (
         },
       },
     });
-
-    let filteredData = fields;
-
-    if (locale) {
-      // 2. Función interna para localizar recursivamente los campos dependientes
-      const localizeField = (item: any) => {
-        if (!item) return item;
-
-        // Convertir a objeto plano si es un documento de Mongoose
-        const itemObj = typeof item.toObject === 'function' ? item.toObject() : item;
-
-        const matchedLang = itemObj.languages?.find(
-          (lang: any) => lang.locale === locale
-        );
-
-        if (matchedLang && matchedLang.translations) {
-          itemObj.name = matchedLang.translations.name || itemObj.name;
-          itemObj.label = matchedLang.translations.label || itemObj.label;
-          itemObj.placeholder = matchedLang.translations.placeholder || itemObj.placeholder;
-        }
-
-        // Localizar el dependsOn anidado si existe
-        if (itemObj.conditional?.dependsOn) {
-          itemObj.conditional.dependsOn = localizeField(itemObj.conditional.dependsOn);
-        }
-
-        delete itemObj.languages;
-        return itemObj;
-      };
-
-      filteredData = fields
-        .filter((field: any) =>
-          field.languages?.some((lang: any) => lang.locale === locale)
-        )
-        .map((field: any) => localizeField(field));
-    }
+    const { data: fields, total } = await paginateQuery(fieldsQuery, { page, limit });
+    const filteredData = fields.map((field) => localizeFieldForList(field, locale));
 
     sendResponse(
       res,
-      { fields: filteredData },
+      { fields: filteredData, total, page, limit },
       `Fields fetched successfully${locale ? ` for locale: ${locale}` : ""}`,
       STATUS_CODES.OK
     );
@@ -158,37 +147,9 @@ export const getFieldDetails = async (
       return;
     }
 
-    if (locale) {
-      const matchedLang = field.languages?.find(
-        (lang: any) => lang.locale === locale
-      );
-
-      if (matchedLang) {
-        const { translations } = matchedLang;
-        const translatedField = { ...field, ...translations };
-        delete translatedField.languages;
-
-        sendResponse(
-          res,
-          translatedField,
-          `Field details fetched successfully for locale: ${locale}`,
-          STATUS_CODES.OK
-        );
-        return;
-      } else {
-        sendResponse(
-          res,
-          null,
-          `No translations found for locale: ${locale}`,
-          STATUS_CODES.NOT_FOUND
-        );
-        return;
-      }
-    }
-
     sendResponse(
       res,
-      field,
+      localizeFieldForList(field, locale),
       req.t("catalog:field.detailsFetched"),
       STATUS_CODES.OK
     );

@@ -74,7 +74,15 @@ cancellationTierSchema.set("toObject", { transform: canonicalizeCancellationTier
 
 const earlyReturnTierSchema = new Schema<IEarlyReturnTier>(
   {
-    hoursBeforeCheckOut: { type: Number, required: true, min: 0 },
+    hoursBeforeCheckOut: {
+      type: Number,
+      required: true,
+      min: 0,
+      validate: {
+        validator: Number.isSafeInteger,
+        message: "hoursBeforeCheckOut must be a whole number",
+      },
+    },
     percentage: { type: Number, required: true, min: 0, max: 100 },
     label: { type: String },
   },
