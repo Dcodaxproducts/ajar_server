@@ -1,22 +1,14 @@
-import { randomInt } from "crypto";
 import { EmailPayload } from "../helpers/node-mailer";
-
-const OTP_EXPIRY_MS = 5 * 60 * 1000;
+import { issueOtp, OtpState } from "./otp.service";
 
 export const OTP_DELIVERY_UNAVAILABLE = "OTP_DELIVERY_UNAVAILABLE";
 
 export type OtpPurpose = "registration" | "resend";
 
-type OtpRecord = {
-  code: string;
-  expiry: Date;
-  isVerified: boolean;
-};
-
 export type OtpRecipient = {
   email: string;
   name: string;
-  otp: OtpRecord;
+  otp: OtpState;
   save: () => Promise<unknown>;
 };
 
@@ -30,8 +22,6 @@ export class OtpDeliveryUnavailableError extends Error {
     this.name = "OtpDeliveryUnavailableError";
   }
 }
-
-export const generateOtpCode = (): string => randomInt(1000, 10000).toString();
 
 const buildOtpEmail = (
   recipient: OtpRecipient,
@@ -56,7 +46,7 @@ export const persistAndQueueOtp = async ({
   purpose,
   enqueue,
   now = () => Date.now(),
-  generateCode = generateOtpCode,
+  generateCode,
 }: {
   recipient: OtpRecipient;
   purpose: OtpPurpose;
@@ -64,16 +54,20 @@ export const persistAndQueueOtp = async ({
   now?: () => number;
   generateCode?: () => string;
 }): Promise<void> => {
-  const otp = generateCode();
-  recipient.otp = {
-    code: otp,
-    expiry: new Date(now() + OTP_EXPIRY_MS),
-    isVerified: false,
-  };
+  const otp = issueOtp(
+    purpose === "registration"
+      ? "registration"
+      : recipient.otp.purpose ?? "registration",
+    recipient.otp,
+    new Date(now()),
+    process.env,
+    generateCode
+  );
+  recipient.otp = otp.state;
   await recipient.save();
 
   try {
-    await enqueue(`${purpose}-otp`, buildOtpEmail(recipient, purpose, otp));
+    await enqueue(`${purpose}-otp`, buildOtpEmail(recipient, purpose, otp.code));
   } catch {
     // The persisted inactive account and OTP intentionally remain available
     // so the client can retry through the resend endpoint.

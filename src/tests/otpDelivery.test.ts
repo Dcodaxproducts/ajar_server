@@ -12,10 +12,12 @@ import {
 } from "../services/emailJob.service";
 import { EmailPayload } from "../helpers/node-mailer";
 
+process.env.OTP_HASH_SECRET = "test-only-otp-hash-secret-with-32-characters";
+
 const makeRecipient = (): OtpRecipient => ({
   email: "person@example.com",
   name: "Person",
-  otp: { code: "", expiry: new Date(0), isVerified: false },
+  otp: { code: "", expiry: new Date(0), isVerified: false, attempts: 0 },
   save: async () => undefined,
 });
 
@@ -39,7 +41,8 @@ test("registration persists the same OTP that is acknowledged by the queue", asy
     },
   });
 
-  assert.equal(persistedCode, "1234");
+  assert.notEqual(persistedCode, "1234");
+  assert.equal(persistedCode.length, 64);
   assert.match(queuedPayload?.content ?? "", /1234/);
   assert.equal(recipient.otp.expiry.getTime(), 301_000);
 });
@@ -60,7 +63,8 @@ test("resend persists the same replacement OTP that is acknowledged by the queue
     },
   });
 
-  assert.equal(recipient.otp.code, "9876");
+  assert.notEqual(recipient.otp.code, "9876");
+  assert.equal(recipient.otp.code.length, 64);
   assert.match(queuedPayload?.content ?? "", /9876/);
 });
 
@@ -92,7 +96,8 @@ test("enqueue failure preserves the account, Stripe association, and OTP for res
   assert.equal(saved, true);
   assert.equal(recipient.status, "inactive");
   assert.equal(recipient.stripe.customerId, "cus_existing");
-  assert.equal(recipient.otp.code, "2468");
+  assert.notEqual(recipient.otp.code, "2468");
+  assert.equal(recipient.otp.code.length, 64);
   assert.equal(recipient.otp.isVerified, false);
 });
 
