@@ -42,6 +42,11 @@ const secret = (env: NodeJS.ProcessEnv = process.env): string => {
 const digest = (code: string, env?: NodeJS.ProcessEnv): Buffer =>
   createHmac("sha256", secret(env)).update(code).digest();
 
+export const hashOtp = (
+  code: string,
+  env: NodeJS.ProcessEnv = process.env
+): string => digest(code, env).toString("hex");
+
 export const issueOtp = (
   purpose: OtpPurpose,
   current?: OtpState,
@@ -60,7 +65,7 @@ export const issueOtp = (
   return {
     code,
     state: {
-      code: digest(code, env).toString("hex"),
+      code: hashOtp(code, env),
       expiry: new Date(now.getTime() + OTP_EXPIRY_MS),
       isVerified: false,
       attempts: 0,

@@ -10,9 +10,9 @@ import {
 } from "../utils/jwt.utils";
 import { sendEmail, sendEmailOrThrow } from "../helpers/node-mailer";
 import {
-  consumePasswordReset,
+  hashOtp,
   issueOtp,
-  verifyOtpState,
+  OTP_MAX_ATTEMPTS,
 } from "../services/otp.service";
 import { emailQueue } from "../queues/email.queue";
 import { createCustomer } from "../helpers/stripe-functions";
@@ -479,22 +479,34 @@ export const verifyOtp = async (
 ): Promise<void> => {
   try {
     const { email, otp } = req.body;
-    const user = await User.findOne({ email });
+    const user = await User.findOneAndUpdate(
+      {
+        email,
+        "otp.code": hashOtp(otp),
+        "otp.isVerified": false,
+        "otp.expiry": { $gte: new Date() },
+        "otp.attempts": { $lt: OTP_MAX_ATTEMPTS },
+      },
+      {
+        $set: {
+          "otp.code": "",
+          "otp.expiry": new Date(0),
+          "otp.isVerified": true,
+          "otp.attempts": 0,
+        },
+      },
+      { new: true }
+    );
 
     if (!user) {
-      sendResponse(
-        res,
-        null,
-        req.t("user:otp.invalidOrExpired"),
-        STATUS_CODES.BAD_REQUEST
+      await User.updateOne(
+        {
+          email,
+          "otp.isVerified": false,
+          "otp.attempts": { $lt: OTP_MAX_ATTEMPTS },
+        },
+        { $inc: { "otp.attempts": 1 } }
       );
-      return;
-    }
-
-    const verification = verifyOtpState(user.otp, otp);
-    user.otp = verification.state;
-    if (!verification.valid) {
-      await user.save();
       sendResponse(
         res,
         null,
@@ -589,16 +601,29 @@ export const resetPassword = async (
       return;
     }
 
-    try {
-      user.otp = consumePasswordReset(user.otp);
-    } catch {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const result = await User.updateOne(
+      {
+        _id: user._id,
+        "otp.isVerified": true,
+        "otp.purpose": "password-reset",
+      },
+      {
+        $set: {
+          password: hashedPassword,
+          "otp.code": "",
+          "otp.expiry": new Date(0),
+          "otp.isVerified": false,
+          "otp.attempts": 0,
+          "otp.purpose": null,
+          "otp.lastSentAt": null,
+        },
+      }
+    );
+    if (result.modifiedCount !== 1) {
       sendResponse(res, null, req.t("user:otp.notVerified"), STATUS_CODES.FORBIDDEN);
       return;
     }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    user.password = hashedPassword;
-    await user.save();
 
     sendResponse(res, null, req.t("user:password.reset"), STATUS_CODES.OK);
   } catch (error) {
