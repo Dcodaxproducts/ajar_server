@@ -9,6 +9,12 @@ import {
   verifyRefreshToken,
 } from "../utils/jwt.utils";
 import { sendEmail } from "../helpers/node-mailer";
+import { loadMailConfig } from "../config/mail";
+import {
+  consumePasswordReset,
+  issueOtp,
+  verifyOtpState,
+} from "../services/otp.service";
 import { emailQueue } from "../queues/email.queue";
 import { createCustomer } from "../helpers/stripe-functions";
 import { generateZodSchema } from "../utils/generate-zod-schema";
@@ -48,6 +54,7 @@ export const createUser = async (
       return;
     }
 
+    loadMailConfig();
     const profilePicture = req.file;
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -71,15 +78,14 @@ export const createUser = async (
     const userObj = userData.toObject();
     const { password: _, ...userWithoutPassword } = userObj;
 
-    const otp = Math.floor(1000 + Math.random() * 9000);
-    userData.otp.code = otp.toString();
-    userData.otp.expiry = new Date(Date.now() + 5 * 60 * 1000);
+    const otp = issueOtp("registration");
+    userData.otp = otp.state;
     await userData.save();
     await sendEmail({
       to: email,
       name: userData.name,
       subject: "Your OTP Code",
-      content: `Your OTP is: ${otp}`,
+      content: `Your OTP is: ${otp.code}`,
     });
 
     sendResponse(
@@ -437,14 +443,7 @@ export const resendOtp = async (
       return;
     }
 
-    // Generate new OTP
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    user.otp = {
-      code: otp,
-      expiry: new Date(Date.now() + 5 * 60 * 1000),
-      isVerified: false,
-    };
-    await user.save();
+    const otp = issueOtp(user.otp.purpose ?? "registration", user.otp);
 
     await sendEmail({
       to: email,
@@ -454,12 +453,14 @@ export const resendOtp = async (
         <p>Hello ${user.name || "User"},</p>
         <p>Your new OTP is:</p>
         <div style="background: #f4f4f4; padding: 10px; color: #2e7d32; border-radius: 5px; border: 1px solid #ccc; display: inline-block;">
-          <strong>${otp}</strong>
+          <strong>${otp.code}</strong>
         </div>
         <p>This OTP will expire in 5 minutes.</p>
       `,
     });
 
+    user.otp = otp.state;
+    await user.save();
     sendResponse(res, null, req.t("user:otp.resent"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
@@ -475,11 +476,7 @@ export const verifyOtp = async (
     const { email, otp } = req.body;
     const user = await User.findOne({ email });
 
-    if (
-      !user ||
-      user.otp.code !== otp ||
-      user.otp.expiry.getTime() < Date.now()
-    ) {
+    if (!user) {
       sendResponse(
         res,
         null,
@@ -489,12 +486,26 @@ export const verifyOtp = async (
       return;
     }
 
-    // Mark OTP as verified
-    user.otp.isVerified = true;
-    user.status = "active";
+    const verification = verifyOtpState(user.otp, otp);
+    user.otp = verification.state;
+    if (!verification.valid) {
+      await user.save();
+      sendResponse(
+        res,
+        null,
+        req.t("user:otp.invalidOrExpired"),
+        STATUS_CODES.BAD_REQUEST
+      );
+      return;
+    }
+
+    const isRegistration = user.otp.purpose === "registration";
+    if (isRegistration) user.status = "active";
     await user.save();
 
-    const accessToken = generateAccessToken({ id: user._id, role: user.role });
+    const accessToken = isRegistration
+      ? generateAccessToken({ id: user._id, role: user.role })
+      : undefined;
 
     sendResponse(
       res,
@@ -527,18 +538,8 @@ export const forgotPassword = async (
       return;
     }
 
-    // Generate a 4-digit OTP
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    const otp = issueOtp("password-reset", user.otp);
 
-    // Save OTP and expiry (5 minutes)
-    user.otp = {
-      code: otp,
-      expiry: new Date(Date.now() + 5 * 60 * 1000),
-      isVerified: false,
-    };
-    await user.save();
-
-    // Send OTP via email
     await sendEmail({
       to: email,
       name: user.name,
@@ -547,12 +548,14 @@ export const forgotPassword = async (
         <p>Hello ${user.name || "User"},</p>
         <p>Your OTP for password reset is:</p>
         <div style="background: #f4f4f4; padding: 10px; color: #2e7d32; border-radius: 5px; border: 1px solid #ccc; display: inline-block;">
-          <strong>${otp}</strong>
+          <strong>${otp.code}</strong>
         </div>
         <p>This OTP will expire in 5 minutes.</p>
       `,
     });
 
+    user.otp = otp.state;
+    await user.save();
     sendResponse(
       res,
       {
@@ -581,23 +584,15 @@ export const resetPassword = async (
       return;
     }
 
-    // Ensure OTP was verified
-    if (!user.otp.isVerified) {
+    try {
+      user.otp = consumePasswordReset(user.otp);
+    } catch {
       sendResponse(res, null, req.t("user:otp.notVerified"), STATUS_CODES.FORBIDDEN);
       return;
     }
 
-    // Hash and save new password
     const hashedPassword = await bcrypt.hash(password, 10);
     user.password = hashedPassword;
-
-    // Clear OTP fields
-    // user.otp = {
-    //   code: "",
-    //   expiry: new Date(0),
-    //   isVerified: false,
-    // };
-
     await user.save();
 
     sendResponse(res, null, req.t("user:password.reset"), STATUS_CODES.OK);
@@ -664,6 +659,7 @@ export const changePassword = async (
       code: "",
       expiry: new Date(0),
       isVerified: false,
+      attempts: 0,
     };
 
     await user.save();
