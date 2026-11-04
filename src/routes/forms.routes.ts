@@ -8,6 +8,7 @@ import {
   getFormByZoneAndSubCategory,
   deleteForm,
   updateForm,
+  reorderFormFields,
 } from "../controllers/forms.controller";
 import { languageTranslationMiddleware } from "../middlewares/languageTranslation.middleware";
 import { Form } from "../models/form.model";
@@ -24,6 +25,8 @@ router.get("/form", getFormByZoneAndSubCategory);
 router.get("/:id", getFormDetails);
 
 router.post("/", upload.single("thumbnail"), useAuth, createNewForm);
+
+router.patch("/:id/fields/order", useAuth, asyncHandler(reorderFormFields));
 
 function asyncHandler(fn: any) {
   return function (req: any, res: any, next: any) {

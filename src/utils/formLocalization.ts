@@ -180,6 +180,11 @@ export const preserveCanonicalFieldOrder = <T extends { _id?: unknown }>(
     .filter((field): field is T => Boolean(field));
 };
 
+export const applyCanonicalFieldOrder = <T>(
+  fields: T[]
+): Array<T & { order: number }> =>
+  fields.map((field, order) => ({ ...field, order }));
+
 export const localizeDropdownValue = <T extends LocalizableRecord>(
   value: T,
   locale: string,
