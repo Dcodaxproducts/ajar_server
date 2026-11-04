@@ -36,6 +36,10 @@ import {
   refundBookingPaymentAmount,
   releaseBookingPaymentHold,
 } from "../utils/bookingStripePayments";
+import {
+  calculateDamageDisputeDeadline,
+  resolveDamageDisputeWindow,
+} from "../services/damageDisputeWindow.service";
 
 //NEW HELPER — detects date-only strings (YYYY-MM-DD)
 const isDateOnly = (value: string) => {
@@ -114,8 +118,16 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       rentalPolicy?.securityDepositRules?.depositRequired
         ? rentalPolicy.securityDepositRules.depositAmount
         : 0;
+    const damageDisputeWindow = resolveDamageDisputeWindow({
+      damageDisputeWindow:
+        rentalPolicy?.securityDepositRules?.disputeWindow,
+      depositDisputeWindowDays:
+        rentalPolicy?.securityDepositRules?.disputeWindowDays,
+    });
     const depositDisputeWindowDays =
-      rentalPolicy?.securityDepositRules?.disputeWindowDays ?? 7;
+      damageDisputeWindow.unit === "days"
+        ? damageDisputeWindow.duration
+        : undefined;
     const rentalPolicySnapshot = {
       securityDepositRules: rentalPolicy.securityDepositRules,
       damageLiabilityTerms: rentalPolicy.damageLiabilityTerms,
@@ -464,6 +476,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       rentalPolicySnapshot,
       depositStatus: securityDepositAmount > 0 ? "held" : "none",
       depositDisputeWindowDays,
+      damageDisputeWindow,
     });
 
     const paymentIntent = await createManualBookingPaymentIntent(newBooking);
@@ -478,6 +491,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         required: securityDepositAmount > 0,
         conditions: rentalPolicy?.securityDepositRules?.depositConditions ?? "",
         disputeWindowDays: depositDisputeWindowDays,
+        disputeWindow: damageDisputeWindow,
       },
       payment: {
         clientSecret: paymentIntent.client_secret,
@@ -874,7 +888,8 @@ export const updateBookingStatus = async (
     // AFTER
     if (finalStatus === "completed") {
       const completedAt = new Date();
-      updateFields["bookingDates.returnDate"] = completedAt;
+      const rentalEndAt = parentBooking.returnVerifiedAt ?? completedAt;
+      updateFields["bookingDates.returnDate"] = rentalEndAt;
       updateFields["_depositRefunded"] = 0;
       const shouldReleaseLeaserEarning = parentBooking.status !== "completed";
 
@@ -893,11 +908,16 @@ export const updateBookingStatus = async (
       // ✅ Refund security deposit back to renter ONLY if no damage report
       const depositAmount = parentBooking.priceDetails?.securityDeposit || 0;
 
-      const disputeWindowDays = parentBooking.depositDisputeWindowDays ?? 7;
+      const damageDisputeWindow = resolveDamageDisputeWindow(parentBooking);
 
-      updateFields.depositDisputeWindowDays = disputeWindowDays;
-      updateFields.disputeWindowEndsAt = new Date(
-        completedAt.getTime() + disputeWindowDays * 24 * 60 * 60 * 1000
+      updateFields.damageDisputeWindow = damageDisputeWindow;
+      updateFields.depositDisputeWindowDays =
+        damageDisputeWindow.unit === "days"
+          ? damageDisputeWindow.duration
+          : undefined;
+      updateFields.disputeWindowEndsAt = calculateDamageDisputeDeadline(
+        rentalEndAt,
+        damageDisputeWindow
       );
       updateFields.depositStatus = depositAmount > 0 ? "held" : "none";
     }
@@ -2617,13 +2637,18 @@ export const submitReturnPin = async (
     // The booking is already closed, so nothing else will start the dispute
     // window — it begins here, the moment the item is confirmed back
     if (isEarlyReturn) {
-      const disputeWindowDays = booking.depositDisputeWindowDays ?? 7;
+      const damageDisputeWindow = resolveDamageDisputeWindow(booking);
 
       if (!booking.bookingDates) booking.bookingDates = {};
       booking.bookingDates.returnDate = returnedAt;
-      booking.depositDisputeWindowDays = disputeWindowDays;
-      booking.disputeWindowEndsAt = new Date(
-        returnedAt.getTime() + disputeWindowDays * 24 * 60 * 60 * 1000
+      booking.damageDisputeWindow = damageDisputeWindow;
+      booking.depositDisputeWindowDays =
+        damageDisputeWindow.unit === "days"
+          ? damageDisputeWindow.duration
+          : undefined;
+      booking.disputeWindowEndsAt = calculateDamageDisputeDeadline(
+        returnedAt,
+        damageDisputeWindow
       );
     }
 

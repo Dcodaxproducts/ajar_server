@@ -7,6 +7,10 @@ export interface ISecurityDepositRules {
   depositAmount: number;
   depositConditions: string;
   disputeWindowDays: number;
+  disputeWindow: {
+    duration: number;
+    unit: "hours" | "days";
+  };
 }
 
 export interface IDamageLiabilityTerms {
@@ -43,7 +47,16 @@ const SecurityDepositRulesSchema = new Schema<ISecurityDepositRules>(
     depositRequired: { type: Boolean, default: false },
     depositAmount: { type: Number, default: 0 },
     depositConditions: { type: String, default: "" },
-    disputeWindowDays: { type: Number, default: 7, min: 0 },
+    disputeWindowDays: { type: Number, default: 7, min: 1, max: 30 },
+    disputeWindow: {
+      duration: { type: Number, min: 1, required: true, default: 7 },
+      unit: {
+        type: String,
+        enum: ["hours", "days"],
+        required: true,
+        default: "days",
+      },
+    },
   },
   { _id: false }
 );

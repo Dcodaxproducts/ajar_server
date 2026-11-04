@@ -3,6 +3,7 @@ import {
   createDamageReport,
   deleteDamageReport,
   getAllDamageReports,
+  getDamageDisputeEligibility,
   getDamageReportById,
   updateDamageReport,
   updateDamageReportStatus
@@ -28,6 +29,13 @@ router.post(
   userOnly,
   uploadFiles(["attachments"]),
   asyncHandler(createDamageReport)
+);
+
+router.get(
+  "/eligibility/:bookingId",
+  useAuth,
+  userOnly,
+  asyncHandler(getDamageDisputeEligibility)
 );
 
 // Read all

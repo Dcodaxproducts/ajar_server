@@ -67,7 +67,9 @@ const DamageReportSchema = new Schema<IDamageReport>(
   { timestamps: true }
 );
 
-DamageReportSchema.index({ booking: 1 });
+// One dispute per booking. This is the final concurrency invariant even when
+// simultaneous requests pass the same eligibility read.
+DamageReportSchema.index({ booking: 1 }, { unique: true });
 DamageReportSchema.index({ status: 1, createdAt: -1 });
 
 export const DamageReport = model<IDamageReport>(

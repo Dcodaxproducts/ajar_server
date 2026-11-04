@@ -4,5 +4,6 @@
   "invalidZoneOrSubCategory": "Invalid zone or subCategory ID",
   "zoneNotFound": "Zone not found",
   "subCategoryNotLinked": "SubCategory is not linked to this zone",
-  "durationLimitsMustBeArray": "rentalDurationLimits must be an array of policies"
+  "durationLimitsMustBeArray": "rentalDurationLimits must be an array of policies",
+  "invalidDisputeWindow": "Damage dispute window must be 1-720 hours or 1-30 days"
 }

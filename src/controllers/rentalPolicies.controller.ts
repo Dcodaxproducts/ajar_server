@@ -4,6 +4,10 @@ import { Zone } from "../models/zone.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { RentalPolicy } from "../models/rentalPolicy.model";
+import {
+  isDamageDisputeWindowConfig,
+  resolveDamageDisputeWindow,
+} from "../services/damageDisputeWindow.service";
 
 const updateRentalPolicy = async (
   req: Request,
@@ -82,10 +86,63 @@ const updateRentalPolicy = async (
       }
 
     } else {
+      let incoming = req.body;
+
+      if (field === "securityDepositRules") {
+        const hasNewWindow = req.body.disputeWindow !== undefined;
+        const hasLegacyWindow = req.body.disputeWindowDays !== undefined;
+
+        if (hasNewWindow && !isDamageDisputeWindowConfig(req.body.disputeWindow)) {
+          return sendResponse(
+            res,
+            {
+              code: "DAMAGE_DISPUTE_WINDOW_INVALID",
+              allowed: { hours: [1, 720], days: [1, 30] },
+            },
+            req.t("rental:invalidDisputeWindow"),
+            STATUS_CODES.BAD_REQUEST
+          );
+        }
+
+        if (
+          hasLegacyWindow &&
+          (!Number.isInteger(req.body.disputeWindowDays) ||
+            req.body.disputeWindowDays < 1 ||
+            req.body.disputeWindowDays > 30)
+        ) {
+          return sendResponse(
+            res,
+            {
+              code: "DAMAGE_DISPUTE_WINDOW_INVALID",
+              allowed: { days: [1, 30] },
+            },
+            req.t("rental:invalidDisputeWindow"),
+            STATUS_CODES.BAD_REQUEST
+          );
+        }
+
+        const disputeWindow = resolveDamageDisputeWindow({
+          damageDisputeWindow: hasNewWindow
+            ? req.body.disputeWindow
+            : undefined,
+          depositDisputeWindowDays: hasLegacyWindow
+            ? req.body.disputeWindowDays
+            : undefined,
+        });
+
+        incoming = {
+          ...req.body,
+          ...(hasNewWindow || hasLegacyWindow ? { disputeWindow } : {}),
+          ...(disputeWindow.unit === "days" && (hasNewWindow || hasLegacyWindow)
+            ? { disputeWindowDays: disputeWindow.duration }
+            : {}),
+        };
+      }
+
       // Merge for securityDepositRules or damageLiabilityTerms
       newPolicyData[field] = {
         ...newPolicyData[field],
-        ...req.body,
+        ...incoming,
       };
     }
 

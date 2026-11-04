@@ -7,12 +7,101 @@ import { STATUS_CODES } from "../config/constants";
 import { paginateQuery } from "../utils/paginate";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { notificationQueue } from "../queues/notification.queue";
-import { cancelReminder } from "../queues/reminders";
-import { REMINDER } from "../config/reminderTypes";
 import { User } from "../models/user.model";
 import { Payment } from "../models/payment.model";
 import { refundBookingSecurityDeposit } from "../utils/bookingStripePayments";
 import { createTransaction } from "../utils/transactionLedger";
+import {
+  DAMAGE_DISPUTE_ERROR_CODES,
+  evaluateDamageDisputeEligibility,
+} from "../services/damageDisputeWindow.service";
+
+const DAMAGE_DISPUTE_ERRORS = {
+  notFound: {
+    code: DAMAGE_DISPUTE_ERROR_CODES.notFound,
+    status: STATUS_CODES.NOT_FOUND,
+    translation: "damage:bookingNotFound",
+  },
+  wrong_status: {
+    code: DAMAGE_DISPUTE_ERROR_CODES.wrong_status,
+    status: STATUS_CODES.CONFLICT,
+    translation: "damage:bookingNotReturned",
+  },
+  not_returned: {
+    code: DAMAGE_DISPUTE_ERROR_CODES.not_returned,
+    status: STATUS_CODES.CONFLICT,
+    translation: "damage:returnPinRequired",
+  },
+  expired: {
+    code: DAMAGE_DISPUTE_ERROR_CODES.expired,
+    status: STATUS_CODES.CONFLICT,
+    translation: "damage:windowExpired",
+  },
+  already_submitted: {
+    code: DAMAGE_DISPUTE_ERROR_CODES.already_submitted,
+    status: STATUS_CODES.CONFLICT,
+    translation: "damage:alreadyExists",
+  },
+} as const;
+
+type DamageDisputeErrorKey = keyof typeof DAMAGE_DISPUTE_ERRORS;
+
+const sendDamageDisputeError = (
+  req: AuthRequest,
+  res: Response,
+  key: DamageDisputeErrorKey,
+  windowState: unknown = null
+) => {
+  const error = DAMAGE_DISPUTE_ERRORS[key];
+  return sendResponse(
+    res,
+    { code: error.code, window: windowState },
+    req.t(error.translation),
+    error.status
+  );
+};
+
+const findOwnedBooking = (bookingId: string, userId: string) =>
+  Booking.findOne({ _id: bookingId, leaser: userId })
+    .select(
+      "_id leaser status cancelledFromStatus returnVerifiedAt damageDisputeId damageDisputeWindow depositDisputeWindowDays"
+    );
+
+// GET /api/damage-report/eligibility/:bookingId
+export const getDamageDisputeEligibility = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { bookingId } = req.params;
+    const userId = req.user?.id;
+
+    if (!userId || !mongoose.Types.ObjectId.isValid(bookingId)) {
+      return sendDamageDisputeError(req, res, "notFound");
+    }
+
+    const booking = await findOwnedBooking(bookingId, userId).lean();
+    if (!booking) return sendDamageDisputeError(req, res, "notFound");
+
+    const existingReport =
+      booking.damageDisputeId ||
+      (await DamageReport.exists({ booking: booking._id }));
+    const windowState = evaluateDamageDisputeEligibility(
+      { ...booking, damageDisputeId: existingReport },
+      new Date()
+    );
+
+    return sendResponse(
+      res,
+      { code: "DAMAGE_DISPUTE_ELIGIBILITY", window: windowState },
+      req.t("damage:eligibilityFetched"),
+      STATUS_CODES.OK
+    );
+  } catch (error) {
+    next(error);
+  }
+};
 
 // POST /api/damage-report
 export const createDamageReport = async (
@@ -20,6 +109,8 @@ export const createDamageReport = async (
   res: Response,
   next: NextFunction
 ) => {
+  const session = await mongoose.startSession();
+
   try {
     const {
       booking: bookingId,
@@ -27,178 +118,110 @@ export const createDamageReport = async (
       issueType,
       damagedCharges,
     } = req.body;
-
     const userId = req.user?.id;
+
+    if (!userId || !mongoose.Types.ObjectId.isValid(bookingId)) {
+      return sendDamageDisputeError(req, res, "notFound");
+    }
 
     const attachments = (
       (req.files as { [fieldname: string]: Express.Multer.File[] })
         ?.attachments || []
     ).map((file) => `/uploads/${file.filename}`);
 
-    // 1. Validate booking ID format
-    if (!mongoose.Types.ObjectId.isValid(bookingId)) {
-      return sendResponse(
-        res,
-        null,
-        req.t("booking:invalidId"),
-        STATUS_CODES.BAD_REQUEST
-      );
-    }
+    let report: InstanceType<typeof DamageReport> | null = null;
+    let windowState: ReturnType<typeof evaluateDamageDisputeEligibility> | null = null;
+    let rejection: DamageDisputeErrorKey | null = null;
 
-    // 2. Check if a damage report already exists for this booking
-    const existingReport = await DamageReport.findOne({ booking: bookingId });
-    if (existingReport) {
-      return sendResponse(
-        res,
-        null,
-        req.t("damage:alreadyExists"),
-        STATUS_CODES.CONFLICT // 409 Conflict is appropriate here
-      );
-    }
-
-    // 3. Find booking to ensure it exists and to get renter ID
-    const booking = await Booking.findById(bookingId).populate("marketplaceListingId");
-    if (!booking) {
-      return sendResponse(
-        res,
-        null,
-        req.t("booking:notFound"),
-        STATUS_CODES.NOT_FOUND
-      );
-    }
-
-    // An early return also puts the item back in the leaser's hands, so it can
-    // be disputed. A pre-pickup cancellation can't — the item never left.
-    const isEarlyReturn =
-      booking.status === "booking_cancelled" &&
-      booking.cancelledFromStatus === "in_progress";
-
-    if (booking.status !== "completed" && !isEarlyReturn) {
-      return sendResponse(
-        res,
-        null,
-        req.t("damage:bookingNotReturned"),
-        STATUS_CODES.BAD_REQUEST
-      );
-    }
-
-    // Damage can only be assessed after the item is physically back, and
-    // confirming it is also what starts the dispute window
-    if (isEarlyReturn && !booking.returnVerifiedAt) {
-      return sendResponse(
-        res,
-        null,
-        req.t("damage:returnPinRequired"),
-        STATUS_CODES.BAD_REQUEST
-      );
-    }
-
-    const leaserId = booking.leaser?.toString();
-    if (leaserId !== userId) {
-      return sendResponse(
-        res,
-        null,
-        req.t("damage:onlyLeaserCanCreate"),
-        STATUS_CODES.FORBIDDEN
-      );
-    }
-
-    const disputeWindowEndsAt =
-      booking.disputeWindowEndsAt ||
-      new Date(
-        new Date(booking.bookingDates?.returnDate || booking.dates.checkOut).getTime() +
-        (booking.depositDisputeWindowDays ?? 7) * 24 * 60 * 60 * 1000
-      );
-
-    if (new Date() > disputeWindowEndsAt) {
-      return sendResponse(
-        res,
-        null,
-        req.t("damage:windowExpired"),
-        STATUS_CODES.BAD_REQUEST
-      );
-    }
-
-    const damageAmount = Number(damagedCharges) || 0;
-
-    // 4. Create the damage report
-    const report = await DamageReport.create({
-      booking: booking._id,
-      rentalText,
-      issueType,
-      damagedCharges: damageAmount,
-      attachments,
-      user: req.user?.id,
-      status: "pending",
-    });
-
-    // 5. Update the Booking Model with damage charges
-    await Booking.findByIdAndUpdate(bookingId, {
-      $set: {
-        damagesCharges: {
-          damagedCharges: damageAmount,
-          totalPrice: damageAmount,
-        },
-        depositStatus: "disputed",
-        damageDisputeId: report._id,
-      },
-    });
-
-    const listingName = (booking.marketplaceListingId as any)?.name || "your booking";
-
-    // Report is filed — the leaser no longer needs nudging about it
-    await cancelReminder(REMINDER.BOOKING_INSPECT_ITEM, bookingId.toString());
-    await cancelReminder(REMINDER.DISPUTE_WINDOW_CLOSING, bookingId.toString());
-
-    // 6. Notify the admin to review it, and the renter that their deposit is
-    //    now on hold pending that review
-    try {
-      const admin = await User.findOne({ role: "admin" }).lean();
-
-      if (admin) {
-        await notificationQueue.add("damage-report-filed", {
-          userId: admin._id.toString(),
-          title: "New Damage Report Filed",
-          message: `A damage report has been submitted for "${listingName}". Amount: $${damageAmount.toFixed(2)}`,
-          data: {
-            bookingId: booking._id.toString(),
-            reportId: report._id,
-            type: "damage_report",
-            status: "pending"
-          },
-        });
+    await session.withTransaction(async () => {
+      const booking = await findOwnedBooking(bookingId, userId).session(session);
+      if (!booking) {
+        rejection = "notFound";
+        return;
       }
 
-      const renterId =
-        (booking.renter as any)?._id?.toString() ?? booking.renter?.toString();
+      const existingReport =
+        booking.damageDisputeId ||
+        (await DamageReport.exists({ booking: booking._id }).session(session));
+      const checkedAt = new Date();
+      windowState = evaluateDamageDisputeEligibility(
+        { ...booking.toObject(), damageDisputeId: existingReport },
+        checkedAt
+      );
 
-      // The claimed amount is deliberately left out — nothing is decided yet
-      if (renterId) {
-        await notificationQueue.add("damage-report-filed-renter", {
-          userId: renterId,
-          title: "Damage Report Filed",
-          message: `The host has reported damage for "${listingName}". Your security deposit is on hold while our team reviews it.`,
-          data: {
-            bookingId: booking._id.toString(),
-            reportId: report._id,
-            type: "damage_report",
+      if (!windowState.eligible) {
+        rejection = windowState.state as DamageDisputeErrorKey;
+        return;
+      }
+
+      const damageAmount = Number(damagedCharges) || 0;
+      const created = await DamageReport.create(
+        [
+          {
+            booking: booking._id,
+            rentalText,
+            issueType,
+            damagedCharges: damageAmount,
+            attachments,
+            user: userId,
             status: "pending",
           },
-        });
+        ],
+        { session }
+      );
+      report = created[0];
+
+      const bookingUpdate = await Booking.updateOne(
+        {
+          _id: booking._id,
+          leaser: userId,
+          damageDisputeId: { $exists: false },
+        },
+        {
+          $set: {
+            damagesCharges: {
+              damagedCharges: damageAmount,
+              totalPrice: damageAmount,
+            },
+            damageDisputeId: report._id,
+          },
+        },
+        { session }
+      );
+
+      if (bookingUpdate.modifiedCount !== 1) {
+        const duplicateError = new Error("duplicate damage dispute");
+        (duplicateError as Error & { code: number }).code = 11000;
+        throw duplicateError;
       }
-    } catch (notificationErr) {
-      console.error("Notification failed:", notificationErr);
+    });
+
+    if (rejection) {
+      return sendDamageDisputeError(req, res, rejection, windowState);
     }
 
-    // 7. Send success response
-    sendResponse(
+    if (!report || !windowState) {
+      throw new Error("Damage dispute transaction completed without a result");
+    }
+
+    return sendResponse(
       res,
-      { report },
+      {
+        report,
+        code: "DAMAGE_DISPUTE_SUBMITTED",
+        window: windowState,
+      },
       req.t("damage:submitted"),
       STATUS_CODES.CREATED
     );
-  } catch (err) {
-    next(err);
+  } catch (error) {
+    const mongoError = error as { code?: number };
+    if (mongoError.code === 11000 || mongoError.code === 112) {
+      return sendDamageDisputeError(req, res, "already_submitted");
+    }
+    next(error);
+  } finally {
+    await session.endSession();
   }
 };
 
