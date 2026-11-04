@@ -52,7 +52,8 @@ test("schema carries immutable state/version/idempotency and bounded queue index
 
 test("controller uses atomic pending/version transition, deterministic jobs, and zero payment calls", () => {
   const controller = readFileSync(require.resolve("../controllers/damageReport.controller"), "utf8");
-  assert.equal(controller.includes('findOneAndUpdate({ _id: id, status: "pending", version: decision.expectedVersion }'), true);
+  assert.equal(controller.includes('findOneAndUpdate({ _id: id, status: "pending", ...versionCondition }'), true);
+  assert.equal(controller.includes('{ version: { $exists: false } }'), true);
   assert.match(controller, /decisionIdempotencyKey === decision.idempotencyKey/);
   assert.match(controller, /jobId: "damage-dispute-decision-"/);
   assert.equal(["stripe", "refundBookingSecurityDeposit", "createTransaction", "Payment."].some((value) => controller.includes(value)), false);

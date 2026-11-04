@@ -321,7 +321,10 @@ export const decideDamageReport = async (req: AuthRequest, res: Response, next: 
     }
     if (existing.status !== "pending" || existing.version !== decision.expectedVersion) return sendResponse(res, { code: "DAMAGE_DISPUTE_DECISION_CONFLICT", currentVersion: existing.version, status: existing.status }, "DAMAGE_DISPUTE_DECISION_CONFLICT", STATUS_CODES.CONFLICT);
     const decidedAt = new Date(); const nextVersion = decision.expectedVersion + 1;
-    const updated = await DamageReport.findOneAndUpdate({ _id: id, status: "pending", version: decision.expectedVersion }, {
+    const versionCondition = decision.expectedVersion === 0
+      ? { $or: [{ version: 0 }, { version: { $exists: false } }] }
+      : { version: decision.expectedVersion };
+    const updated = await DamageReport.findOneAndUpdate({ _id: id, status: "pending", ...versionCondition }, {
       $set: { status: decision.decision, approvedAmount: decision.approvedAmount, resolvedBy: req.user.id, resolvedAt: decidedAt, adminNote: decision.reason,
         currency: decision.currency, decisionIdempotencyKey: decision.idempotencyKey, decisionEvidence: decision.evidenceReferences },
       $inc: { version: 1 },
