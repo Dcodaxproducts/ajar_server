@@ -13,6 +13,22 @@ export interface IDamageReport extends Document {
   resolvedBy?: mongoose.Types.ObjectId;
   resolvedAt?: Date;
   adminNote?: string;
+  currency: string;
+  version: number;
+  decisionIdempotencyKey?: string;
+  decisionEvidence: string[];
+  decisionAudit: Array<{
+    action: "approved" | "rejected";
+    actor: mongoose.Types.ObjectId;
+    at: Date;
+    reason: string;
+    claimedAmount: number;
+    approvedAmount: number;
+    currency: string;
+    evidence: string[];
+    version: number;
+    idempotencyKey: string;
+  }>;
 }
 
 const DamageReportSchema = new Schema<IDamageReport>(
@@ -63,6 +79,37 @@ const DamageReportSchema = new Schema<IDamageReport>(
       type: String,
       default: "",
     },
+    currency: {
+      type: String,
+      enum: ["SAR"],
+      default: "SAR",
+      required: true,
+    },
+    version: {
+      type: Number,
+      min: 0,
+      default: 0,
+      required: true,
+    },
+    decisionIdempotencyKey: { type: String },
+    decisionEvidence: { type: [String], default: [] },
+    decisionAudit: {
+      type: [
+        {
+          action: { type: String, enum: ["approved", "rejected"], required: true },
+          actor: { type: Schema.Types.ObjectId, ref: "User", required: true },
+          at: { type: Date, required: true },
+          reason: { type: String, required: true },
+          claimedAmount: { type: Number, required: true, min: 0 },
+          approvedAmount: { type: Number, required: true, min: 0 },
+          currency: { type: String, enum: ["SAR"], required: true },
+          evidence: { type: [String], default: [] },
+          version: { type: Number, required: true, min: 1 },
+          idempotencyKey: { type: String, required: true },
+        },
+      ],
+      default: [],
+    },
   },
   { timestamps: true }
 );
@@ -71,6 +118,7 @@ const DamageReportSchema = new Schema<IDamageReport>(
 // simultaneous requests pass the same eligibility read.
 DamageReportSchema.index({ booking: 1 }, { unique: true });
 DamageReportSchema.index({ status: 1, createdAt: -1 });
+DamageReportSchema.index({ decisionIdempotencyKey: 1 }, { sparse: true });
 
 export const DamageReport = model<IDamageReport>(
   "DamageReport",

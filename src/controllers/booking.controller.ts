@@ -26,6 +26,7 @@ import {
 } from "../utils/calculateBookingPrice";
 import { Payment } from "../models/payment.model";
 import { DamageReport } from "../models/damageReport.model";
+import { isSafeEvidenceReference } from "../services/damageDisputeDecision.service";
 import { Zone } from "../models/zone.model";
 import { IRentalDuration, RentalPolicy } from "../models/rentalPolicy.model";
 import { checkAndUpdateBookingExpiry } from "../utils/bookingExpiry";
@@ -1799,7 +1800,12 @@ export const getBookingsByUser = async (
 
     const damageReports = await DamageReport.find({
       booking: { $in: bookingIds },
-    }).lean();
+    })
+      .select("booking rentalText issueType damagedCharges attachments status approvedAmount resolvedAt adminNote currency version createdAt updatedAt")
+      .lean();
+    damageReports.forEach((report) => {
+      report.attachments = (report.attachments || []).filter(isSafeEvidenceReference);
+    });
 
     const damageReportMap = new Map(
       damageReports.map((d) => [String(d.booking), d])
@@ -1949,6 +1955,15 @@ export const getRenterBookingById = async (
       return;
     }
 
+    const renterId =
+      (booking.renter as { _id?: mongoose.Types.ObjectId })?._id?.toString?.() ||
+      booking.renter?.toString?.();
+    const leaserId = booking.leaser?.toString?.();
+    if (!userId || (userId !== renterId && userId !== leaserId)) {
+      sendResponse(res, null, req.t("booking:notFound"), STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
     booking = await attachPaymentStatus(booking);
 
     const childBookings = await Booking.find({ previousBookingId: id }).lean();
@@ -1970,7 +1985,12 @@ export const getRenterBookingById = async (
       })
     );
 
-    const damageReport = await DamageReport.findOne({ booking: id }).lean();
+    const damageReport = await DamageReport.findOne({ booking: id })
+      .select("booking rentalText issueType damagedCharges attachments status approvedAmount resolvedAt adminNote currency version createdAt updatedAt")
+      .lean();
+    if (damageReport) {
+      damageReport.attachments = (damageReport.attachments || []).filter(isSafeEvidenceReference);
+    }
 
     const result = {
       ...booking,

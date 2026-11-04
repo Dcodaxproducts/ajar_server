@@ -1,12 +1,11 @@
 import express from "express";
 import {
   createDamageReport,
-  deleteDamageReport,
+  decideDamageReport,
   getAllDamageReports,
   getDamageDisputeEligibility,
   getDamageReportById,
-  updateDamageReport,
-  updateDamageReportStatus
+  getMyDamageReportForBooking
 } from "../controllers/damageReport.controller";
 import { uploadFiles } from "../utils/multer";
 import { authMiddleware } from "../middlewares/auth.middleware";
@@ -41,22 +40,13 @@ router.get(
 // Read all
 router.get("/", useAuth, adminOnly, asyncHandler(getAllDamageReports));
 
+// Participants can only read status for their own booking.
+router.get("/mine/:bookingId", useAuth, userOnly, asyncHandler(getMyDamageReportForBooking));
+
 // Read by ID
 router.get("/:id", useAuth, adminOnly, asyncHandler(getDamageReportById));
 
-// Update
-router.patch(
-  "/:id",
-  useAuth,
-  adminOnly,
-  uploadFiles(["attachments"]),
-  asyncHandler(updateDamageReport)
-);
-
-// Delete
-router.delete("/:id", useAuth, adminOnly, asyncHandler(deleteDamageReport));
-
-// PATCH /api/damage-report/:id/status
-router.patch("/:id/status", useAuth, adminOnly, asyncHandler(updateDamageReportStatus));
+// Immutable admin settlement decision. Story 3 owns payment execution.
+router.post("/:id/decision", useAuth, adminOnly, asyncHandler(decideDamageReport));
 
 export default router;

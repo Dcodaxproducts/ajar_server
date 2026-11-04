@@ -7,14 +7,14 @@ import { STATUS_CODES } from "../config/constants";
 import { paginateQuery } from "../utils/paginate";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { notificationQueue } from "../queues/notification.queue";
-import { User } from "../models/user.model";
-import { Payment } from "../models/payment.model";
-import { refundBookingSecurityDeposit } from "../utils/bookingStripePayments";
-import { createTransaction } from "../utils/transactionLedger";
 import {
   DAMAGE_DISPUTE_ERROR_CODES,
   evaluateDamageDisputeEligibility,
 } from "../services/damageDisputeWindow.service";
+import {
+  isSafeEvidenceReference,
+  validateDamageDisputeDecision,
+} from "../services/damageDisputeDecision.service";
 
 const DAMAGE_DISPUTE_ERRORS = {
   notFound: {
@@ -225,544 +225,111 @@ export const createDamageReport = async (
   }
 };
 
-// READ ALL (admin gets all, user gets their own)
-export const getAllDamageReports = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+
+const safePage = (value: unknown) => { const parsed = Number(value); return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1; };
+const safeLimit = (value: unknown) => { const parsed = Number(value); return Number.isSafeInteger(parsed) && parsed > 0 ? Math.min(parsed, 50) : 10; };
+const safeAttachments = (attachments: string[]) => attachments.filter(isSafeEvidenceReference);
+
+export const getAllDamageReports = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { id: userId, role } = req.user!;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const status = req.query.status as string;
-
-    const queryObj: any = {};
-
-    //Admin → get all reports (no filter)
-    if (role === "admin") {
-      // no restrictions — admin sees everything
-    }
-
-    //Renter → only reports created by themselves
-    else if (role === "renter") {
-      queryObj.user = userId;
-    }
-
-    //Leaser → reports linked to bookings for their listings
-    else if (role === "leaser") {
-      // Step 1: find all booking IDs owned by this leaser
-      const bookings = await Booking.find({ leaser: userId }).select("_id");
-      const bookingIds = bookings.map((b) => b._id);
-
-      // Step 2: restrict damage reports to those bookings
-      queryObj.booking = { $in: bookingIds };
-    }
-
-    //Optional: Filter by status (pending/resolved)
-    if (status && ["pending", "resolved"].includes(status)) {
-      queryObj.status = status;
-    }
-
-    //Query with population
+    const page = safePage(req.query.page); const limit = safeLimit(req.query.limit);
+    const status = typeof req.query.status === "string" ? req.query.status : undefined;
+    const queryObj: Record<string, unknown> = {};
+    if (status && ["pending", "approved", "rejected", "partially_approved"].includes(status)) queryObj.status = status;
     const query = DamageReport.find(queryObj)
-      .sort({ createdAt: -1 })
-      .populate({
-        path: "booking",
-        populate: [
-          { path: "renter", select: "name email" },
-          { path: "leaser", select: "name email" },
-          { path: "marketplaceListingId", select: "title zone" },
-        ],
-      })
-      .populate("user", "name email role");
-
+      .select("booking rentalText issueType damagedCharges attachments user status approvedAmount resolvedBy resolvedAt adminNote currency version decisionEvidence createdAt updatedAt")
+      .sort({ createdAt: -1, _id: -1 })
+      .populate({ path: "booking", select: "renter leaser marketplaceListingId dates priceDetails.securityDeposit status", populate: [
+        { path: "renter", select: "name firstName lastName email" }, { path: "leaser", select: "name firstName lastName email" },
+        { path: "marketplaceListingId", select: "name title" },
+      ] }).populate("user", "name firstName lastName email");
     const paginated = await paginateQuery(query, { page, limit });
-
-    sendResponse(
-      res,
-      {
-        tickets: paginated.data,
-        total: paginated.total,
-        page: paginated.page,
-        limit: paginated.limit,
-      },
-      req.t("damage:fetched"),
-      STATUS_CODES.OK
-    );
-  } catch (err) {
-    next(err);
-  }
+    const tickets = paginated.data.map((ticket) => { const object = ticket.toObject(); object.attachments = safeAttachments(object.attachments || []); return object; });
+    return sendResponse(res, { tickets, total: paginated.total, page: paginated.page, limit: paginated.limit }, req.t("damage:fetched"), STATUS_CODES.OK);
+  } catch (error) { next(error); }
 };
 
-// READ ONE
-export const getDamageReportById = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
+export const getDamageReportById = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendResponse(
-        res,
-        null,
-        req.t("damage:invalidId"),
-        STATUS_CODES.BAD_REQUEST
-      );
-    }
-
+    if (!mongoose.Types.ObjectId.isValid(id)) return sendResponse(res, null, req.t("damage:invalidId"), STATUS_CODES.BAD_REQUEST);
     const report = await DamageReport.findById(id)
-      .populate({
-        path: "booking",
-        select: "renter leaser dates.checkIn dates.checkOut priceDetails status",
-        populate: [
-          {
-            path: "renter",
-            select: "name email profilePicture"
-          },
-          {
-            path: "leaser",
-            select: "name email profilePicture"
-          }
-        ]
-      });
-
-    if (!report) {
-      return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
-    }
-
-    sendResponse(res, report, req.t("damage:fetched"), STATUS_CODES.OK);
-  } catch (err) {
-    next(err);
-  }
+      .select("booking rentalText issueType damagedCharges attachments user status approvedAmount resolvedBy resolvedAt adminNote currency version decisionEvidence decisionAudit createdAt updatedAt")
+      .populate({ path: "booking", select: "renter leaser marketplaceListingId dates priceDetails.securityDeposit status", populate: [
+        { path: "renter", select: "name firstName lastName email" }, { path: "leaser", select: "name firstName lastName email" },
+        { path: "marketplaceListingId", select: "name title" },
+      ] }).populate("resolvedBy", "name firstName lastName email").lean();
+    if (!report) return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
+    report.attachments = safeAttachments(report.attachments || []); report.decisionEvidence = safeAttachments(report.decisionEvidence || []);
+    return sendResponse(res, report, req.t("damage:fetched"), STATUS_CODES.OK);
+  } catch (error) { next(error); }
 };
 
-// UPDATE
-export const updateDamageReport = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
+export const getMyDamageReportForBooking = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
-    const updateData = req.body;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendResponse(
-        res,
-        null,
-        req.t("damage:invalidId"),
-        STATUS_CODES.BAD_REQUEST
-      );
-    }
-
-    const updatedReport = await DamageReport.findByIdAndUpdate(id, updateData, {
-      new: true,
-    })
-      .populate("booking")
-      .populate("user");
-
-    if (!updatedReport) {
-      return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
-    }
-
-    sendResponse(res, updatedReport, req.t("damage:updated"), STATUS_CODES.OK);
-  } catch (err) {
-    next(err);
-  }
+    const userId = req.user?.id; const { bookingId } = req.params;
+    if (!userId || !mongoose.Types.ObjectId.isValid(bookingId)) return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
+    const booking = await Booking.findOne({ _id: bookingId, $or: [{ renter: userId }, { leaser: userId }] }).select("_id").lean();
+    if (!booking) return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
+    const report = await DamageReport.findOne({ booking: booking._id })
+      .select("booking rentalText issueType damagedCharges attachments status approvedAmount resolvedAt adminNote currency version decisionEvidence createdAt updatedAt").lean();
+    if (!report) return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
+    report.attachments = safeAttachments(report.attachments || []); report.decisionEvidence = safeAttachments(report.decisionEvidence || []);
+    return sendResponse(res, report, req.t("damage:fetched"), STATUS_CODES.OK);
+  } catch (error) { next(error); }
 };
 
-// DELETE
-export const deleteDamageReport = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
+type BookingForDecision = { _id: mongoose.Types.ObjectId; renter?: { _id?: mongoose.Types.ObjectId } | mongoose.Types.ObjectId; leaser?: { _id?: mongoose.Types.ObjectId } | mongoose.Types.ObjectId; marketplaceListingId?: { name?: string; title?: string }; priceDetails?: { securityDeposit?: number } };
+const objectIdString = (value: BookingForDecision["renter"]) => { if (!value) return null; if (value instanceof mongoose.Types.ObjectId) return value.toString(); return value._id?.toString() || null; };
+
+const enqueueDecisionNotifications = async (report: InstanceType<typeof DamageReport>, booking: BookingForDecision) => {
+  const listing = booking.marketplaceListingId?.name || booking.marketplaceListingId?.title || "the rental";
+  const recipients = [objectIdString(booking.leaser), objectIdString(booking.renter)].filter((id): id is string => Boolean(id));
+  await Promise.all(recipients.map((userId) => notificationQueue.add("damage-dispute-admin-decision-recorded", {
+    userId, title: "Damage dispute decision recorded",
+    message: "Admin " + (report.status === "approved" ? "approved" : "rejected") + " the damage dispute for " + listing + ". No payment has been moved yet.",
+    data: { bookingId: booking._id.toString(), disputeId: String(report._id), type: "damage_dispute_decision", status: report.status,
+      approvedAmount: String(report.approvedAmount || 0), currency: report.currency, settlementExecutionStatus: "pending_story_3" },
+  }, { jobId: "damage-dispute-decision-" + String(report._id) + "-" + report.version + "-" + userId })));
+};
+
+// Records the settlement decision only. Story 3 owns every Stripe/payment action.
+export const decideDamageReport = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    if (req.user?.role !== "admin" || !req.user.id) return sendResponse(res, null, req.t("damage:onlyAdminCanUpdate"), STATUS_CODES.FORBIDDEN);
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendResponse(
-        res,
-        null,
-        req.t("damage:invalidId"),
-        STATUS_CODES.BAD_REQUEST
-      );
+    if (!mongoose.Types.ObjectId.isValid(id)) return sendResponse(res, null, req.t("damage:invalidId"), STATUS_CODES.BAD_REQUEST);
+    const existing = await DamageReport.findById(id).populate({ path: "booking", select: "renter leaser marketplaceListingId priceDetails.securityDeposit", populate: { path: "marketplaceListingId", select: "name title" } });
+    if (!existing) return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
+    const booking = existing.booking as unknown as BookingForDecision;
+    const validation = validateDamageDisputeDecision(req.body, existing.damagedCharges, Number(booking.priceDetails?.securityDeposit || 0), safeAttachments(existing.attachments || []));
+    if (!validation.ok) return sendResponse(res, { code: validation.code }, validation.code, STATUS_CODES.BAD_REQUEST);
+    const decision = validation.value;
+    if (existing.decisionIdempotencyKey === decision.idempotencyKey) {
+      const sameEvidence = JSON.stringify(existing.decisionEvidence || []) === JSON.stringify(decision.evidenceReferences);
+      const isIdenticalRetry =
+        existing.status === decision.decision &&
+        existing.adminNote === decision.reason &&
+        existing.approvedAmount === decision.approvedAmount &&
+        existing.currency === decision.currency &&
+        sameEvidence;
+      if (!isIdenticalRetry) {
+        return sendResponse(res, { code: "DAMAGE_DISPUTE_IDEMPOTENCY_CONFLICT" }, "DAMAGE_DISPUTE_IDEMPOTENCY_CONFLICT", STATUS_CODES.CONFLICT);
+      }
+      await enqueueDecisionNotifications(existing, booking);
+      return sendResponse(res, { report: existing, idempotentReplay: true, settlementExecutionStatus: "pending_story_3" }, req.t("damage:updated"), STATUS_CODES.OK);
     }
-
-    const deletedReport = await DamageReport.findByIdAndDelete(id);
-    if (!deletedReport) {
-      return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
-    }
-
-    sendResponse(res, null, req.t("damage:deleted"), STATUS_CODES.OK);
-  } catch (err) {
-    next(err);
-  }
+    if (existing.status !== "pending" || existing.version !== decision.expectedVersion) return sendResponse(res, { code: "DAMAGE_DISPUTE_DECISION_CONFLICT", currentVersion: existing.version, status: existing.status }, "DAMAGE_DISPUTE_DECISION_CONFLICT", STATUS_CODES.CONFLICT);
+    const decidedAt = new Date(); const nextVersion = decision.expectedVersion + 1;
+    const updated = await DamageReport.findOneAndUpdate({ _id: id, status: "pending", version: decision.expectedVersion }, {
+      $set: { status: decision.decision, approvedAmount: decision.approvedAmount, resolvedBy: req.user.id, resolvedAt: decidedAt, adminNote: decision.reason,
+        currency: decision.currency, decisionIdempotencyKey: decision.idempotencyKey, decisionEvidence: decision.evidenceReferences },
+      $inc: { version: 1 },
+      $push: { decisionAudit: { action: decision.decision, actor: req.user.id, at: decidedAt, reason: decision.reason, claimedAmount: existing.damagedCharges,
+        approvedAmount: decision.approvedAmount, currency: decision.currency, evidence: decision.evidenceReferences, version: nextVersion, idempotencyKey: decision.idempotencyKey } },
+    }, { new: true, runValidators: true });
+    if (!updated) return sendResponse(res, { code: "DAMAGE_DISPUTE_DECISION_CONFLICT" }, "DAMAGE_DISPUTE_DECISION_CONFLICT", STATUS_CODES.CONFLICT);
+    await enqueueDecisionNotifications(updated, booking);
+    return sendResponse(res, { report: updated, idempotentReplay: false, settlementExecutionStatus: "pending_story_3" }, req.t("damage:updated"), STATUS_CODES.OK);
+  } catch (error) { next(error); }
 };
-
-// PATCH /api/damage-report/:id/status
-export const updateDamageReportStatus = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    const { id } = req.params;
-    const { status, adminNote, approvedAmount } = req.body;
-    const userRole = req.user?.role;
-
-    // Only admin can update status
-    if (userRole !== "admin") {
-      await session.abortTransaction();
-      session.endSession();
-      return sendResponse(res, null, req.t("damage:onlyAdminCanUpdate"), STATUS_CODES.FORBIDDEN);
-    }
-
-    // Validate report ID
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      await session.abortTransaction();
-      session.endSession();
-      return sendResponse(res, null, req.t("damage:invalidId"), STATUS_CODES.BAD_REQUEST);
-    }
-
-    // Validate status value
-    const allowedStatuses = ["pending", "approved", "partially_approved", "rejected"];
-    if (!allowedStatuses.includes(status)) {
-      await session.abortTransaction();
-      session.endSession();
-      return sendResponse(res, null, req.t("damage:invalidStatus"), STATUS_CODES.BAD_REQUEST);
-    }
-
-    // Find damage report with full details
-    const damageReport = await DamageReport.findById(id)
-      .populate({
-        path: "booking",
-        populate: [
-          { path: "renter", select: "firstName lastName email" },
-          { path: "leaser", select: "firstName lastName email" },
-          { path: "marketplaceListingId", select: "name title zone" },
-        ],
-      })
-      .populate("user", "firstName lastName email role")
-      .session(session);
-
-    if (!damageReport) {
-      await session.abortTransaction();
-      session.endSession();
-      return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
-    }
-
-    // Prevent re-processing already settled reports
-    if (
-      damageReport.status === "approved" ||
-      damageReport.status === "partially_approved" ||
-      damageReport.status === "rejected"
-    ) {
-      await session.abortTransaction();
-      session.endSession();
-      return sendResponse(res, null, req.t("damage:alreadySettled"), STATUS_CODES.BAD_REQUEST);
-    }
-
-    const bookingData = damageReport.booking as any;
-    const listingName = bookingData?.marketplaceListingId?.name || bookingData?.marketplaceListingId?.title || "your listing";
-    const damagedCharges = damageReport.damagedCharges || 0;
-    const leaserId = bookingData?.leaser?._id?.toString();
-    const renterId = bookingData?.renter?._id?.toString();
-
-    // ================= APPROVED / PARTIALLY APPROVED =================
-    if (status === "approved" || status === "partially_approved") {
-      const isPartial = status === "partially_approved";
-
-      const admin = await User.findOne({ role: "admin" }).session(session);
-      if (!admin) {
-        await session.abortTransaction();
-        session.endSession();
-        return sendResponse(res, null, req.t("common:adminNotFound"), STATUS_CODES.NOT_FOUND);
-      }
-
-      const depositAmount = bookingData?.priceDetails?.securityDeposit || 0;
-
-      // On a partial approval the admin sets the figure; on a full approval it
-      // stays whatever the leaser claimed
-      let settledAmount = damagedCharges;
-
-      if (isPartial) {
-        const parsedAmount = Number(approvedAmount);
-
-        if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-          await session.abortTransaction();
-          session.endSession();
-          return sendResponse(
-            res,
-            null,
-            "approvedAmount must be a number greater than 0. Use 'rejected' to approve nothing.",
-            STATUS_CODES.BAD_REQUEST
-          );
-        }
-
-        // The deposit is the only pot money can come from — a claim larger than
-        // the deposit is exactly why partial approval exists
-        if (parsedAmount > depositAmount) {
-          await session.abortTransaction();
-          session.endSession();
-          return sendResponse(
-            res,
-            null,
-            req.t("damage:approvedAmountTooHigh", {
-              amount: parsedAmount.toFixed(2),
-              deposit: depositAmount.toFixed(2),
-            }),
-            STATUS_CODES.BAD_REQUEST
-          );
-        }
-
-        settledAmount = parsedAmount;
-      } else if (damagedCharges > depositAmount) {
-        await session.abortTransaction();
-        session.endSession();
-        return sendResponse(
-          res,
-          null,
-          req.t("damage:insufficientDeposit", {
-            charges: damagedCharges.toFixed(2),
-            deposit: depositAmount.toFixed(2),
-          }),
-          STATUS_CODES.BAD_REQUEST
-        );
-      }
-
-      const remainingDeposit = depositAmount - settledAmount;
-      if (settledAmount > 0) {
-        const payment = await Payment.findOne({
-          bookingId: bookingData._id,
-          type: { $in: ["booking", "extension"] },
-          status: { $in: ["captured", "partially_refunded", "paid_out"] },
-        }).session(session);
-
-        if (payment) {
-          await createTransaction({
-            paymentId: payment._id as mongoose.Types.ObjectId,
-            userId: leaserId,
-            amount: settledAmount,
-            type: "credit",
-            source: "damage_charge",
-            session,
-          });
-
-          await createTransaction({
-            paymentId: payment._id as mongoose.Types.ObjectId,
-            userId: admin._id as mongoose.Types.ObjectId,
-            amount: settledAmount,
-            type: "debit",
-            source: "damage_charge",
-            session,
-          });
-        }
-      }
-
-      if (remainingDeposit > 0) {
-        await refundBookingSecurityDeposit(bookingData._id, remainingDeposit, session);
-      }
-
-      await Booking.findByIdAndUpdate(
-        bookingData._id,
-        {
-          $set: {
-            depositStatus:
-              settledAmount <= 0
-                ? "released"
-                : remainingDeposit > 0
-                  ? "partially_refunded"
-                  : "deducted",
-            depositReleasedAt: new Date(),
-            damageDisputeId: damageReport._id,
-            // Keep the booking record on the settled figure, not the claim
-            damagesCharges: {
-              damagedCharges: settledAmount,
-              totalPrice: settledAmount,
-            },
-          },
-        },
-        { session }
-      );
-
-      damageReport.status = isPartial ? "partially_approved" : "approved";
-      damageReport.approvedAmount = settledAmount;
-      damageReport.resolvedBy = req.user?.id as any;
-      damageReport.resolvedAt = new Date();
-      if (adminNote !== undefined) damageReport.adminNote = adminNote;
-      await damageReport.save({ session });
-
-      await session.commitTransaction();
-      session.endSession();
-
-      try {
-        if (leaserId) {
-          await notificationQueue.add(
-            isPartial ? "damage-report-partially-approved" : "damage-report-approved",
-            {
-              userId: leaserId,
-              title: isPartial
-                ? "Damage Report Partially Approved"
-                : "Damage Report Approved",
-              message: isPartial
-                ? `Admin partially approved the damage report for "${listingName}". You claimed $${damagedCharges.toFixed(2)} and $${settledAmount.toFixed(2)} has been approved from the renter's security deposit.`
-                : `Admin approved the damage report for "${listingName}". Damage compensation of $${settledAmount.toFixed(2)} has been approved from the renter's security deposit.`,
-              data: {
-                bookingId: bookingData._id.toString(),
-                type: "damage_report",
-                status: isPartial ? "partially_approved" : "approved",
-                claimedAmount: damagedCharges.toFixed(2),
-                approvedAmount: settledAmount.toFixed(2),
-              },
-            }
-          );
-        }
-
-        if (renterId) {
-          const deductionLine = isPartial
-            ? `$${settledAmount.toFixed(2)} of the $${damagedCharges.toFixed(2)} claimed has been deducted from your security deposit for the damage report on "${listingName}".`
-            : `$${settledAmount.toFixed(2)} has been deducted from your security deposit for the damage report on "${listingName}".`;
-
-          await notificationQueue.add("damage-charges-deducted", {
-            userId: renterId,
-            title: "Damage Charges Deducted",
-            message:
-              remainingDeposit > 0
-                ? `${deductionLine} The remaining deposit of $${remainingDeposit.toFixed(2)} has been refunded to your original payment method.`
-                : `${deductionLine} No remaining deposit to refund.`,
-            data: {
-              bookingId: bookingData._id.toString(),
-              type: "damage_report",
-              status: isPartial ? "partially_approved" : "approved",
-              claimedAmount: damagedCharges.toFixed(2),
-              approvedAmount: settledAmount.toFixed(2),
-              refundedAmount: remainingDeposit.toFixed(2),
-            },
-          });
-        }
-      } catch (err) {
-        console.error("Notification Error:", err);
-      }
-
-      return sendResponse(
-        res,
-        damageReport,
-        isPartial
-          ? req.t("damage:partiallyApproved", { amount: settledAmount.toFixed(2) })
-          : req.t("damage:approved", { amount: settledAmount.toFixed(2) }),
-        STATUS_CODES.OK
-      );
-    }
-
-    // ================= REJECTED =================
-    if (status === "rejected") {
-      const admin = await User.findOne({ role: "admin" }).session(session);
-      if (!admin) {
-        await session.abortTransaction();
-        session.endSession();
-        return sendResponse(res, null, req.t("common:adminNotFound"), STATUS_CODES.NOT_FOUND);
-      }
-
-      // Declare outside so notifications can access it
-      const depositAmount = bookingData?.priceDetails?.securityDeposit || 0;
-
-      if (depositAmount > 0) {
-        await refundBookingSecurityDeposit(bookingData._id, depositAmount, session);
-// Set security deposit to 0 on booking since fully settled
-        await Booking.findByIdAndUpdate(
-          bookingData._id,
-          {
-            $set: {
-              "priceDetails.securityDeposit": 0,
-              depositStatus: "released",
-              depositReleasedAt: new Date(),
-              damageDisputeId: damageReport._id,
-            },
-          },
-          { session }
-        );
-      }
-
-      if (depositAmount <= 0) {
-        await Booking.findByIdAndUpdate(
-          bookingData._id,
-          {
-            $set: {
-              depositStatus: "released",
-              depositReleasedAt: new Date(),
-              damageDisputeId: damageReport._id,
-            },
-          },
-          { session }
-        );
-      }
-
-      damageReport.status = "rejected";
-      damageReport.resolvedBy = req.user?.id as any;
-      damageReport.resolvedAt = new Date();
-      if (adminNote !== undefined) damageReport.adminNote = adminNote;
-      await damageReport.save({ session });
-
-      await session.commitTransaction();
-      session.endSession();
-
-      try {
-        if (leaserId) {
-          await notificationQueue.add("damage-report-rejected", {
-            userId: leaserId,
-            title: "Damage Report Rejected",
-            message: `Admin has rejected the damage report for "${listingName}". The renter's security deposit has been refunded.`,
-            data: { bookingId: bookingData._id.toString(), type: "damage_report", status: "rejected" },
-          });
-        }
-
-        if (renterId) {
-          await notificationQueue.add("damage-report-rejected", {
-            userId: renterId,
-            title: "Damage Report Rejected",
-            message: depositAmount > 0
-              ? `The damage report for "${listingName}" has been rejected by admin. Your full security deposit of $${depositAmount.toFixed(2)} has been refunded to your original payment method.`
-              : `The damage report for "${listingName}" has been rejected by admin. No security deposit was held.`,
-            data: { bookingId: bookingData._id.toString(), type: "damage_report", status: "rejected" },
-          });
-        }
-
-        if (depositAmount > 0) {
-          await notificationQueue.add("security-deposit-released", {
-            userId: admin._id as string,
-            title: "Security Deposit Released",
-            message: `The full security deposit of $${depositAmount.toFixed(2)} for "${listingName}" has been released from escrow and refunded to the renter after damage report rejection.`,
-            data: { bookingId: bookingData._id.toString(), type: "damage_report", status: "rejected" },
-          });
-        }
-      } catch (err) {
-        console.error("Notification Error:", err);
-      }
-
-      return sendResponse(res, null, req.t("damage:rejected"), STATUS_CODES.OK);
-    }
-
-    // ================= PENDING (reset) =================
-    damageReport.status = "pending";
-    await damageReport.save({ session });
-
-    await session.commitTransaction();
-    session.endSession();
-
-    return sendResponse(res, damageReport, req.t("damage:resetToPending"), STATUS_CODES.OK);
-
-  } catch (err) {
-    console.error("Update Damage Report Error:", err);
-    await session.abortTransaction();
-    session.endSession();
-    next(err);
-  }
-};
-
