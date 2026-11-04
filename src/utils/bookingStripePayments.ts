@@ -4,16 +4,20 @@ import { Payment } from "../models/payment.model";
 import { User } from "../models/user.model";
 import { createTransaction } from "./transactionLedger";
 import stripe from "./stripe";
+import {
+  assertProjectedAuthorizationWindow,
+  registerSecurityDepositAuthorization,
+} from "../services/securityDepositAuthorization.service";
 
 const MIN_STRIPE_AMOUNT_CENTS = 50;
 
 export const getBookingStripeAmount = (booking: any): number => {
   const totalPrice = Number(booking?.priceDetails?.totalPrice || 0);
-  const securityDeposit = Number(booking?.priceDetails?.securityDeposit || 0);
   // The processing fee is deliberately kept out of totalPrice, so it has to be
-  // added back here — this is the only place the renter is actually charged
+  // added back here. The deposit is a separate authorization and is never
+  // captured with the rental charge.
   const stripeFee = Number(booking?.priceDetails?.stripeFee || 0);
-  return Number((totalPrice + securityDeposit + stripeFee).toFixed(2));
+  return Number((totalPrice + stripeFee).toFixed(2));
 };
 
 const getBookingUserId = (user: any) => {
@@ -39,15 +43,29 @@ export const createManualBookingPaymentIntent = async (booking: any) => {
     payment_method_types: ["card"],
     metadata: {
       bookingId: booking._id.toString(),
+      paymentPurpose: "booking_charge",
     },
   });
+};
+
+export const createSecurityDepositPaymentIntent = async (booking: any) => {
+  const amountInCents = Math.round(Number(booking?.priceDetails?.securityDeposit || 0) * 100);
+  if (amountInCents < MIN_STRIPE_AMOUNT_CENTS) return null;
+  assertProjectedAuthorizationWindow(booking);
+  return stripe.paymentIntents.create({
+    amount: amountInCents,
+    currency: "usd",
+    capture_method: "manual",
+    payment_method_types: ["card"],
+    metadata: { bookingId: booking._id.toString(), paymentPurpose: "security_deposit" },
+  }, { idempotencyKey: "deposit-authorization-" + booking._id.toString() + "-v1" });
 };
 
 export const recordHeldBookingPayment = async (
   paymentIntentId: string,
   session?: mongoose.ClientSession
 ) => {
-  const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+  const intent = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge"] });
   const bookingId = intent.metadata?.bookingId;
 
   if (!bookingId || !mongoose.Types.ObjectId.isValid(bookingId)) {
@@ -56,6 +74,10 @@ export const recordHeldBookingPayment = async (
 
   if (intent.status !== "requires_capture") {
     throw new Error(`Payment hold not completed: ${intent.status}`);
+  }
+
+  if (intent.metadata?.paymentPurpose === "security_deposit") {
+    return registerSecurityDepositAuthorization(intent, session);
   }
 
   const booking = await Booking.findById(bookingId).session(session || null);

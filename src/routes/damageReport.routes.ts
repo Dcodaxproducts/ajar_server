@@ -5,7 +5,9 @@ import {
   getAllDamageReports,
   getDamageDisputeEligibility,
   getDamageReportById,
-  getMyDamageReportForBooking
+  getMyDamageReportForBooking,
+  getSecurityDepositStatus,
+  retryDamageSettlement
 } from "../controllers/damageReport.controller";
 import { uploadFiles } from "../utils/multer";
 import { authMiddleware } from "../middlewares/auth.middleware";
@@ -42,6 +44,8 @@ router.get("/", useAuth, adminOnly, asyncHandler(getAllDamageReports));
 
 // Participants can only read status for their own booking.
 router.get("/mine/:bookingId", useAuth, userOnly, asyncHandler(getMyDamageReportForBooking));
+router.get("/deposit/:bookingId", useAuth, asyncHandler(getSecurityDepositStatus));
+router.post("/:id/settlement/retry", useAuth, adminOnly, asyncHandler(retryDamageSettlement));
 
 // Read by ID
 router.get("/:id", useAuth, adminOnly, asyncHandler(getDamageReportById));

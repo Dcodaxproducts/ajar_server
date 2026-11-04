@@ -17,6 +17,8 @@ import {
   recordHeldBookingPayment,
 } from "../utils/bookingStripePayments";
 import { createTransaction } from "../utils/transactionLedger";
+import { StripeWebhookEvent } from "../models/stripeWebhookEvent.model";
+import { reconcileDepositPaymentIntent } from "../services/securityDepositAuthorization.service";
 
 const verifyCapturedPayment = async (payment: any) => {
   if (!payment?.paymentIntentId) return false;
@@ -195,6 +197,29 @@ const sendPaidBookingRequestNotifications = async (booking: any) => {
   }
 };
 
+const claimStripeWebhook = async (eventId: string, type: string) => {
+  const now = new Date();
+  const leaseUntil = new Date(now.getTime() + 2 * 60_000);
+  const existing = await StripeWebhookEvent.findOne({ eventId });
+  if (existing?.status === "processed") return false;
+  if (existing?.status === "processing" && existing.leaseUntil > now) return false;
+  if (existing) {
+    const reclaimed = await StripeWebhookEvent.findOneAndUpdate(
+      { _id: existing._id, status: "processing", leaseUntil: { $lte: now } },
+      { $set: { leaseUntil, type } },
+      { new: true }
+    );
+    return Boolean(reclaimed);
+  }
+  try {
+    await StripeWebhookEvent.create({ eventId, type, status: "processing", leaseUntil });
+    return true;
+  } catch (error) {
+    if ((error as { code?: number }).code === 11000) return false;
+    throw error;
+  }
+};
+
 export const stripeWebhook = async (req: Request, res: Response) => {
   const sig = req.headers["stripe-signature"];
   if (!sig) return res.status(400).send("Missing Stripe signature");
@@ -210,6 +235,9 @@ export const stripeWebhook = async (req: Request, res: Response) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  const claimed = await claimStripeWebhook(event.id, event.type);
+  if (!claimed) return res.json({ received: true, duplicate: true });
+
   try {
     if (event.type === "account.updated") {
       const account = event.data.object as any;
@@ -220,6 +248,7 @@ export const stripeWebhook = async (req: Request, res: Response) => {
           "stripe.connectedAccountId": account.id,
         });
       }
+      await StripeWebhookEvent.updateOne({ eventId: event.id }, { $set: { status: "processed", processedAt: new Date() } });
       return res.json({ received: true });
     }
     const paymentIntent = event.data.object as any;
@@ -228,7 +257,6 @@ export const stripeWebhook = async (req: Request, res: Response) => {
     const bookingId = paymentIntent.metadata?.bookingId;
 
     if (bookingId) {
-      if (!bookingId) return res.status(400).send("Missing booking ID");
 
       const booking = await Booking.findById(bookingId)
         .populate("renter")
@@ -241,7 +269,9 @@ export const stripeWebhook = async (req: Request, res: Response) => {
 
       if (event.type === "payment_intent.amount_capturable_updated") {
         await recordHeldBookingPayment(paymentIntent.id);
-        await sendPaidBookingRequestNotifications(booking);
+        if (paymentIntent.metadata?.paymentPurpose !== "security_deposit") {
+          await sendPaidBookingRequestNotifications(booking);
+        }
       }
 
       // PAYMENT SUCCESS
@@ -261,12 +291,17 @@ export const stripeWebhook = async (req: Request, res: Response) => {
         );
       }
 
+      if (paymentIntent.metadata?.paymentPurpose === "security_deposit") {
+        await reconcileDepositPaymentIntent(paymentIntent);
+      }
+      await StripeWebhookEvent.updateOne({ eventId: event.id }, { $set: { status: "processed", processedAt: new Date() } });
       res.json({ received: true });
-    }
-    else {
+    } else {
+      await StripeWebhookEvent.updateOne({ eventId: event.id }, { $set: { status: "processed", processedAt: new Date() } });
       res.json({ received: true });
     }
   } catch (err) {
+    await StripeWebhookEvent.updateOne({ eventId: event.id, status: "processing" }, { $set: { leaseUntil: new Date() } });
     console.error("Webhook Processing Error:", err);
     res.status(500).send("Webhook processing error");
   }
@@ -299,11 +334,22 @@ export const verifyPayment = async (req: AuthRequest, res: Response) => {
       }
 
       if (intent.status === "requires_capture") {
-        await recordHeldBookingPayment(intent.id);
-        await sendPaidBookingRequestNotifications(booking);
+        const held = await recordHeldBookingPayment(intent.id);
+        const isDeposit = intent.metadata?.paymentPurpose === "security_deposit";
+        if (!isDeposit) await sendPaidBookingRequestNotifications(booking);
+        const depositState = isDeposit && held && "state" in held ? held.state : undefined;
+        if (depositState === "PROVIDER_ACTION_REQUIRED") {
+          return res.status(409).json({
+            status: "provider_action_required",
+            code: "DEPOSIT_AUTHORIZATION_WINDOW_UNSUPPORTED",
+            stripeStatus: intent.status,
+            depositState,
+          });
+        }
         return res.json({
           status: "pending",
           stripeStatus: intent.status,
+          depositState,
           message: req.t("payment:holdConfirmed"),
         });
       }
