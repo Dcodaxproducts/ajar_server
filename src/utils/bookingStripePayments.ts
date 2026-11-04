@@ -7,16 +7,19 @@ import stripe from "./stripe";
 import { buildDepositRefundIdempotencyKey } from "../services/damageDispute.service";
 import { lockAndCheckBookingAvailability } from "./dateValidator";
 import { buildBookingRefundIdempotencyKey } from "./refundIdempotency";
-
+import {
+  assertProjectedAuthorizationWindow,
+  registerSecurityDepositAuthorization,
+} from "../services/securityDepositAuthorization.service";
 const MIN_STRIPE_AMOUNT_CENTS = 50;
 
 export const getBookingStripeAmount = (booking: any): number => {
   const totalPrice = Number(booking?.priceDetails?.totalPrice || 0);
-  const securityDeposit = Number(booking?.priceDetails?.securityDeposit || 0);
   // The processing fee is deliberately kept out of totalPrice, so it has to be
-  // added back here — this is the only place the renter is actually charged
+  // added back here. The deposit is a separate authorization and is never
+  // captured with the rental charge.
   const stripeFee = Number(booking?.priceDetails?.stripeFee || 0);
-  return Number((totalPrice + securityDeposit + stripeFee).toFixed(2));
+  return Number((totalPrice + stripeFee).toFixed(2));
 };
 
 const getBookingUserId = (user: any) => {
@@ -35,14 +38,14 @@ export const createManualBookingPaymentIntent = async (booking: any) => {
     throw new Error("Booking amount must be at least $0.50");
   }
 
-  return stripe.paymentIntents.create(
-    {
-      amount: amountInCents,
-      currency: "usd",
-      capture_method: "manual",
-      payment_method_types: ["card"],
-      metadata: { bookingId: booking._id.toString() },
-    },
+  return stripe.paymentIntents.create({
+    amount: amountInCents,
+    currency: "usd",
+    capture_method: "manual",
+    payment_method_types: ["card"],
+    metadata: {
+      bookingId: booking._id.toString(),
+      paymentPurpose: "booking_charge",    },
     { idempotencyKey: `booking-payment-intent-${booking._id.toString()}-v1` }
   );
 };
@@ -53,17 +56,33 @@ export class BookingAvailabilityConflictError extends Error {
     this.name = "BookingAvailabilityConflictError";
   }
 }
-
+export const createSecurityDepositPaymentIntent = async (booking: any) => {
+  const amountInCents = Math.round(Number(booking?.priceDetails?.securityDeposit || 0) * 100);
+  if (amountInCents < MIN_STRIPE_AMOUNT_CENTS) return null;
+  assertProjectedAuthorizationWindow(booking);
+  return stripe.paymentIntents.create({
+    amount: amountInCents,
+    currency: "usd",
+    capture_method: "manual",
+    payment_method_types: ["card"],
+    metadata: { bookingId: booking._id.toString(), paymentPurpose: "security_deposit" },
+  }, { idempotencyKey: "deposit-authorization-" + booking._id.toString() + "-v1" });
+};
 export const recordHeldBookingPayment = async (
   paymentIntentId: string,
   session?: mongoose.ClientSession
 ) => {
-  const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+  const intent = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge"] });
   const bookingId = intent.metadata?.bookingId;
 
   if (!bookingId || !mongoose.Types.ObjectId.isValid(bookingId)) {
     throw new Error("Missing booking ID");
   }
+
+  if (intent.metadata?.paymentPurpose === "security_deposit") {
+    return registerSecurityDepositAuthorization(intent, session);
+  }
+
   const persistHold = async (activeSession: mongoose.ClientSession) => {
     const booking = await Booking.findById(bookingId).session(activeSession);
     if (!booking) throw new Error("Booking not found");

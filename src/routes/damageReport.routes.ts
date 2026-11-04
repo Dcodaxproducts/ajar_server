@@ -5,7 +5,9 @@ import {
   getAllDamageReports,
   getDamageDisputeEligibility,
   getDamageReportById,
-  getMyDamageReportForBooking
+  getMyDamageReportForBooking,
+  getSecurityDepositStatus,
+  retryDamageSettlement
 } from "../controllers/damageReport.controller";
 import { uploadDamageEvidence } from "../utils/multer";
 import { authMiddleware } from "../middlewares/auth.middleware";
@@ -27,7 +29,10 @@ router.post("/", useAuth, userOnly, uploadDamageEvidence, asyncHandler(createDam
 router.get("/eligibility/:bookingId", useAuth, userOnly, asyncHandler(getDamageDisputeEligibility));
 router.get("/", useAuth, adminOnly, asyncHandler(getAllDamageReports));
 router.get("/mine/:bookingId", useAuth, userOnly, asyncHandler(getMyDamageReportForBooking));
-router.get("/:id", useAuth, adminOnly, asyncHandler(getDamageReportById));
+router.get("/deposit/:bookingId", useAuth, asyncHandler(getSecurityDepositStatus));
+router.post("/:id/settlement/retry", useAuth, adminOnly, asyncHandler(retryDamageSettlement));
+
+// Read by IDrouter.get("/:id", useAuth, adminOnly, asyncHandler(getDamageReportById));
 router.post("/:id/decision", useAuth, adminOnly, asyncHandler(decideDamageReport));
 
 export default router;

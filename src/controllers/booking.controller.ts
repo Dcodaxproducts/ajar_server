@@ -29,12 +29,17 @@ import { Payment } from "../models/payment.model";
 import { DamageReport } from "../models/damageReport.model";
 import { isBookingParty } from "../services/damageDispute.service";
 import { isSafeEvidenceReference } from "../services/damageDisputeDecision.service";
+import {
+  scheduleCancelledBookingDepositRelease,
+  scheduleSecurityDepositRelease,
+} from "../services/securityDepositAuthorization.service";
 import { Zone } from "../models/zone.model";
 import { IRentalDuration, RentalPolicy } from "../models/rentalPolicy.model";
 import { checkAndUpdateBookingExpiry } from "../utils/bookingExpiry";
 import {
   captureHeldBookingPayment,
   createManualBookingPaymentIntent,
+  createSecurityDepositPaymentIntent,
   markBookingEarningAvailable,
   refundBookingPaymentAmount,
   releaseBookingPaymentHold,
@@ -379,6 +384,8 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         payment: {
           clientSecret: paymentIntent.client_secret,
           paymentIntentId: paymentIntent.id,
+          depositClientSecret: null,
+          depositPaymentIntentId: null,
         },
       });
     }
@@ -481,6 +488,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     });
 
     const paymentIntent = await createManualBookingPaymentIntent(newBooking);
+    const depositIntent = await createSecurityDepositPaymentIntent(newBooking);
 
     return res.status(201).json({
       message: req.t("booking:created"),
@@ -497,12 +505,21 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       payment: {
         clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
+        depositClientSecret: depositIntent?.client_secret ?? null,
+        depositPaymentIntentId: depositIntent?.id ?? null,
       },
     });
 
   } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code === "DEPOSIT_AUTHORIZATION_WINDOW_UNSUPPORTED") {
+      return res.status(409).json({
+        code,
+        message: req.t("booking:depositAuthorizationWindowUnsupported"),
+      });
+    }
     console.error("Error creating booking:", error);
-    return res.status(500).json({ message: req.t("common:serverError"), error });
+    return res.status(500).json({ message: req.t("common:serverError") });
   }
 };
 
@@ -974,6 +991,16 @@ export const updateBookingStatus = async (
 
     // AFTER
     if (finalStatus === "completed") {
+      if (Number(parentBooking.priceDetails?.securityDeposit || 0) > 0 && !parentBooking.returnVerifiedAt) {
+        await session.abortTransaction();
+        session.endSession();
+        return sendResponse(
+          res,
+          null,
+          req.t("booking:status.returnPinRequired"),
+          STATUS_CODES.CONFLICT
+        );
+      }
       const completedAt = new Date();
       const rentalEndAt = parentBooking.returnVerifiedAt ?? completedAt;
       updateFields["bookingDates.returnDate"] = rentalEndAt;
@@ -1011,11 +1038,15 @@ export const updateBookingStatus = async (
 
     if (["rejected", "request_cancelled"].includes(finalStatus)) {
       await releaseBookingPaymentHold(parentBooking._id, session);
+      await scheduleCancelledBookingDepositRelease(parentBooking._id, session);
       updateFields.depositStatus = "none";
     }
 
     if (finalStatus === "booking_cancelled") {
       updateFields.cancelledFromStatus = isEarlyReturn ? "in_progress" : "approved";
+      if (!isEarlyReturn) {
+        await scheduleCancelledBookingDepositRelease(parentBooking._id, session);
+      }
     }
 
     // The renter still has the item at this point, so the deposit is only put
@@ -1081,6 +1112,14 @@ export const updateBookingStatus = async (
         }
         await childBooking.save({ session });
       }
+    }
+
+    if (finalStatus === "completed") {
+      await scheduleSecurityDepositRelease(
+        finalBooking._id as mongoose.Types.ObjectId,
+        finalBooking.returnVerifiedAt ?? new Date(updateFields["bookingDates.returnDate"]),
+        session
+      );
     }
 
     // ========== UPDATE LISTING ==========
@@ -2821,7 +2860,19 @@ export const submitReturnPin = async (
       );
     }
 
-    await booking.save();
+    if (isEarlyReturn) {
+      const depositSession = await mongoose.startSession();
+      try {
+        await depositSession.withTransaction(async () => {
+          await booking.save({ session: depositSession });
+          await scheduleSecurityDepositRelease(booking._id, returnedAt, depositSession);
+        });
+      } finally {
+        await depositSession.endSession();
+      }
+    } else {
+      await booking.save();
+    }
 
     // The renter is waiting on this — on an early return it is what starts the
     // clock on their deposit

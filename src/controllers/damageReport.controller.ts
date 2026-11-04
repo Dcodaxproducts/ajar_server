@@ -19,6 +19,12 @@ import {
   isSafeEvidenceReference,
   validateDamageDisputeDecision,
 } from "../services/damageDisputeDecision.service";
+import {
+  blockDepositReleaseForDispute,
+  MAX_DEPOSIT_ACTION_ATTEMPTS,
+  scheduleDepositDecision,
+} from "../services/securityDepositAuthorization.service";
+import { SecurityDepositAuthorization } from "../models/securityDepositAuthorization.model";
 
 const DAMAGE_DISPUTE_ERRORS = {
   notFound: {
@@ -68,7 +74,7 @@ const sendDamageDisputeError = (
 const findOwnedBooking = (bookingId: string, userId: string) =>
   Booking.findOne({ _id: bookingId, leaser: userId })
     .select(
-      "_id leaser status cancelledFromStatus returnVerifiedAt damageDisputeId damageDisputeWindow depositDisputeWindowDays"
+      "_id leaser status cancelledFromStatus returnVerifiedAt damageDisputeId damageDisputeWindow depositDisputeWindowDays priceDetails.securityDeposit depositStatus"
     );
 
 // GET /api/damage-report/eligibility/:bookingId
@@ -167,8 +173,7 @@ export const createDamageReport = async (
     let report: any = null;
 
     await session.withTransaction(async () => {
-      claimedBooking = await Booking.findOneAndUpdate(
-        {
+      claimedBooking = await Booking.findOneAndUpdate(        {
           _id: bookingId,
           leaser: userId,
           depositStatus: "held",
@@ -180,8 +185,7 @@ export const createDamageReport = async (
           $set: {
             depositStatus: "disputed",
             damageDisputeId: reportId,
-            damagesCharges: { damagedCharges: damageAmount, totalPrice: damageAmount },
-          },
+            damagesCharges: { damagedCharges: damageAmount, totalPrice: damageAmount },          },
         },
         { new: true, session }
       ).populate("marketplaceListingId");
@@ -200,6 +204,13 @@ export const createDamageReport = async (
           status: "pending",
         }],
         { session }
+      );
+
+      await blockDepositReleaseForDispute(
+        booking._id,
+        reportId,
+        now,
+        session
       );
     });
 
@@ -302,9 +313,9 @@ const enqueueDecisionNotifications = async (report: InstanceType<typeof DamageRe
   const recipients = [objectIdString(booking.leaser), objectIdString(booking.renter)].filter((id): id is string => Boolean(id));
   await Promise.all(recipients.map((userId) => notificationQueue.add("damage-dispute-admin-decision-recorded", {
     userId, title: "Damage dispute decision recorded",
-    message: "Admin " + (report.status === "approved" ? "approved" : "rejected") + " the damage dispute for " + listing + ". No payment has been moved yet.",
+    message: "Admin " + (report.status === "approved" ? "approved" : "rejected") + " the damage dispute for " + listing + ". Deposit settlement is scheduled.",
     data: { bookingId: booking._id.toString(), disputeId: String(report._id), type: "damage_dispute_decision", status: report.status,
-      approvedAmount: String(report.approvedAmount || 0), currency: report.currency, settlementExecutionStatus: "pending_story_3" },
+      approvedAmount: String(report.approvedAmount || 0), currency: report.currency, settlementExecutionStatus: "scheduled" },
   }, { jobId: "damage-dispute-decision-" + String(report._id) + "-" + report.version + "-" + userId })));
 };
 
@@ -331,8 +342,10 @@ export const decideDamageReport = async (req: AuthRequest, res: Response, next: 
       if (!isIdenticalRetry) {
         return sendResponse(res, { code: "DAMAGE_DISPUTE_IDEMPOTENCY_CONFLICT" }, "DAMAGE_DISPUTE_IDEMPOTENCY_CONFLICT", STATUS_CODES.CONFLICT);
       }
+      const settlement = await scheduleDepositDecision(existing._id as mongoose.Types.ObjectId);
+      const settlementExecutionStatus = settlement?.state === "PROVIDER_ACTION_REQUIRED" ? "provider_action_required" : "scheduled";
       await enqueueDecisionNotifications(existing, booking);
-      return sendResponse(res, { report: existing, idempotentReplay: true, settlementExecutionStatus: "pending_story_3" }, req.t("damage:updated"), STATUS_CODES.OK);
+      return sendResponse(res, { report: existing, idempotentReplay: true, settlementExecutionStatus }, req.t("damage:updated"), STATUS_CODES.OK);
     }
     if (existing.status !== "pending" || existing.version !== decision.expectedVersion) return sendResponse(res, { code: "DAMAGE_DISPUTE_DECISION_CONFLICT", currentVersion: existing.version, status: existing.status }, "DAMAGE_DISPUTE_DECISION_CONFLICT", STATUS_CODES.CONFLICT);
     const decidedAt = new Date(); const nextVersion = decision.expectedVersion + 1;
@@ -347,7 +360,59 @@ export const decideDamageReport = async (req: AuthRequest, res: Response, next: 
         approvedAmount: decision.approvedAmount, currency: decision.currency, evidence: decision.evidenceReferences, version: nextVersion, idempotencyKey: decision.idempotencyKey } },
     }, { new: true, runValidators: true });
     if (!updated) return sendResponse(res, { code: "DAMAGE_DISPUTE_DECISION_CONFLICT" }, "DAMAGE_DISPUTE_DECISION_CONFLICT", STATUS_CODES.CONFLICT);
+    const settlement = await scheduleDepositDecision(updated._id as mongoose.Types.ObjectId);
+    const settlementExecutionStatus = settlement?.state === "PROVIDER_ACTION_REQUIRED" ? "provider_action_required" : "scheduled";
     await enqueueDecisionNotifications(updated, booking);
-    return sendResponse(res, { report: updated, idempotentReplay: false, settlementExecutionStatus: "pending_story_3" }, req.t("damage:updated"), STATUS_CODES.OK);
+    return sendResponse(res, { report: updated, idempotentReplay: false, settlementExecutionStatus }, req.t("damage:updated"), STATUS_CODES.OK);
+  } catch (error) { next(error); }
+};
+
+export const getSecurityDepositStatus = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { bookingId } = req.params;
+    if (!req.user?.id || !mongoose.Types.ObjectId.isValid(bookingId)) {
+      return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
+    }
+    const scope = req.user.role === "admin"
+      ? { _id: bookingId }
+      : { _id: bookingId, $or: [{ renter: req.user.id }, { leaser: req.user.id }] };
+    const booking = await Booking.findOne(scope).select("_id").lean();
+    if (!booking) return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
+    const authorization = await SecurityDepositAuthorization.findOne({ bookingId: booking._id })
+      .select("state amountAuthorized amountCapturable amountCaptured currency captureBefore disputeDeadline nextActionAt attempts lastErrorCode version")
+      .lean();
+    if (!authorization) return sendResponse(res, { state: "NONE" }, req.t("damage:fetched"), STATUS_CODES.OK);
+    return sendResponse(res, {
+      state: authorization.state,
+      amountAuthorized: authorization.amountAuthorized / 100,
+      amountCapturable: authorization.amountCapturable / 100,
+      amountCaptured: authorization.amountCaptured / 100,
+      currency: authorization.currency.toUpperCase(),
+      captureBefore: authorization.captureBefore,
+      disputeDeadline: authorization.disputeDeadline,
+      nextActionAt: authorization.nextActionAt,
+      attempts: authorization.attempts,
+      failureCode: authorization.lastErrorCode,
+      manualReviewRequired: authorization.state === "PROVIDER_ACTION_REQUIRED" || authorization.attempts >= MAX_DEPOSIT_ACTION_ATTEMPTS,
+      canRetry: req.user.role === "admin" && authorization.state === "FAILED_RETRYABLE" && authorization.attempts < MAX_DEPOSIT_ACTION_ATTEMPTS,
+      version: authorization.version,
+    }, req.t("damage:fetched"), STATUS_CODES.OK);
+  } catch (error) { next(error); }
+};
+
+export const retryDamageSettlement = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (req.user?.role !== "admin") return sendResponse(res, null, req.t("damage:onlyAdminCanUpdate"), STATUS_CODES.FORBIDDEN);
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) return sendResponse(res, null, req.t("damage:invalidId"), STATUS_CODES.BAD_REQUEST);
+    const report = await DamageReport.findById(id).select("booking status").lean();
+    if (!report || !["approved", "rejected"].includes(report.status)) return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
+    const retried = await SecurityDepositAuthorization.findOneAndUpdate(
+      { bookingId: report.booking, state: "FAILED_RETRYABLE", attempts: { $lt: MAX_DEPOSIT_ACTION_ATTEMPTS } },
+      { $set: { state: "SETTLEMENT_SCHEDULED", nextActionAt: new Date() }, $unset: { leaseUntil: 1, lastErrorCode: 1 }, $inc: { version: 1 } },
+      { new: true }
+    );
+    if (!retried) return sendResponse(res, { code: "DEPOSIT_ACTION_NOT_RETRYABLE" }, "DEPOSIT_ACTION_NOT_RETRYABLE", STATUS_CODES.CONFLICT);
+    return sendResponse(res, { state: retried.state, version: retried.version }, req.t("damage:updated"), STATUS_CODES.OK);
   } catch (error) { next(error); }
 };

@@ -60,5 +60,6 @@
     "wrongStatus": "Return PIN can only be verified while the booking is in progress or after an early return",
     "verified": "Return PIN verified. You can now complete the booking.",
     "verifiedEarlyReturn": "Return PIN verified. The damage dispute window has started."
-  }
+  },
+  "depositAuthorizationWindowUnsupported": "The rental end plus dispute window exceeds the card authorization lifetime."
 }
