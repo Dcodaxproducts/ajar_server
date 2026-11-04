@@ -51,6 +51,7 @@
     "resent": "OTP resent successfully",
     "registrationQueued": "Registration successful. OTP email queued for delivery",
     "resendQueued": "OTP email queued for delivery",
+    "requestQueued": "If an account exists, an OTP email has been queued for delivery",
     "deliveryUnavailable": "OTP delivery is temporarily unavailable. Please try resending the OTP.",
     "verified": "OTP verified successfully",
     "invalidOrExpired": "Invalid or expired OTP",

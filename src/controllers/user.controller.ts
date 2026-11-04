@@ -8,12 +8,8 @@ import {
   generateAccessToken,
   verifyRefreshToken,
 } from "../utils/jwt.utils";
-import { sendEmail, sendEmailOrThrow } from "../helpers/node-mailer";
-import {
-  hashOtp,
-  issueOtp,
-  OTP_MAX_ATTEMPTS,
-} from "../services/otp.service";
+import { sendEmail } from "../helpers/node-mailer";
+import { hashOtp, OTP_MAX_ATTEMPTS } from "../services/otp.service";
 import { emailQueue } from "../queues/email.queue";
 import { createCustomer } from "../helpers/stripe-functions";
 import { generateZodSchema } from "../utils/generate-zod-schema";
@@ -35,9 +31,11 @@ import {
 } from "../utils/range";
 import { Dropdown } from "../models/dropdown.model";
 import {
+  ensureOtpDeliveryQueueAvailable,
   OtpDeliveryUnavailableError,
   OTP_DELIVERY_UNAVAILABLE,
   persistAndQueueOtp,
+  queueOtpIfRecipientExists,
 } from "../services/otpDelivery.service";
 
 export const createUser = async (
@@ -443,21 +441,17 @@ export const resendOtp = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { email } = req.body;
+    const email = req.body.email.trim().toLowerCase();
+    await ensureOtpDeliveryQueueAvailable(() => emailQueue.waitUntilReady());
     const user = await User.findOne({ email });
 
-    if (!user) {
-      sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
-      return;
-    }
-
-    await persistAndQueueOtp({
+    await queueOtpIfRecipientExists({
       recipient: user,
       purpose: "resend",
       enqueue: (name, payload) => emailQueue.add(name, payload),
     });
 
-    sendResponse(res, null, req.t("user:otp.resendQueued"), STATUS_CODES.OK);
+    sendResponse(res, null, req.t("user:otp.requestQueued"), STATUS_CODES.OK);
   } catch (error) {
     if (error instanceof OtpDeliveryUnavailableError) {
       sendResponse(
@@ -544,45 +538,28 @@ export const forgotPassword = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const email = req.body.email?.trim();
+    const email = req.body.email.trim().toLowerCase();
+    await ensureOtpDeliveryQueueAvailable(() => emailQueue.waitUntilReady());
+    const user = await User.findOne({ email });
 
-    // Check if user exists
-    const user = await User.findOne({
-      email: { $regex: `^${email}$`, $options: "i" },
+    await queueOtpIfRecipientExists({
+      recipient: user,
+      purpose: "password-reset",
+      enqueue: (name, payload) => emailQueue.add(name, payload),
     });
-    if (!user) {
-      sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
+
+    // The response is intentionally identical for known and unknown accounts.
+    sendResponse(res, null, req.t("user:otp.requestQueued"), STATUS_CODES.OK);
+  } catch (error) {
+    if (error instanceof OtpDeliveryUnavailableError) {
+      sendResponse(
+        res,
+        { code: OTP_DELIVERY_UNAVAILABLE },
+        req.t("user:otp.deliveryUnavailable"),
+        STATUS_CODES.SERVICE_UNAVAILABLE
+      );
       return;
     }
-
-    const otp = issueOtp("password-reset", user.otp);
-
-    await sendEmailOrThrow({
-      to: email,
-      name: user.name,
-      subject: "Your Password Reset OTP",
-      content: `
-        <p>Hello ${user.name || "User"},</p>
-        <p>Your OTP for password reset is:</p>
-        <div style="background: #f4f4f4; padding: 10px; color: #2e7d32; border-radius: 5px; border: 1px solid #ccc; display: inline-block;">
-          <strong>${otp.code}</strong>
-        </div>
-        <p>This OTP will expire in 5 minutes.</p>
-      `,
-    });
-
-    user.otp = otp.state;
-    await user.save();
-    sendResponse(
-      res,
-      {
-        email: user.email,
-        otpExpiry: user.otp.expiry,
-      },
-      req.t("user:otp.sent"),
-      STATUS_CODES.OK
-    );
-  } catch (error) {
     next(error);
   }
 };

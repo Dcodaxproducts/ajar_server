@@ -13,6 +13,12 @@ import { startNotificationWorker } from "./workers/notification.worker";
 import { startEmailWorker } from "./workers/email.worker";
 import { seedReminderSettings } from "./queues/reminders";
 import { initI18n } from "./config/i18n";
+import { loadMailConfig } from "./config/mail";
+import { validateOtpConfiguration } from "./services/otp.service";
+
+// Fail before accepting requests if durable OTP delivery cannot operate.
+loadMailConfig();
+validateOtpConfiguration();
 
 const PORT = config.PORT || 5001;
 let notificationWorker: ReturnType<typeof startNotificationWorker> | null = null;   // 👈 YE line

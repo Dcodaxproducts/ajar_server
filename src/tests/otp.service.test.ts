@@ -5,12 +5,19 @@ import {
   issueOtp,
   OTP_EXPIRY_MS,
   OTP_MAX_ATTEMPTS,
+  OtpConfigurationError,
   OtpRateLimitError,
+  validateOtpConfiguration,
   verifyOtpState,
 } from "../services/otp.service";
 
 const env = { OTP_HASH_SECRET: "test-secret-that-is-at-least-32-characters" };
 const now = new Date("2026-10-30T06:00:00.000Z");
+
+test("validates the OTP hash secret before startup", () => {
+  assert.doesNotThrow(() => validateOtpConfiguration(env));
+  assert.throws(() => validateOtpConfiguration({}), OtpConfigurationError);
+});
 
 test("issues a hashed OTP with a five-minute expiry", () => {
   const issued = issueOtp("registration", undefined, now, env);

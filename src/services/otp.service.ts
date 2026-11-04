@@ -39,6 +39,12 @@ const secret = (env: NodeJS.ProcessEnv = process.env): string => {
   return value;
 };
 
+export const validateOtpConfiguration = (
+  env: NodeJS.ProcessEnv = process.env
+): void => {
+  secret(env);
+};
+
 const digest = (code: string, env?: NodeJS.ProcessEnv): Buffer =>
   createHmac("sha256", secret(env)).update(code).digest();
 
