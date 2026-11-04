@@ -1,108 +1,106 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  buildListingParameters,
-  hiddenListingParameterKeys,
-} from "../utils/listingParameters";
+import { buildListingParameters, snapshotListingFields } from "../utils/listingParameters";
 
-test("listing review parameters include Drop-off Location in template order", () => {
+const field = (id: string, name: string, type: string, extra: Record<string, unknown> = {}) => ({
+  _id: id, name, label: name.replace(/-/g, " "), type, visible: true, ...extra,
+});
+
+test("includes configured Drop-off Location in canonical template order", () => {
   const fields = [
-    { _id: "drop-off", name: "drop-off-location", label: "Drop-off Location", type: "location", order: 99, visible: true },
-    { _id: "capacity", name: "capacity", label: "Capacity", type: "number", order: 1, visible: true },
+    field("drop", "drop-off-location", "location", { order: 99 }),
+    field("capacity", "capacity", "number", { order: 1 }),
   ];
-  const listing = {
+  const parameters = buildListingParameters({
     dropOffLocation: JSON.stringify({ address: "Doha Airport", lat: 25.27, lng: 51.61 }),
     capacity: "7",
-  };
-  const parameters = buildListingParameters(listing, ["drop-off", "capacity"], fields, "en");
-  assert.deepEqual(parameters.map(({ key }) => key), ["dropOffLocation", "capacity"]);
-  assert.deepEqual(parameters[0].value, { address: "Doha Airport", lat: 25.27, lng: 51.61 });
+  }, ["drop", "capacity"], fields, "en");
+  assert.deepEqual(parameters.map(({ fieldId, key }) => [fieldId, key]), [
+    ["drop", "dropOffLocation"], ["capacity", "capacity"],
+  ]);
+  assert.equal(parameters[0].displayValue, "Doha Airport");
   assert.equal(parameters[1].value, 7);
 });
 
-test("listing review parameters preserve field types, false values, and Arabic labels", () => {
+test("normalizes every supported field type without losing false or zero", () => {
   const fields = [
-    { _id: "enabled", name: "is-enabled", label: "Enabled", type: "boolean", visible: true, languages: [{ locale: "ar", translations: { label: "مفعّل" } }] },
-    { _id: "features", name: "features", label: "Features", type: "select", isMultiple: true, options: ["GPS", "Child seat"], visible: true },
-    { _id: "proof", name: "ownership-proof", label: "Ownership Proof", type: "file", visible: true },
+    field("text", "notes", "text"), field("number", "capacity", "number"),
+    field("date", "available-date", "date"), field("boolean", "enabled", "boolean"),
+    field("select", "fuel", "select", { options: ["gas", "electric"] }),
+    field("multi", "features", "multiselect", { isMultiple: true, options: ["gps", "seat"] }),
+    field("location", "drop-off-location", "location"), field("file", "proof", "file"),
+    field("image", "photo", "image"),
   ];
   const listing = {
-    isEnabled: "No",
-    features: '["GPS","Child seat"]',
-    documents: [{ name: "ownershipProof", fileUrl: "/uploads/proof.pdf" }],
+    notes: "Clean", capacity: "0", availableDate: "2026-12-01", enabled: "No",
+    fuel: "electric", features: '["gps","seat"]',
+    dropOffLocation: { lat: 25, lng: 51, address: "Airport" },
+    documents: [
+      { name: "proof", fileUrl: "/uploads/proof.pdf" },
+      { name: "photo", fileUrl: "/uploads/photo.webp" },
+    ],
   };
-  const parameters = buildListingParameters(listing, ["enabled", "features", "proof"], fields, "ar");
-  assert.equal(parameters[0].label, "مفعّل");
-  assert.equal(parameters[0].value, false);
-  assert.deepEqual(parameters[1].value, ["GPS", "Child seat"]);
-  assert.deepEqual(parameters[2].value, ["/uploads/proof.pdf"]);
-});
-
-test("listing review parameters exclude hidden, fixed, and unsubmitted fields", () => {
-  const fields = [
-    { _id: "secret", name: "secret", label: "Secret", type: "text", visible: false },
-    { _id: "name", name: "name", label: "Name", type: "text", isFixed: true },
-    { _id: "empty", name: "empty", label: "Empty", type: "text", visible: true },
-  ];
-  assert.deepEqual(buildListingParameters({ secret: "private", name: "Fixed listing name" }, ["secret", "name", "empty"], fields, "en"), []);
-  assert.deepEqual(hiddenListingParameterKeys(fields), ["secret"]);
-});
-
-
-test("listing parameters expose persisted address instead of a place identifier", () => {
-  const parameters = buildListingParameters(
-    {
-      pickupLocation: "ChIJN1t_tDeuEmsRUsoyG83frY4",
-      pickupAddress: "Bus Stop 71628, Qatar",
-    },
-    ["pickup"],
-    [
-      {
-        _id: "pickup",
-        name: "pickup-location",
-        label: "Pickup Location",
-        type: "location",
-        visible: true,
-      },
-    ],
-    "en"
-  );
-
-  assert.equal(parameters[0].value, "ChIJN1t_tDeuEmsRUsoyG83frY4");
-  assert.equal(parameters[0].displayValue, "Bus Stop 71628, Qatar");
-});
-
-test("listing parameters map select codes to localized labels", () => {
-  const parameters = buildListingParameters(
-    { fuelType: ["hybrid", "electric"] },
-    ["fuel"],
-    [
-      {
-        _id: "fuel",
-        name: "fuel-type",
-        label: "Fuel type",
-        type: "select",
-        isMultiple: true,
-        visible: true,
-        options: ["hybrid", "electric"],
-        languages: [
-          {
-            locale: "ar",
-            translations: {
-              label: "نوع الوقود",
-              options: { hybrid: "هجين", electric: "كهربائي" },
-            },
-          },
-        ],
-      },
-    ],
-    "ar"
-  );
-
-  assert.equal(parameters[0].label, "نوع الوقود");
-  assert.deepEqual(parameters[0].optionItems, [
-    { value: "hybrid", label: "هجين" },
-    { value: "electric", label: "كهربائي" },
+  const parameters = buildListingParameters(listing, fields.map(({ _id }) => _id), fields, "en");
+  assert.deepEqual(parameters.map(({ value }) => value), [
+    "Clean", 0, "2026-12-01", false, "electric", ["gps", "seat"],
+    { lat: 25, lng: 51, address: "Airport" }, ["/uploads/proof.pdf"], ["/uploads/photo.webp"],
   ]);
-  assert.deepEqual(parameters[0].displayValue, ["هجين", "كهربائي"]);
+  assert.ok(parameters.every(({ submitted }) => submitted));
+});
+
+test("emits explicit not-submitted state for every configured field", () => {
+  const fields = [field("missing", "optional-note", "text"), field("empty", "tags", "multiselect", { isMultiple: true })];
+  const parameters = buildListingParameters({}, ["missing", "empty"], fields, "en");
+  assert.deepEqual(parameters.map(({ submitted, value }) => ({ submitted, value })), [
+    { submitted: false, value: null }, { submitted: false, value: null },
+  ]);
+});
+
+test("keeps deleted fields from the creation snapshot and localizes with fallback", () => {
+  const original = field("deleted", "old-option", "select", {
+    label: "Old option", options: ["one", "two"],
+    languages: [{ locale: "ar", translations: { label: "الخيار القديم", options: { one: "واحد" } } }],
+  });
+  const listing = { oldOption: "two", parameterFieldSnapshot: snapshotListingFields([original]) };
+  const [parameter] = buildListingParameters(listing, [], [], "ar");
+  assert.equal(parameter.fieldId, "deleted");
+  assert.equal(parameter.configured, false);
+  assert.equal(parameter.label, "الخيار القديم");
+  assert.equal(parameter.displayValue, "two");
+});
+
+test("joins renamed template fields to submitted values by stable field ID", () => {
+  const original = field("stable", "old-key", "text", { label: "Old label" });
+  const listing = { oldKey: "preserved", parameterFieldSnapshot: snapshotListingFields([original]) };
+  const current = field("stable", "new-key", "text", { label: "New label" });
+  const [parameter] = buildListingParameters(listing, ["stable"], [current], "en");
+  assert.equal(parameter.key, "newKey");
+  assert.equal(parameter.value, "preserved");
+  assert.equal(parameter.submitted, true);
+});
+
+test("surfaces legacy unknown submitted values without exposing reserved listing fields", () => {
+  const parameters = buildListingParameters({
+    _id: "listing-a", name: "Rental", leaser: "user-a", legacyCustomValue: { unexpected: true },
+  }, [], [], "en");
+  assert.deepEqual(parameters.map(({ fieldId, key, configured }) => ({ fieldId, key, configured })), [
+    { fieldId: "unknown:legacyCustomValue", key: "legacyCustomValue", configured: false },
+  ]);
+});
+
+test("malformed structured values remain renderable and do not throw", () => {
+  const fields = [field("location", "location", "location"), field("multi", "choices", "multiselect", { isMultiple: true })];
+  const parameters = buildListingParameters({ location: "{broken", choices: "[broken" }, ["location", "multi"], fields, "en");
+  assert.equal(parameters[0].value, "{broken");
+  assert.deepEqual(parameters[1].value, ["[broken"]);
+});
+
+test("parameter construction is isolated to the requested listing", () => {
+  const fields = [field("secret", "serial-number", "text")];
+  const first = buildListingParameters({ serialNumber: "A-1" }, ["secret"], fields, "en");
+  const second = buildListingParameters({ serialNumber: "B-2" }, ["secret"], fields, "en");
+  assert.equal(first[0].value, "A-1");
+  assert.equal(second[0].value, "B-2");
+  assert.equal(first.length, 1);
+  assert.equal(second.length, 1);
 });
