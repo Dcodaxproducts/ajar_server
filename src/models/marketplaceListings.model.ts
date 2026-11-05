@@ -39,6 +39,7 @@ export interface IMarketplaceListing extends Document {
   availabilityVersion: number;
   status: "pending" | "approved" | "rejected";
   rejectionNote?: string;
+  parameterFieldSnapshot?: Array<Record<string, unknown>>;
   [key: string]: any;
 }
 
@@ -98,6 +99,7 @@ const MarketplaceListingSchema = new Schema<IMarketplaceListing>(
       default: "pending",
     },
     rejectionNote: { type: String, default: null },
+    parameterFieldSnapshot: { type: [Schema.Types.Mixed], default: undefined },
   },
   { timestamps: true, strict: false }
 );

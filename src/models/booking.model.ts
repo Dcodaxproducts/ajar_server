@@ -69,6 +69,10 @@ export interface IBooking extends Document {
   rentalPolicySnapshot?: Record<string, any>;
   depositStatus?: "none" | "held" | "release_pending" | "released" | "disputed" | "partially_refunded" | "deducted";
   depositDisputeWindowDays?: number;
+  damageDisputeWindow?: {
+    duration: number;
+    unit: "hours" | "days";
+  };
   disputeWindowEndsAt?: Date;
   depositReleasedAt?: Date;
   depositReleaseLockToken?: string;
@@ -179,7 +183,16 @@ const BookingSchema = new Schema<IBooking>(
       enum: ["none", "held", "release_pending", "released", "disputed", "partially_refunded", "deducted"],
       default: "none",
     },
-    depositDisputeWindowDays: { type: Number, default: 7, min: 0, max: 30 },
+    depositDisputeWindowDays: { type: Number, default: 7, min: 1, max: 30 },
+    damageDisputeWindow: {
+      duration: { type: Number, min: 1, required: true, default: 7 },
+      unit: {
+        type: String,
+        enum: ["hours", "days"],
+        required: true,
+        default: "days",
+      },
+    },
     disputeWindowEndsAt: { type: Date },
     depositReleasedAt: { type: Date },
     depositReleaseLockToken: { type: String },

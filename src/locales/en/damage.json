@@ -2,6 +2,8 @@
   "notFound": "Damage report not found",
   "invalidId": "Invalid report ID",
   "submitted": "Damage report submitted successfully",
+  "eligibilityFetched": "Damage dispute eligibility fetched successfully",
+  "bookingNotFound": "Booking not found",
   "fetched": "Fetched successfully",
   "updated": "Updated successfully",
   "deleted": "Deleted successfully",

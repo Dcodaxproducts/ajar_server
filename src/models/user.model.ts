@@ -28,6 +28,9 @@ export interface IUser extends Document {
     isVerified: boolean;
     code: string;
     expiry: Date;
+    attempts: number;
+    lastSentAt?: Date;
+    purpose?: "registration" | "password-reset";
   };
   twoFactor: {
     enabled: boolean;
@@ -88,6 +91,13 @@ const UserSchema: Schema<IUser> = new Schema(
       isVerified: { type: Boolean, default: false },
       code: { type: String, default: "" },
       expiry: { type: Date, default: null },
+      attempts: { type: Number, default: 0 },
+      lastSentAt: { type: Date, default: null },
+      purpose: {
+        type: String,
+        enum: ["registration", "password-reset"],
+        default: null,
+      },
     },
     stripe: {
       customerId: { type: String },

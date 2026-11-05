@@ -26,3 +26,20 @@ export const authRateLimiter = rateLimit({
   message: "Too many login attempts, please try again later.",
   keyGenerator: (req: Request) => req.body.email || req.ip,
 });
+
+export const otpRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) =>
+    String(req.body.email ?? req.ip ?? "").trim().toLowerCase(),
+  handler: (_req: Request, res: Response) => {
+    sendResponse(
+      res,
+      null,
+      "Too many verification attempts. Please try again later.",
+      STATUS_CODES.TOO_MANY_REQUESTS
+    );
+  },
+});

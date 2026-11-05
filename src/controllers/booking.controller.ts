@@ -28,6 +28,7 @@ import {
 import { Payment } from "../models/payment.model";
 import { DamageReport } from "../models/damageReport.model";
 import { isBookingParty } from "../services/damageDispute.service";
+import { isSafeEvidenceReference } from "../services/damageDisputeDecision.service";
 import { Zone } from "../models/zone.model";
 import { IRentalDuration, RentalPolicy } from "../models/rentalPolicy.model";
 import { checkAndUpdateBookingExpiry } from "../utils/bookingExpiry";
@@ -38,6 +39,10 @@ import {
   refundBookingPaymentAmount,
   releaseBookingPaymentHold,
 } from "../utils/bookingStripePayments";
+import {
+  calculateDamageDisputeDeadline,
+  resolveDamageDisputeWindow,
+} from "../services/damageDisputeWindow.service";
 
 //NEW HELPER — detects date-only strings (YYYY-MM-DD)
 const isDateOnly = (value: string) => {
@@ -116,8 +121,16 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       rentalPolicy?.securityDepositRules?.depositRequired
         ? rentalPolicy.securityDepositRules.depositAmount
         : 0;
+    const damageDisputeWindow = resolveDamageDisputeWindow({
+      damageDisputeWindow:
+        rentalPolicy?.securityDepositRules?.disputeWindow,
+      depositDisputeWindowDays:
+        rentalPolicy?.securityDepositRules?.disputeWindowDays,
+    });
     const depositDisputeWindowDays =
-      rentalPolicy?.securityDepositRules?.disputeWindowDays ?? 7;
+      damageDisputeWindow.unit === "days"
+        ? damageDisputeWindow.duration
+        : undefined;
     const rentalPolicySnapshot = {
       securityDepositRules: rentalPolicy.securityDepositRules,
       damageLiabilityTerms: rentalPolicy.damageLiabilityTerms,
@@ -464,6 +477,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       rentalPolicySnapshot,
       depositStatus: securityDepositAmount > 0 ? "held" : "none",
       depositDisputeWindowDays,
+      damageDisputeWindow,
     });
 
     const paymentIntent = await createManualBookingPaymentIntent(newBooking);
@@ -478,6 +492,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         required: securityDepositAmount > 0,
         conditions: rentalPolicy?.securityDepositRules?.depositConditions ?? "",
         disputeWindowDays: depositDisputeWindowDays,
+        disputeWindow: damageDisputeWindow,
       },
       payment: {
         clientSecret: paymentIntent.client_secret,
@@ -960,8 +975,8 @@ export const updateBookingStatus = async (
     // AFTER
     if (finalStatus === "completed") {
       const completedAt = new Date();
-      const actualReturnAt = parentBooking.returnVerifiedAt || completedAt;
-      updateFields["bookingDates.returnDate"] = actualReturnAt;
+      const rentalEndAt = parentBooking.returnVerifiedAt ?? completedAt;
+      updateFields["bookingDates.returnDate"] = rentalEndAt;
       updateFields["_depositRefunded"] = 0;
       const shouldReleaseLeaserEarning = parentBooking.status !== "completed";
 
@@ -980,11 +995,16 @@ export const updateBookingStatus = async (
       // ✅ Refund security deposit back to renter ONLY if no damage report
       const depositAmount = parentBooking.priceDetails?.securityDeposit || 0;
 
-      const disputeWindowDays = parentBooking.depositDisputeWindowDays ?? 7;
+      const damageDisputeWindow = resolveDamageDisputeWindow(parentBooking);
 
-      updateFields.depositDisputeWindowDays = disputeWindowDays;
-      updateFields.disputeWindowEndsAt = new Date(
-        actualReturnAt.getTime() + disputeWindowDays * 24 * 60 * 60 * 1000
+      updateFields.damageDisputeWindow = damageDisputeWindow;
+      updateFields.depositDisputeWindowDays =
+        damageDisputeWindow.unit === "days"
+          ? damageDisputeWindow.duration
+          : undefined;
+      updateFields.disputeWindowEndsAt = calculateDamageDisputeDeadline(
+        rentalEndAt,
+        damageDisputeWindow
       );
       updateFields.depositStatus = depositAmount > 0 ? "held" : "none";
     }
@@ -1906,7 +1926,12 @@ export const getBookingsByUser = async (
 
     const damageReports = await DamageReport.find({
       booking: { $in: bookingIds },
-    }).lean();
+    })
+      .select("booking rentalText issueType damagedCharges attachments status approvedAmount resolvedAt adminNote currency version createdAt updatedAt")
+      .lean();
+    damageReports.forEach((report) => {
+      report.attachments = (report.attachments || []).filter(isSafeEvidenceReference);
+    });
 
     const damageReportMap = new Map(
       damageReports.map((d) => [String(d.booking), d])
@@ -2056,6 +2081,15 @@ export const getRenterBookingById = async (
       return;
     }
 
+    const renterId =
+      (booking.renter as { _id?: mongoose.Types.ObjectId })?._id?.toString?.() ||
+      booking.renter?.toString?.();
+    const leaserId = booking.leaser?.toString?.();
+    if (!userId || (userId !== renterId && userId !== leaserId)) {
+      sendResponse(res, null, req.t("booking:notFound"), STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
     booking = await attachPaymentStatus(booking);
 
     const childBookings = await Booking.find({ previousBookingId: id }).lean();
@@ -2077,7 +2111,12 @@ export const getRenterBookingById = async (
       })
     );
 
-    const damageReport = await DamageReport.findOne({ booking: id }).lean();
+    const damageReport = await DamageReport.findOne({ booking: id })
+      .select("booking rentalText issueType damagedCharges attachments status approvedAmount resolvedAt adminNote currency version createdAt updatedAt")
+      .lean();
+    if (damageReport) {
+      damageReport.attachments = (damageReport.attachments || []).filter(isSafeEvidenceReference);
+    }
 
     const result = {
       ...booking,
@@ -2767,13 +2806,18 @@ export const submitReturnPin = async (
     // The booking is already closed, so nothing else will start the dispute
     // window — it begins here, the moment the item is confirmed back
     if (isEarlyReturn) {
-      const disputeWindowDays = booking.depositDisputeWindowDays ?? 7;
+      const damageDisputeWindow = resolveDamageDisputeWindow(booking);
 
       if (!booking.bookingDates) booking.bookingDates = {};
       booking.bookingDates.returnDate = returnedAt;
-      booking.depositDisputeWindowDays = disputeWindowDays;
-      booking.disputeWindowEndsAt = new Date(
-        returnedAt.getTime() + disputeWindowDays * 24 * 60 * 60 * 1000
+      booking.damageDisputeWindow = damageDisputeWindow;
+      booking.depositDisputeWindowDays =
+        damageDisputeWindow.unit === "days"
+          ? damageDisputeWindow.duration
+          : undefined;
+      booking.disputeWindowEndsAt = calculateDamageDisputeDeadline(
+        returnedAt,
+        damageDisputeWindow
       );
     }
 

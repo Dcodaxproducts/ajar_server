@@ -4,7 +4,10 @@ import { Zone } from "../models/zone.model";
 import { sendResponse } from "../utils/response";
 import { STATUS_CODES } from "../config/constants";
 import { RentalPolicy } from "../models/rentalPolicy.model";
-import { isValidDisputeWindowDays } from "../services/damageDispute.service";
+import {
+  isDamageDisputeWindowConfig,
+  resolveDamageDisputeWindow,
+} from "../services/damageDisputeWindow.service";
 
 const updateRentalPolicy = async (
   req: Request,
@@ -83,29 +86,74 @@ const updateRentalPolicy = async (
       }
 
     } else {
-      const invalidSecurityDepositRules =
-        field === "securityDepositRules" &&
-        ((req.body.disputeWindowDays !== undefined &&
-          !isValidDisputeWindowDays(req.body.disputeWindowDays)) ||
+      let incoming = req.body;
+
+      if (field === "securityDepositRules") {
+        const invalidDepositFields =
           (req.body.depositAmount !== undefined &&
             (!Number.isFinite(req.body.depositAmount) || req.body.depositAmount < 0)) ||
           (req.body.depositRequired !== undefined &&
             typeof req.body.depositRequired !== "boolean") ||
           (req.body.depositConditions !== undefined &&
             (typeof req.body.depositConditions !== "string" ||
-              req.body.depositConditions.length > 2000)));
-      if (invalidSecurityDepositRules) {
-        return sendResponse(
-          res,
-          null,
-          req.t("rental:invalidSecurityDepositRules"),
-          STATUS_CODES.BAD_REQUEST
-        );
+              req.body.depositConditions.length > 2000));
+        if (invalidDepositFields) {
+          return sendResponse(res, null, req.t("rental:invalidSecurityDepositRules"), STATUS_CODES.BAD_REQUEST);
+        }
+        const hasNewWindow = req.body.disputeWindow !== undefined;
+        const hasLegacyWindow = req.body.disputeWindowDays !== undefined;
+
+        if (hasNewWindow && !isDamageDisputeWindowConfig(req.body.disputeWindow)) {
+          return sendResponse(
+            res,
+            {
+              code: "DAMAGE_DISPUTE_WINDOW_INVALID",
+              allowed: { hours: [1, 720], days: [1, 30] },
+            },
+            req.t("rental:invalidDisputeWindow"),
+            STATUS_CODES.BAD_REQUEST
+          );
+        }
+
+        if (
+          hasLegacyWindow &&
+          (!Number.isInteger(req.body.disputeWindowDays) ||
+            req.body.disputeWindowDays < 1 ||
+            req.body.disputeWindowDays > 30)
+        ) {
+          return sendResponse(
+            res,
+            {
+              code: "DAMAGE_DISPUTE_WINDOW_INVALID",
+              allowed: { days: [1, 30] },
+            },
+            req.t("rental:invalidDisputeWindow"),
+            STATUS_CODES.BAD_REQUEST
+          );
+        }
+
+        const disputeWindow = resolveDamageDisputeWindow({
+          damageDisputeWindow: hasNewWindow
+            ? req.body.disputeWindow
+            : undefined,
+          depositDisputeWindowDays: hasLegacyWindow
+            ? req.body.disputeWindowDays
+            : undefined,
+        });
+
+        incoming = {
+          ...req.body,
+          ...(hasNewWindow || hasLegacyWindow ? { disputeWindow } : {}),
+          ...(disputeWindow.unit === "days" && (hasNewWindow || hasLegacyWindow)
+            ? { disputeWindowDays: disputeWindow.duration }
+            : {}),
+        };
       }
+
       // Merge for securityDepositRules or damageLiabilityTerms
       newPolicyData[field] = {
         ...newPolicyData[field],
-        ...req.body,
+        ...incoming,
       };
     }
 

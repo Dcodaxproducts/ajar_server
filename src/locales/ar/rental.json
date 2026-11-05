@@ -5,6 +5,6 @@
   "zoneNotFound": "لم يتم العثور على المنطقة",
   "subCategoryNotLinked": "الفئة الفرعية غير مرتبطة بهذه المنطقة",
   "durationLimitsMustBeArray": "يجب أن تكون rentalDurationLimits مصفوفة من السياسات",
-  "invalidDisputeWindow": "يجب أن تكون disputeWindowDays عدداً صحيحاً من 0 إلى 30",
+  "invalidDisputeWindow": "يجب أن تكون فترة الاعتراض على الضرر من 1 إلى 720 ساعة أو من 1 إلى 30 يومًا",
   "invalidSecurityDepositRules": "قواعد مبلغ التأمين غير صالحة؛ يجب أن يكون المبلغ غير سالب، وأن تكون disputeWindowDays عدداً صحيحاً من 0 إلى 30، وألا تتجاوز الشروط 2000 حرف"
 }

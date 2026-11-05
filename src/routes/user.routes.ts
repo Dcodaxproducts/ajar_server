@@ -54,6 +54,7 @@ import {
 import upload, { uploadAny } from "../utils/multer";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { changePasswordSchema } from "../schemas/changePassword.schema";
+import { otpRateLimiter } from "../middlewares/ratelimites.middleware";
 
 const router = express.Router();
 
@@ -84,18 +85,21 @@ router.post("/save-fcm-token", useAuth, asyncHandler(saveFcmToken));
 
 router.post(
   "/resend-otp",
+  otpRateLimiter,
   validateRequest({ body: resendOtpSchema }),
   resendOtp
 );
 
 router.post(
   "/verify-otp",
+  otpRateLimiter,
   validateRequest({ body: verifyOtpSchema }),
   verifyOtp
 );
 
 router.post(
   "/forgot-password",
+  otpRateLimiter,
   validateRequest({ body: forgotPasswordSchema }),
   forgotPassword
 );

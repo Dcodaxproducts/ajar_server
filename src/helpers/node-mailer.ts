@@ -1,36 +1,8 @@
 import nodemailer, { Transporter } from "nodemailer";
+import { loadMailConfig, MailConfig } from "../config/mail";
 
-const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || "AJAR";
-
-// Built once and reused — creating a transporter per email meant a fresh SMTP
-// handshake on every send
 let transporter: Transporter | null = null;
-
-const getTransporter = (): Transporter => {
-  if (transporter) return transporter;
-
-  const host = process.env.MAIL_HOST;
-  const user = process.env.MAIL_USER;
-  const pass = process.env.MAIL_PASSWORD;
-
-  if (!host || !user || !pass) {
-    throw new Error(
-      "Mail configuration is missing. Set MAIL_HOST, MAIL_USER and MAIL_PASSWORD."
-    );
-  }
-
-  transporter = nodemailer.createTransport({
-    host,
-    port: Number(process.env.MAIL_PORT) || 465,
-    secure: process.env.MAIL_SECURE !== "false",
-    auth: { user, pass },
-    pool: true,
-    maxConnections: 3,
-    maxMessages: 100,
-  });
-
-  return transporter;
-};
+let transporterKey = "";
 
 export type EmailPayload = {
   to: string;
@@ -39,38 +11,55 @@ export type EmailPayload = {
   content: string;
 };
 
-// Throws on failure so the caller (the email worker) can retry.
-export const sendEmailOrThrow = async ({
-  to,
-  subject,
-  content,
-}: EmailPayload) => {
-  const htmlTemplate = `
-      <html>
-      <body style="font-family: Arial, sans-serif;">
-        <div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
-          ${content}
-        </div>
-      </body>
-      </html>
-    `;
+const getTransporter = (config: MailConfig): Transporter => {
+  const key = [config.host, config.port, config.secure, config.user].join("|");
+  if (transporter && transporterKey === key) return transporter;
 
-  const info = await getTransporter().sendMail({
-    from: `"${MAIL_FROM_NAME}" <${process.env.MAIL_USER}>`,
+  transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: { user: config.user, pass: config.password },
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 100,
+  });
+  transporterKey = key;
+  return transporter;
+};
+
+export const deliverEmail = async (
+  mailer: Pick<Transporter, "sendMail">,
+  config: MailConfig,
+  { to, subject, content }: EmailPayload
+): Promise<string> => {
+  const info = await mailer.sendMail({
+    from: `"${config.fromName}" <${config.fromAddress}>`,
     to,
     subject,
-    html: htmlTemplate,
+    html: `<html><body style="font-family: Arial, sans-serif;"><div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">${content}</div></body></html>`,
   });
-
   return info.response;
 };
 
-// Swallows errors only for legacy direct auth emails (2FA/password reset).
-// Registration and resend OTPs use the throwing BullMQ worker path.
-export const sendEmail = async (payload: EmailPayload) => {
+export const verifyMailConnection = async (): Promise<void> => {
+  const config = loadMailConfig();
+  await getTransporter(config).verify();
+};
+
+export const sendEmailOrThrow = async (
+  payload: EmailPayload
+): Promise<string> => {
+  const config = loadMailConfig();
+  return deliverEmail(getTransporter(config), config, payload);
+};
+
+// Preserve legacy best-effort behavior for non-OTP direct email callers.
+// OTP delivery uses the throwing queue worker or sendEmailOrThrow explicitly.
+export const sendEmail = async (payload: EmailPayload): Promise<string | undefined> => {
   try {
     return await sendEmailOrThrow(payload);
-  } catch (error) {
-    return (error as any).response;
+  } catch {
+    return undefined;
   }
 };

@@ -10,6 +10,7 @@ import { resolveRequestLocale } from "../utils/locale";
 import type { PendingTranslation } from "../middlewares/languageTranslation.middleware";
 import { isMissingRequiredValue } from "../utils/requiredFieldValidation";
 import {
+  applyCanonicalFieldOrder,
   filterFieldsForAudience,
   localizeDropdownValue,
   localizeField,
@@ -17,6 +18,10 @@ import {
   preserveCanonicalFieldOrder,
   translationFor,
 } from "../utils/formLocalization";
+import {
+  orderedFieldReferences,
+  validateFullFormFieldOrder,
+} from "../utils/formFieldOrdering";
 
 // CREATE NEW FORM
 export const createNewForm = async (
@@ -309,11 +314,14 @@ export const getAllForms = async (
         : null;
 
       const localizedFields = Array.isArray(formObject.fields)
-        ? formObject.fields.map((field: any) => localizeField(field, lang))
+        ? applyCanonicalFieldOrder(
+            formObject.fields.map((field: any) => localizeField(field, lang))
+          )
         : [];
 
       return {
         ...formObject,
+        version: Number(formObject.__v || 0),
         name: formTranslation?.translations?.name || form.name,
         description:
           formTranslation?.translations?.description || form.description,
@@ -370,13 +378,16 @@ export const getFormDetails = async (
 
     const translatedForm: any = {
       ...form,
+      version: Number(form.__v || 0),
       name: formTranslation?.translations?.name || form.name,
       description:
         formTranslation?.translations?.description || form.description,
     };
 
     translatedForm.fields = Array.isArray(form.fields)
-      ? (form.fields as any[]).map((field: any) => localizeField(field, lang))
+      ? applyCanonicalFieldOrder(
+          (form.fields as any[]).map((field: any) => localizeField(field, lang))
+        )
       : [];
 
     const zone = form.zone as any;
@@ -496,13 +507,14 @@ export const getFormByZoneAndSubCategory = async (
       });
     };
 
-    const allLocalizedFields = orderedFields.map((field: any) =>
-      localizeField(field, lang)
+    const allLocalizedFields = applyCanonicalFieldOrder(
+      orderedFields.map((field: any) => localizeField(field, lang))
     );
     const responseFields = filterFieldsForAudience(allLocalizedFields, isAdmin);
 
     const localizedForm = {
       ...form,
+      version: Number(form.__v || 0),
       name:
         (typeof formTranslation.name === "string" && formTranslation.name) ||
         form.name,
@@ -675,6 +687,124 @@ export const updateForm = async (
       });
 
     sendResponse(res, updatedForm, req.t("catalog:form.updated"), STATUS_CODES.OK);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Atomically replace the complete field sequence for one form template.
+export const reorderFormFields = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    const { fieldIds, version } = req.body as {
+      fieldIds?: unknown;
+      version?: unknown;
+    };
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      sendResponse(res, null, "Invalid form ID", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+    if (!Number.isSafeInteger(version) || Number(version) < 0) {
+      sendResponse(res, null, "A valid form version is required", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+    if (
+      !Array.isArray(fieldIds) ||
+      !fieldIds.every((fieldId) =>
+        mongoose.Types.ObjectId.isValid(String(fieldId))
+      )
+    ) {
+      sendResponse(res, null, "Field IDs must be valid", STATUS_CODES.BAD_REQUEST);
+      return;
+    }
+
+    const form = await Form.findById(id).select({ fields: 1, __v: 1 }).lean();
+    if (!form) {
+      sendResponse(res, null, req.t("catalog:form.notFound"), STATUS_CODES.NOT_FOUND);
+      return;
+    }
+
+    const currentIds = form.fields.map((fieldId) => String(fieldId));
+    const validation = validateFullFormFieldOrder(currentIds, fieldIds);
+    if (!validation.ok) {
+      sendResponse(
+        res,
+        null,
+        validation.reason === "too-many"
+          ? "A form cannot contain more than 200 fields"
+          : "Field order must contain every form field exactly once",
+        STATUS_CODES.BAD_REQUEST
+      );
+      return;
+    }
+
+    const currentVersion = Number(form.__v || 0);
+    // A retry after a successful request is idempotent even when it carries the
+    // previous version: the desired state is already persisted.
+    if (validation.unchanged) {
+      sendResponse(
+        res,
+        {
+          _id: id,
+          version: currentVersion,
+          fields: orderedFieldReferences(currentIds),
+        },
+        "Field order updated",
+        STATUS_CODES.OK
+      );
+      return;
+    }
+    if (Number(version) !== currentVersion) {
+      sendResponse(
+        res,
+        { version: currentVersion },
+        "This form was changed by another administrator",
+        STATUS_CODES.CONFLICT
+      );
+      return;
+    }
+
+    const updated = await Form.findOneAndUpdate(
+      { _id: id, __v: currentVersion },
+      {
+        $set: {
+          fields: validation.fieldIds.map(
+            (fieldId) => new mongoose.Types.ObjectId(fieldId)
+          ),
+        },
+        $inc: { __v: 1 },
+      },
+      { new: true }
+    )
+      .select({ fields: 1, __v: 1 })
+      .lean();
+
+    if (!updated) {
+      sendResponse(
+        res,
+        null,
+        "This form was changed by another administrator",
+        STATUS_CODES.CONFLICT
+      );
+      return;
+    }
+
+    const updatedIds = updated.fields.map((fieldId) => String(fieldId));
+    sendResponse(
+      res,
+      {
+        _id: id,
+        version: Number(updated.__v || 0),
+        fields: orderedFieldReferences(updatedIds),
+      },
+      "Field order updated",
+      STATUS_CODES.OK
+    );
   } catch (error) {
     next(error);
   }

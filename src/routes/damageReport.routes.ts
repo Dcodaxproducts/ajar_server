@@ -1,9 +1,11 @@
 import express from "express";
 import {
   createDamageReport,
+  decideDamageReport,
   getAllDamageReports,
+  getDamageDisputeEligibility,
   getDamageReportById,
-  updateDamageReportStatus,
+  getMyDamageReportForBooking
 } from "../controllers/damageReport.controller";
 import { uploadDamageEvidence } from "../utils/multer";
 import { authMiddleware } from "../middlewares/auth.middleware";
@@ -22,8 +24,10 @@ const authenticatedUser = allowRoles(["user", "admin"]) as unknown as express.Re
 const userOnly = allowRoles(["user"]) as unknown as express.RequestHandler;
 
 router.post("/", useAuth, userOnly, uploadDamageEvidence, asyncHandler(createDamageReport));
-router.get("/", useAuth, authenticatedUser, asyncHandler(getAllDamageReports));
-router.get("/:id", useAuth, authenticatedUser, asyncHandler(getDamageReportById));
-router.patch("/:id/status", useAuth, adminOnly, asyncHandler(updateDamageReportStatus));
+router.get("/eligibility/:bookingId", useAuth, userOnly, asyncHandler(getDamageDisputeEligibility));
+router.get("/", useAuth, adminOnly, asyncHandler(getAllDamageReports));
+router.get("/mine/:bookingId", useAuth, userOnly, asyncHandler(getMyDamageReportForBooking));
+router.get("/:id", useAuth, adminOnly, asyncHandler(getDamageReportById));
+router.post("/:id/decision", useAuth, adminOnly, asyncHandler(decideDamageReport));
 
 export default router;

@@ -23,6 +23,7 @@ import { isMissingRequiredValue } from "../utils/requiredFieldValidation";
 import {
   buildListingParameters,
   hiddenListingParameterKeys,
+  snapshotListingFields,
 } from "../utils/listingParameters";
 import {
   addCanonicalApprovalStatus,
@@ -218,6 +219,7 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       subTitle: normalisedBody.subTitle,
       price: normalisedBody.price,
       priceUnit: normalisedBody.priceUnit,
+      parameterFieldSnapshot: snapshotListingFields(fields),
       ...requestData,
     });
 
@@ -242,10 +244,12 @@ export const createMarketplaceListing = async (req: any, res: Response) => {
       }
     }
 
+    const responseListing = listing.toObject() as Record<string, unknown>;
+    delete responseListing.parameterFieldSnapshot;
     return res.status(201).json({
       success: true,
       message: req.t("listing:created"),
-      data: listing,
+      data: responseListing,
     });
   } catch (error) {
     console.error("Server error during listing creation:", error);
@@ -1023,6 +1027,7 @@ export const getMarketplaceListingByIdforLeaser = async (
     // --- FIXED: Do not delete doc.documents ---
     // delete doc.documents; <--- REMOVED this line
     delete doc.languages;
+    delete doc.parameterFieldSnapshot;
     delete doc.__v;
 
     if (doc.leaser) {
@@ -1159,6 +1164,7 @@ export const getMarketplaceListingById = async (
       for (const hiddenKey of hiddenListingParameterKeys(parameterFields)) {
         delete (doc as unknown as Record<string, unknown>)[hiddenKey];
       }
+      delete (doc as unknown as Record<string, unknown>).parameterFieldSnapshot;
 
       if (form.setting && doc.price) {
         const renterCommission = form.setting?.renterCommission?.value || 0;
@@ -1178,6 +1184,8 @@ export const getMarketplaceListingById = async (
         (doc as any).tax = 0;
       }
     }
+
+    delete (doc as unknown as Record<string, unknown>).parameterFieldSnapshot;
 
     const subCategoryExists = await SubCategory.exists({
       _id: doc.subCategory,
@@ -1731,7 +1739,9 @@ export const updateMarketplaceListing = async (
       { new: true }
     );
 
-    sendResponse(res, updatedListing, req.t("listing:updatedForReview"), STATUS_CODES.OK);
+    const responseListing = updatedListing?.toObject() as Record<string, unknown> | undefined;
+    if (responseListing) delete responseListing.parameterFieldSnapshot;
+    sendResponse(res, responseListing, req.t("listing:updatedForReview"), STATUS_CODES.OK);
   } catch (error) {
     next(error);
   }

@@ -1,22 +1,14 @@
-import { randomInt } from "crypto";
 import { EmailPayload } from "../helpers/node-mailer";
-
-const OTP_EXPIRY_MS = 5 * 60 * 1000;
+import { issueOtp, OtpState } from "./otp.service";
 
 export const OTP_DELIVERY_UNAVAILABLE = "OTP_DELIVERY_UNAVAILABLE";
 
-export type OtpPurpose = "registration" | "resend";
-
-type OtpRecord = {
-  code: string;
-  expiry: Date;
-  isVerified: boolean;
-};
+export type OtpPurpose = "registration" | "password-reset" | "resend";
 
 export type OtpRecipient = {
   email: string;
   name: string;
-  otp: OtpRecord;
+  otp: OtpState;
   save: () => Promise<unknown>;
 };
 
@@ -31,8 +23,6 @@ export class OtpDeliveryUnavailableError extends Error {
   }
 }
 
-export const generateOtpCode = (): string => randomInt(1000, 10000).toString();
-
 const buildOtpEmail = (
   recipient: OtpRecipient,
   purpose: OtpPurpose,
@@ -40,10 +30,21 @@ const buildOtpEmail = (
 ): EmailPayload => ({
   to: recipient.email,
   name: recipient.name,
-  subject: purpose === "registration" ? "Your OTP Code" : "Your New OTP Code",
+  subject:
+    purpose === "registration"
+      ? "Your OTP Code"
+      : purpose === "password-reset"
+        ? "Your Password Reset OTP"
+        : "Your New OTP Code",
   content: `
     <p>Hello ${recipient.name || "User"},</p>
-    <p>Your ${purpose === "registration" ? "registration" : "new"} OTP is:</p>
+    <p>Your ${
+      purpose === "registration"
+        ? "registration"
+        : purpose === "password-reset"
+          ? "password reset"
+          : "new"
+    } OTP is:</p>
     <div style="background: #f4f4f4; padding: 10px; color: #2e7d32; border-radius: 5px; border: 1px solid #ccc; display: inline-block;">
       <strong>${otp}</strong>
     </div>
@@ -51,12 +52,35 @@ const buildOtpEmail = (
   `,
 });
 
+export const ensureOtpDeliveryQueueAvailable = async (
+  waitUntilReady: () => Promise<unknown>
+): Promise<void> => {
+  try {
+    await waitUntilReady();
+  } catch {
+    throw new OtpDeliveryUnavailableError();
+  }
+};
+
+export const queueOtpIfRecipientExists = async ({
+  recipient,
+  purpose,
+  enqueue,
+}: {
+  recipient: OtpRecipient | null;
+  purpose: Exclude<OtpPurpose, "registration">;
+  enqueue: EnqueueEmail;
+}): Promise<void> => {
+  if (!recipient) return;
+  await persistAndQueueOtp({ recipient, purpose, enqueue });
+};
+
 export const persistAndQueueOtp = async ({
   recipient,
   purpose,
   enqueue,
   now = () => Date.now(),
-  generateCode = generateOtpCode,
+  generateCode,
 }: {
   recipient: OtpRecipient;
   purpose: OtpPurpose;
@@ -64,19 +88,31 @@ export const persistAndQueueOtp = async ({
   now?: () => number;
   generateCode?: () => string;
 }): Promise<void> => {
-  const otp = generateCode();
-  recipient.otp = {
-    code: otp,
-    expiry: new Date(now() + OTP_EXPIRY_MS),
-    isVerified: false,
-  };
+  const previousOtp = { ...recipient.otp };
+  const otp = issueOtp(
+    purpose === "resend"
+      ? recipient.otp.purpose ?? "registration"
+      : purpose,
+    recipient.otp,
+    new Date(now()),
+    process.env,
+    generateCode
+  );
+  recipient.otp = otp.state;
   await recipient.save();
 
   try {
-    await enqueue(`${purpose}-otp`, buildOtpEmail(recipient, purpose, otp));
+    await enqueue(`${purpose}-otp`, buildOtpEmail(recipient, purpose, otp.code));
   } catch {
-    // The persisted inactive account and OTP intentionally remain available
-    // so the client can retry through the resend endpoint.
+    // Queue acceptance is the durability boundary. Restore the previous state
+    // so a Redis outage does not consume the resend cooldown or invalidate a
+    // previously delivered OTP.
+    recipient.otp = previousOtp;
+    try {
+      await recipient.save();
+    } catch {
+      // The delivery error remains the safe public failure. Do not log OTP/PII.
+    }
     throw new OtpDeliveryUnavailableError();
   }
 };

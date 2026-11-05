@@ -9,6 +9,7 @@ import {
   verifyRefreshToken,
 } from "../utils/jwt.utils";
 import { sendEmail } from "../helpers/node-mailer";
+import { hashOtp, OTP_MAX_ATTEMPTS } from "../services/otp.service";
 import { emailQueue } from "../queues/email.queue";
 import { createCustomer } from "../helpers/stripe-functions";
 import { generateZodSchema } from "../utils/generate-zod-schema";
@@ -30,9 +31,11 @@ import {
 } from "../utils/range";
 import { Dropdown } from "../models/dropdown.model";
 import {
+  ensureOtpDeliveryQueueAvailable,
   OtpDeliveryUnavailableError,
   OTP_DELIVERY_UNAVAILABLE,
   persistAndQueueOtp,
+  queueOtpIfRecipientExists,
 } from "../services/otpDelivery.service";
 
 export const createUser = async (
@@ -438,21 +441,17 @@ export const resendOtp = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { email } = req.body;
+    const email = req.body.email.trim().toLowerCase();
+    await ensureOtpDeliveryQueueAvailable(() => emailQueue.waitUntilReady());
     const user = await User.findOne({ email });
 
-    if (!user) {
-      sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
-      return;
-    }
-
-    await persistAndQueueOtp({
+    await queueOtpIfRecipientExists({
       recipient: user,
       purpose: "resend",
       enqueue: (name, payload) => emailQueue.add(name, payload),
     });
 
-    sendResponse(res, null, req.t("user:otp.resendQueued"), STATUS_CODES.OK);
+    sendResponse(res, null, req.t("user:otp.requestQueued"), STATUS_CODES.OK);
   } catch (error) {
     if (error instanceof OtpDeliveryUnavailableError) {
       sendResponse(
@@ -474,13 +473,34 @@ export const verifyOtp = async (
 ): Promise<void> => {
   try {
     const { email, otp } = req.body;
-    const user = await User.findOne({ email });
+    const user = await User.findOneAndUpdate(
+      {
+        email,
+        "otp.code": hashOtp(otp),
+        "otp.isVerified": false,
+        "otp.expiry": { $gte: new Date() },
+        "otp.attempts": { $lt: OTP_MAX_ATTEMPTS },
+      },
+      {
+        $set: {
+          "otp.code": "",
+          "otp.expiry": new Date(0),
+          "otp.isVerified": true,
+          "otp.attempts": 0,
+        },
+      },
+      { new: true }
+    );
 
-    if (
-      !user ||
-      user.otp.code !== otp ||
-      user.otp.expiry.getTime() < Date.now()
-    ) {
+    if (!user) {
+      await User.updateOne(
+        {
+          email,
+          "otp.isVerified": false,
+          "otp.attempts": { $lt: OTP_MAX_ATTEMPTS },
+        },
+        { $inc: { "otp.attempts": 1 } }
+      );
       sendResponse(
         res,
         null,
@@ -490,12 +510,13 @@ export const verifyOtp = async (
       return;
     }
 
-    // Mark OTP as verified
-    user.otp.isVerified = true;
-    user.status = "active";
+    const isRegistration = user.otp.purpose === "registration";
+    if (isRegistration) user.status = "active";
     await user.save();
 
-    const accessToken = generateAccessToken({ id: user._id, role: user.role });
+    const accessToken = isRegistration
+      ? generateAccessToken({ id: user._id, role: user.role })
+      : undefined;
 
     sendResponse(
       res,
@@ -517,53 +538,28 @@ export const forgotPassword = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const email = req.body.email?.trim();
+    const email = req.body.email.trim().toLowerCase();
+    await ensureOtpDeliveryQueueAvailable(() => emailQueue.waitUntilReady());
+    const user = await User.findOne({ email });
 
-    // Check if user exists
-    const user = await User.findOne({
-      email: { $regex: `^${email}$`, $options: "i" },
+    await queueOtpIfRecipientExists({
+      recipient: user,
+      purpose: "password-reset",
+      enqueue: (name, payload) => emailQueue.add(name, payload),
     });
-    if (!user) {
-      sendResponse(res, null, req.t("user:notFound"), STATUS_CODES.NOT_FOUND);
+
+    // The response is intentionally identical for known and unknown accounts.
+    sendResponse(res, null, req.t("user:otp.requestQueued"), STATUS_CODES.OK);
+  } catch (error) {
+    if (error instanceof OtpDeliveryUnavailableError) {
+      sendResponse(
+        res,
+        { code: OTP_DELIVERY_UNAVAILABLE },
+        req.t("user:otp.deliveryUnavailable"),
+        STATUS_CODES.SERVICE_UNAVAILABLE
+      );
       return;
     }
-
-    // Generate a 4-digit OTP
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-
-    // Save OTP and expiry (5 minutes)
-    user.otp = {
-      code: otp,
-      expiry: new Date(Date.now() + 5 * 60 * 1000),
-      isVerified: false,
-    };
-    await user.save();
-
-    // Send OTP via email
-    await sendEmail({
-      to: email,
-      name: user.name,
-      subject: "Your Password Reset OTP",
-      content: `
-        <p>Hello ${user.name || "User"},</p>
-        <p>Your OTP for password reset is:</p>
-        <div style="background: #f4f4f4; padding: 10px; color: #2e7d32; border-radius: 5px; border: 1px solid #ccc; display: inline-block;">
-          <strong>${otp}</strong>
-        </div>
-        <p>This OTP will expire in 5 minutes.</p>
-      `,
-    });
-
-    sendResponse(
-      res,
-      {
-        email: user.email,
-        otpExpiry: user.otp.expiry,
-      },
-      req.t("user:otp.sent"),
-      STATUS_CODES.OK
-    );
-  } catch (error) {
     next(error);
   }
 };
@@ -582,24 +578,29 @@ export const resetPassword = async (
       return;
     }
 
-    // Ensure OTP was verified
-    if (!user.otp.isVerified) {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const result = await User.updateOne(
+      {
+        _id: user._id,
+        "otp.isVerified": true,
+        "otp.purpose": "password-reset",
+      },
+      {
+        $set: {
+          password: hashedPassword,
+          "otp.code": "",
+          "otp.expiry": new Date(0),
+          "otp.isVerified": false,
+          "otp.attempts": 0,
+          "otp.purpose": null,
+          "otp.lastSentAt": null,
+        },
+      }
+    );
+    if (result.modifiedCount !== 1) {
       sendResponse(res, null, req.t("user:otp.notVerified"), STATUS_CODES.FORBIDDEN);
       return;
     }
-
-    // Hash and save new password
-    const hashedPassword = await bcrypt.hash(password, 10);
-    user.password = hashedPassword;
-
-    // Clear OTP fields
-    // user.otp = {
-    //   code: "",
-    //   expiry: new Date(0),
-    //   isVerified: false,
-    // };
-
-    await user.save();
 
     sendResponse(res, null, req.t("user:password.reset"), STATUS_CODES.OK);
   } catch (error) {
@@ -665,6 +666,7 @@ export const changePassword = async (
       code: "",
       expiry: new Date(0),
       isVerified: false,
+      attempts: 0,
     };
 
     await user.save();

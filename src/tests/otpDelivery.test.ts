@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ensureOtpDeliveryQueueAvailable,
   OtpDeliveryUnavailableError,
   OtpRecipient,
   persistAndQueueOtp,
+  queueOtpIfRecipientExists,
 } from "../services/otpDelivery.service";
 import {
   EMAIL_JOB_OPTIONS,
@@ -12,10 +14,12 @@ import {
 } from "../services/emailJob.service";
 import { EmailPayload } from "../helpers/node-mailer";
 
+process.env.OTP_HASH_SECRET = "test-only-otp-hash-secret-with-32-characters";
+
 const makeRecipient = (): OtpRecipient => ({
   email: "person@example.com",
   name: "Person",
-  otp: { code: "", expiry: new Date(0), isVerified: false },
+  otp: { code: "", expiry: new Date(0), isVerified: false, attempts: 0 },
   save: async () => undefined,
 });
 
@@ -39,7 +43,8 @@ test("registration persists the same OTP that is acknowledged by the queue", asy
     },
   });
 
-  assert.equal(persistedCode, "1234");
+  assert.notEqual(persistedCode, "1234");
+  assert.equal(persistedCode.length, 64);
   assert.match(queuedPayload?.content ?? "", /1234/);
   assert.equal(recipient.otp.expiry.getTime(), 301_000);
 });
@@ -60,18 +65,41 @@ test("resend persists the same replacement OTP that is acknowledged by the queue
     },
   });
 
-  assert.equal(recipient.otp.code, "9876");
+  assert.notEqual(recipient.otp.code, "9876");
+  assert.equal(recipient.otp.code.length, 64);
   assert.match(queuedPayload?.content ?? "", /9876/);
 });
 
-test("enqueue failure preserves the account, Stripe association, and OTP for resend", async () => {
+test("forgot-password persists and queues a password-reset OTP", async () => {
+  const recipient = makeRecipient();
+  let queuedPayload: EmailPayload | undefined;
+
+  await persistAndQueueOtp({
+    recipient,
+    purpose: "password-reset",
+    generateCode: () => "8642",
+    enqueue: async (name, payload) => {
+      assert.equal(name, "password-reset-otp");
+      queuedPayload = payload;
+      return { id: "job-reset" };
+    },
+  });
+
+  assert.equal(recipient.otp.purpose, "password-reset");
+  assert.notEqual(recipient.otp.code, "8642");
+  assert.match(queuedPayload?.subject ?? "", /Password Reset/);
+  assert.match(queuedPayload?.content ?? "", /8642/);
+});
+
+test("enqueue failure restores OTP state and permits an immediate retry", async () => {
   const recipient = Object.assign(makeRecipient(), {
     status: "inactive",
     stripe: { customerId: "cus_existing" },
   });
-  let saved = false;
+  const previousOtp = { ...recipient.otp };
+  let saves = 0;
   recipient.save = async () => {
-    saved = true;
+    saves += 1;
   };
 
   await assert.rejects(
@@ -79,6 +107,7 @@ test("enqueue failure preserves the account, Stripe association, and OTP for res
       recipient,
       purpose: "registration",
       generateCode: () => "2468",
+      now: () => 1_000,
       enqueue: async () => {
         throw new Error("queue unavailable");
       },
@@ -89,11 +118,41 @@ test("enqueue failure preserves the account, Stripe association, and OTP for res
       return true;
     }
   );
-  assert.equal(saved, true);
+
+  assert.equal(saves, 2);
+  assert.deepEqual(recipient.otp, previousOtp);
   assert.equal(recipient.status, "inactive");
   assert.equal(recipient.stripe.customerId, "cus_existing");
-  assert.equal(recipient.otp.code, "2468");
-  assert.equal(recipient.otp.isVerified, false);
+
+  await persistAndQueueOtp({
+    recipient,
+    purpose: "resend",
+    generateCode: () => "1357",
+    now: () => 1_000,
+    enqueue: async () => ({ id: "job-retry" }),
+  });
+  assert.equal(recipient.otp.code.length, 64);
+});
+
+test("queue availability failures expose only the safe delivery error", async () => {
+  await assert.rejects(
+    ensureOtpDeliveryQueueAvailable(async () => {
+      throw new Error("redis://user:password@internal-host");
+    }),
+    OtpDeliveryUnavailableError
+  );
+});
+
+test("unknown account requests do not enqueue mail or expose account state", async () => {
+  let enqueueCalls = 0;
+  await queueOtpIfRecipientExists({
+    recipient: null,
+    purpose: "password-reset",
+    enqueue: async () => {
+      enqueueCalls += 1;
+    },
+  });
+  assert.equal(enqueueCalls, 0);
 });
 
 test("request flow cannot report success before BullMQ accepts the OTP job", async () => {
