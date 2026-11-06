@@ -7,10 +7,7 @@ import stripe from "./stripe";
 import { buildDepositRefundIdempotencyKey } from "../services/damageDispute.service";
 import { lockAndCheckBookingAvailability } from "./dateValidator";
 import { buildBookingRefundIdempotencyKey } from "./refundIdempotency";
-import {
-  assertProjectedAuthorizationWindow,
-  registerSecurityDepositAuthorization,
-} from "../services/securityDepositAuthorization.service";
+import { registerSecurityDepositAuthorization } from "../services/securityDepositAuthorization.service";
 const MIN_STRIPE_AMOUNT_CENTS = 50;
 
 export const getBookingStripeAmount = (booking: any): number => {
@@ -45,7 +42,9 @@ export const createManualBookingPaymentIntent = async (booking: any) => {
     payment_method_types: ["card"],
     metadata: {
       bookingId: booking._id.toString(),
-      paymentPurpose: "booking_charge",    },
+      paymentPurpose: "booking_charge",
+    },
+  },
     { idempotencyKey: `booking-payment-intent-${booking._id.toString()}-v1` }
   );
 };
@@ -59,7 +58,6 @@ export class BookingAvailabilityConflictError extends Error {
 export const createSecurityDepositPaymentIntent = async (booking: any) => {
   const amountInCents = Math.round(Number(booking?.priceDetails?.securityDeposit || 0) * 100);
   if (amountInCents < MIN_STRIPE_AMOUNT_CENTS) return null;
-  assertProjectedAuthorizationWindow(booking);
   return stripe.paymentIntents.create({
     amount: amountInCents,
     currency: "usd",

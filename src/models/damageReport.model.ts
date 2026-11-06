@@ -81,8 +81,8 @@ const DamageReportSchema = new Schema<IDamageReport>(
     },
     currency: {
       type: String,
-      enum: ["SAR"],
-      default: "SAR",
+      enum: ["USD"],
+      default: "USD",
       required: true,
     },
     version: {
@@ -102,7 +102,7 @@ const DamageReportSchema = new Schema<IDamageReport>(
           reason: { type: String, required: true },
           claimedAmount: { type: Number, required: true, min: 0 },
           approvedAmount: { type: Number, required: true, min: 0 },
-          currency: { type: String, enum: ["SAR"], required: true },
+          currency: { type: String, enum: ["USD"], required: true },
           evidence: { type: [String], default: [] },
           version: { type: Number, required: true, min: 1 },
           idempotencyKey: { type: String, required: true },

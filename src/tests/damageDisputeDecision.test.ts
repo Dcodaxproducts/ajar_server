@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { DamageReport } from "../models/damageReport.model";
 import { DAMAGE_DISPUTE_REVIEW_TRANSITIONS, isSafeEvidenceReference, validateDamageDisputeDecision } from "../services/damageDisputeDecision.service";
 
-const valid = { decision: "approved", reason: "Evidence supports repair", approvedAmount: 250, currency: "SAR", evidenceReferences: ["/uploads/photo.jpg"], expectedVersion: 0, idempotencyKey: "decision_12345678" };
+const valid = { decision: "approved", reason: "Evidence supports repair", approvedAmount: 250, currency: "USD", evidenceReferences: ["/uploads/photo.jpg"], expectedVersion: 0, idempotencyKey: "decision_12345678" };
 
 test("state machine only permits pending to approved or rejected", () => {
   assert.deepEqual(DAMAGE_DISPUTE_REVIEW_TRANSITIONS.pending, ["approved", "rejected"]);
@@ -28,7 +28,7 @@ test("approval and rejection amount boundaries are enforced", () => {
 
 test("version, idempotency, currency, reason, and evidence are mandatory", () => {
   const invalid = [
-    { ...valid, expectedVersion: -1 }, { ...valid, idempotencyKey: "short" }, { ...valid, currency: "USD" },
+    { ...valid, expectedVersion: -1 }, { ...valid, idempotencyKey: "short" }, { ...valid, currency: "SAR" },
     { ...valid, reason: " " }, { ...valid, evidenceReferences: ["javascript:alert(1)"] },
     { ...valid, evidenceReferences: ["/uploads/not-submitted.jpg"] },
   ];

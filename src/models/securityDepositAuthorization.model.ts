@@ -2,6 +2,7 @@ import mongoose, { Document, Schema, model } from "mongoose";
 
 export const SECURITY_DEPOSIT_STATES = [
   "AUTHORIZED_HELD",
+  "CAPTURED_REFUNDABLE",
   "RELEASE_SCHEDULED",
   "RELEASE_IN_PROGRESS",
   "DISPUTE_OPEN",
@@ -18,6 +19,7 @@ export const SECURITY_DEPOSIT_STATES = [
 
 export type SecurityDepositState = (typeof SECURITY_DEPOSIT_STATES)[number];
 export type SecurityDepositAction = "release" | "capture" | null;
+export type SecurityDepositFundingMode = "authorization_hold" | "captured_refundable";
 
 export interface ISecurityDepositAuthorization extends Document {
   bookingId: mongoose.Types.ObjectId;
@@ -28,7 +30,13 @@ export interface ISecurityDepositAuthorization extends Document {
   amountAuthorized: number;
   amountCapturable: number;
   amountCaptured: number;
+  amountRefunded: number;
   currency: string;
+  fundingMode: SecurityDepositFundingMode;
+  fallbackReason?: string;
+  fallbackCapturedAt?: Date;
+  refundedAt?: Date;
+  providerRefundId?: string;
   state: SecurityDepositState;
   providerStatus?: string;
   captureBefore: Date;
@@ -42,6 +50,8 @@ export interface ISecurityDepositAuthorization extends Document {
   version: number;
   releaseIdempotencyKey: string;
   captureIdempotencyKey: string;
+  fallbackCaptureIdempotencyKey: string;
+  refundIdempotencyKey: string;
   notificationKeys: string[];
   audit: Array<{
     event: string;
@@ -63,7 +73,13 @@ const SecurityDepositAuthorizationSchema = new Schema<ISecurityDepositAuthorizat
     amountAuthorized: { type: Number, required: true, min: 1 },
     amountCapturable: { type: Number, required: true, min: 0 },
     amountCaptured: { type: Number, default: 0, min: 0 },
-    currency: { type: String, required: true, lowercase: true },
+    amountRefunded: { type: Number, default: 0, min: 0 },
+    currency: { type: String, required: true, lowercase: true, enum: ["usd"] },
+    fundingMode: { type: String, enum: ["authorization_hold", "captured_refundable"], required: true },
+    fallbackReason: { type: String },
+    fallbackCapturedAt: { type: Date },
+    refundedAt: { type: Date },
+    providerRefundId: { type: String },
     state: { type: String, enum: SECURITY_DEPOSIT_STATES, required: true },
     providerStatus: { type: String },
     captureBefore: { type: Date, required: true },
@@ -77,6 +93,8 @@ const SecurityDepositAuthorizationSchema = new Schema<ISecurityDepositAuthorizat
     version: { type: Number, default: 0, min: 0 },
     releaseIdempotencyKey: { type: String, required: true },
     captureIdempotencyKey: { type: String, required: true },
+    fallbackCaptureIdempotencyKey: { type: String, required: true },
+    refundIdempotencyKey: { type: String, required: true },
     notificationKeys: { type: [String], default: [] },
     audit: {
       type: [{

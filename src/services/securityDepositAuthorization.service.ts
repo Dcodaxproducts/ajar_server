@@ -13,6 +13,8 @@ import {
   depositActionKeys,
   extractCaptureBefore,
   resolveCaptureTerminalState,
+  resolveDepositFundingMode,
+  resolveFallbackRefundAmount,
   sanitizeProviderErrorCode,
   supportsDisputeDeadline,
 } from "./securityDepositAuthorizationState.service";
@@ -41,40 +43,120 @@ const renterId = (value: unknown): mongoose.Types.ObjectId => {
   return id;
 };
 
-export const registerSecurityDepositAuthorization = async (intent: Stripe.PaymentIntent, session?: mongoose.ClientSession) => {
+export const registerSecurityDepositAuthorization = async (
+  intent: Stripe.PaymentIntent,
+  session?: mongoose.ClientSession
+) => {
   const bookingId = intent.metadata?.bookingId;
   if (!bookingId || !mongoose.Types.ObjectId.isValid(bookingId) || intent.metadata?.paymentPurpose !== "security_deposit") {
     throw new Error("DEPOSIT_METADATA_INVALID");
   }
-  if (intent.status !== "requires_capture") throw new Error("DEPOSIT_AUTHORIZATION_NOT_CAPTURABLE");
+
   const booking = await Booking.findById(bookingId).session(session || null);
   if (!booking) throw new Error("DEPOSIT_BOOKING_NOT_FOUND");
   const amount = Math.round(Number(booking.priceDetails.securityDeposit || 0) * 100);
-  if (amount <= 0 || intent.amount_capturable !== amount) throw new Error("DEPOSIT_AUTHORIZATION_AMOUNT_MISMATCH");
-  if (intent.currency.toLowerCase() !== "usd") throw new Error("DEPOSIT_AUTHORIZATION_CURRENCY_MISMATCH");
-  const captureBefore = extractCaptureBefore(intent);
-  const deadline = calculateDamageDisputeDeadline(booking.dates.checkOut, resolveDamageDisputeWindow(booking));
-  const supported = Boolean(captureBefore && supportsDisputeDeadline(deadline, captureBefore));
-  const safeCaptureBefore = captureBefore || new Date();
-  const state: SecurityDepositState = supported ? "AUTHORIZED_HELD" : "PROVIDER_ACTION_REQUIRED";
+  if (amount <= 0 || intent.currency.toLowerCase() !== "usd") {
+    throw new Error("DEPOSIT_AUTHORIZATION_CURRENCY_MISMATCH");
+  }
+
+  const existing = await SecurityDepositAuthorization.findOne({
+    bookingId: booking._id,
+  }).session(session || null);
+  if (existing) {
+    if (
+      existing.providerPaymentIntentId !== intent.id ||
+      existing.amountAuthorized !== amount ||
+      existing.currency !== "usd"
+    ) {
+      throw new Error("DEPOSIT_AUTHORIZATION_IDEMPOTENCY_CONFLICT");
+    }
+    return existing;
+  }
+
   const keys = depositActionKeys(bookingId);
+  let providerIntent = await stripe.paymentIntents.retrieve(intent.id, {
+    expand: ["latest_charge"],
+  });
+  const captureBefore = extractCaptureBefore(providerIntent);
+  const deadline = calculateDamageDisputeDeadline(
+    booking.dates.checkOut,
+    resolveDamageDisputeWindow(booking)
+  );
+  const fundingMode = resolveDepositFundingMode(
+    providerIntent.status,
+    captureBefore,
+    deadline
+  );
+  const authorizationSupported = fundingMode === "authorization_hold";
+
+  if (!authorizationSupported && providerIntent.status === "requires_capture") {
+    if (providerIntent.amount_capturable !== amount) {
+      throw new Error("DEPOSIT_AUTHORIZATION_AMOUNT_MISMATCH");
+    }
+    providerIntent = await stripe.paymentIntents.capture(
+      providerIntent.id,
+      { metadata: { ...providerIntent.metadata, depositFundingMode: "captured_refundable" } },
+      { idempotencyKey: keys.fallbackCapture }
+    );
+  }
+
+  const capturedFallback = !authorizationSupported && providerIntent.status === "succeeded";
+  if (!authorizationSupported && !capturedFallback) {
+    throw Object.assign(new Error("DEPOSIT_FALLBACK_CAPTURE_NOT_CONFIRMED"), {
+      code: "deposit_fallback_capture_not_confirmed",
+    });
+  }
+  if (capturedFallback && Number(providerIntent.amount_received || 0) < amount) {
+    throw new Error("DEPOSIT_FALLBACK_CAPTURE_AMOUNT_MISMATCH");
+  }
+
+  const state: SecurityDepositState = authorizationSupported
+    ? "AUTHORIZED_HELD"
+    : "CAPTURED_REFUNDABLE";
+  const now = new Date();
+
   return SecurityDepositAuthorization.findOneAndUpdate(
     { bookingId: booking._id },
     {
       $setOnInsert: {
-        bookingId: booking._id, renterId: renterId(booking.renter), provider: "stripe",
-        providerPaymentIntentId: intent.id, amountAuthorized: amount, amountCaptured: 0,
-        currency: intent.currency.toLowerCase(), releaseIdempotencyKey: keys.release,
-        captureIdempotencyKey: keys.capture, notificationKeys: [], attempts: 0, version: 0,
+        bookingId: booking._id,
+        renterId: renterId(booking.renter),
+        provider: "stripe",
+        providerPaymentIntentId: providerIntent.id,
+        amountAuthorized: amount,
+        currency: "usd",
+        releaseIdempotencyKey: keys.release,
+        captureIdempotencyKey: keys.capture,
+        fallbackCaptureIdempotencyKey: keys.fallbackCapture,
+        refundIdempotencyKey: keys.refund,
+        notificationKeys: [],
+        attempts: 0,
+        version: 0,
       },
       $set: {
-        amountCapturable: intent.amount_capturable, providerStatus: intent.status,
-        captureBefore: safeCaptureBefore, disputeDeadline: deadline, state,
-        nextAction: supported ? null : "release",
-        nextActionAt: supported ? deadline : new Date(Math.max(Date.now(), safeCaptureBefore.getTime() - AUTHORIZATION_SAFETY_MARGIN_MS)),
-        lastErrorCode: supported ? undefined : "AUTHORIZATION_WINDOW_UNSUPPORTED",
+        amountCapturable: authorizationSupported ? providerIntent.amount_capturable : 0,
+        amountCaptured: capturedFallback ? amount : 0,
+        amountRefunded: 0,
+        providerStatus: providerIntent.status,
+        captureBefore: captureBefore || now,
+        disputeDeadline: deadline,
+        state,
+        fundingMode,
+        fallbackReason: capturedFallback ? "AUTHORIZATION_WINDOW_UNSUPPORTED" : undefined,
+        fallbackCapturedAt: capturedFallback ? now : undefined,
+        nextAction: null,
+        nextActionAt: deadline,
+        lastErrorCode: undefined,
       },
-      $push: { audit: { event: "authorization_confirmed", at: new Date(), toState: state } },
+      $push: {
+        audit: {
+          event: capturedFallback ? "fallback_capture_confirmed" : "authorization_confirmed",
+          at: now,
+          toState: state,
+          amount: capturedFallback ? amount : undefined,
+          idempotencyKey: capturedFallback ? keys.fallbackCapture : undefined,
+        },
+      },
     },
     { upsert: true, new: true, runValidators: true, session }
   );
@@ -87,10 +169,11 @@ export const scheduleSecurityDepositRelease = async (bookingId: mongoose.Types.O
   if (!authorization && Number(booking.priceDetails.securityDeposit || 0) > 0) throw new Error("DEPOSIT_AUTHORIZATION_NOT_FOUND");
   if (!authorization) return null;
   const deadline = calculateDamageDisputeDeadline(returnedAt, resolveDamageDisputeWindow(booking));
-  const supported = supportsDisputeDeadline(deadline, authorization.captureBefore);
+  const capturedFallback = authorization.fundingMode === "captured_refundable";
+  const supported = capturedFallback || supportsDisputeDeadline(deadline, authorization.captureBefore);
   const state: SecurityDepositState = supported ? "RELEASE_SCHEDULED" : "PROVIDER_ACTION_REQUIRED";
   return SecurityDepositAuthorization.findOneAndUpdate(
-    { _id: authorization._id, state: { $in: ["AUTHORIZED_HELD", "RELEASE_SCHEDULED", "PROVIDER_ACTION_REQUIRED"] } },
+    { _id: authorization._id, state: { $in: ["AUTHORIZED_HELD", "CAPTURED_REFUNDABLE", "RELEASE_SCHEDULED", "PROVIDER_ACTION_REQUIRED"] } },
     {
       $set: {
         disputeDeadline: deadline, state, nextAction: "release",
@@ -108,7 +191,7 @@ export const scheduleCancelledBookingDepositRelease = async (
   bookingId: mongoose.Types.ObjectId | string,
   session?: mongoose.ClientSession
 ) => SecurityDepositAuthorization.findOneAndUpdate(
-  { bookingId, state: { $in: ["AUTHORIZED_HELD", "RELEASE_SCHEDULED", "PROVIDER_ACTION_REQUIRED"] } },
+  { bookingId, state: { $in: ["AUTHORIZED_HELD", "CAPTURED_REFUNDABLE", "RELEASE_SCHEDULED", "PROVIDER_ACTION_REQUIRED"] } },
   {
     $set: { state: "RELEASE_SCHEDULED", nextAction: "release", nextActionAt: new Date() },
     $unset: { leaseUntil: 1, lastErrorCode: 1 },
@@ -120,7 +203,7 @@ export const scheduleCancelledBookingDepositRelease = async (
 
 export const blockDepositReleaseForDispute = async (bookingId: mongoose.Types.ObjectId | string, disputeId: mongoose.Types.ObjectId, checkedAt: Date, session: mongoose.ClientSession) => {
   const authorization = await SecurityDepositAuthorization.findOneAndUpdate(
-    { bookingId, state: { $in: ["AUTHORIZED_HELD", "RELEASE_SCHEDULED"] }, disputeDeadline: { $gt: checkedAt } },
+    { bookingId, state: { $in: ["AUTHORIZED_HELD", "CAPTURED_REFUNDABLE", "RELEASE_SCHEDULED"] }, disputeDeadline: { $gt: checkedAt } },
     {
       $set: { state: "DISPUTE_OPEN", disputeId, nextAction: null },
       $unset: { leaseUntil: 1, lastErrorCode: 1 }, $inc: { version: 1 },
@@ -136,16 +219,18 @@ export const scheduleDepositDecision = async (disputeId: mongoose.Types.ObjectId
   if (!report || !["approved", "rejected"].includes(report.status)) return null;
   const authorization = await SecurityDepositAuthorization.findOne({ bookingId: report.booking });
   if (!authorization) return null;
+  if (TERMINAL_DEPOSIT_STATES.includes(authorization.state)) return authorization;
+  if (authorization.state !== "DISPUTE_OPEN") return authorization;
   if (report.status === "approved" && report.currency.toLowerCase() !== authorization.currency.toLowerCase()) {
     return SecurityDepositAuthorization.findOneAndUpdate(
-      { _id: authorization._id, state: { $in: ["DISPUTE_OPEN", "FAILED_RETRYABLE", "SETTLEMENT_SCHEDULED"] } },
+      { _id: authorization._id, state: "DISPUTE_OPEN" },
       { $set: { state: "PROVIDER_ACTION_REQUIRED", nextAction: null, lastErrorCode: "DEPOSIT_DECISION_CURRENCY_MISMATCH" }, $unset: { leaseUntil: 1 }, $inc: { version: 1 } },
       { new: true }
     );
   }
   const nextAction = report.status === "approved" ? "capture" : "release";
   return SecurityDepositAuthorization.findOneAndUpdate(
-    { bookingId: report.booking, state: { $in: ["DISPUTE_OPEN", "FAILED_RETRYABLE", "SETTLEMENT_SCHEDULED"] } },
+    { bookingId: report.booking, state: "DISPUTE_OPEN" },
     {
       $set: { disputeId: report._id, state: "SETTLEMENT_SCHEDULED", nextAction, nextActionAt: new Date(), approvedAmount: Math.round(Number(report.approvedAmount || 0) * 100) },
       $unset: { leaseUntil: 1, lastErrorCode: 1 }, $inc: { version: 1 },
@@ -193,41 +278,221 @@ const recordCapturedSettlement = async (authorization: InstanceType<typeof Secur
   await createTransaction({ paymentId: payment._id as mongoose.Types.ObjectId, userId: leaserId, amount: amount / 100, type: "credit", source: "damage_charge" });
 };
 
-const executeProviderAction = async (authorization: InstanceType<typeof SecurityDepositAuthorization>) => {
-  let intent = await stripe.paymentIntents.retrieve(authorization.providerPaymentIntentId, { expand: ["latest_charge"] });
+const refundedAmountFromIntent = (intent: Stripe.PaymentIntent): number => {
+  const charge = typeof intent.latest_charge === "object" ? intent.latest_charge : null;
+  return Number(charge?.amount_refunded || 0);
+};
+
+const refundCapturedDeposit = async (
+  authorization: InstanceType<typeof SecurityDepositAuthorization>,
+  intent: Stripe.PaymentIntent,
+  targetRefundAmount: number
+) => {
+  const alreadyRefunded = refundedAmountFromIntent(intent);
+  if (alreadyRefunded >= targetRefundAmount) {
+    return { amountRefunded: alreadyRefunded, refundId: authorization.providerRefundId };
+  }
+  if (alreadyRefunded > 0) {
+    throw Object.assign(new Error("DEPOSIT_REFUND_AMOUNT_CONFLICT"), {
+      code: "refund_amount_conflict",
+    });
+  }
+  const refund = await stripe.refunds.create(
+    {
+      payment_intent: intent.id,
+      amount: targetRefundAmount,
+      metadata: {
+        bookingId: String(authorization.bookingId),
+        disputeId: String(authorization.disputeId || ""),
+        paymentPurpose: "security_deposit_refund",
+      },
+    },
+    { idempotencyKey: authorization.refundIdempotencyKey }
+  );
+  if (refund.status !== "succeeded") {
+    throw Object.assign(new Error("DEPOSIT_REFUND_NOT_CONFIRMED"), {
+      code: "refund_not_confirmed",
+    });
+  }
+  return { amountRefunded: targetRefundAmount, refundId: refund.id };
+};
+
+const executeProviderAction = async (
+  authorization: InstanceType<typeof SecurityDepositAuthorization>
+) => {
+  let intent = await stripe.paymentIntents.retrieve(
+    authorization.providerPaymentIntentId,
+    { expand: ["latest_charge"] }
+  );
+  const capturedFallback = authorization.fundingMode === "captured_refundable";
+
   if (authorization.nextAction === "release") {
-    if (intent.status === "requires_capture") {
-      intent = await stripe.paymentIntents.cancel(intent.id, {}, { idempotencyKey: authorization.releaseIdempotencyKey });
+    let amountRefunded = authorization.amountRefunded;
+    let providerRefundId = authorization.providerRefundId;
+    if (capturedFallback) {
+      if (intent.status !== "succeeded") {
+        throw Object.assign(new Error("DEPOSIT_REFUND_SOURCE_NOT_CAPTURED"), {
+          code: "refund_source_not_captured",
+        });
+      }
+      const refundResult = await refundCapturedDeposit(
+        authorization,
+        intent,
+        resolveFallbackRefundAmount(null, authorization.amountAuthorized)
+      );
+      amountRefunded = refundResult.amountRefunded;
+      providerRefundId = refundResult.refundId;
+    } else {
+      if (intent.status === "requires_capture") {
+        intent = await stripe.paymentIntents.cancel(
+          intent.id,
+          {},
+          { idempotencyKey: authorization.releaseIdempotencyKey }
+        );
+      }
+      if (intent.status !== "canceled") {
+        throw Object.assign(new Error("DEPOSIT_RELEASE_NOT_CONFIRMED"), {
+          code: "release_not_confirmed",
+        });
+      }
     }
-    if (intent.status !== "canceled") throw Object.assign(new Error("DEPOSIT_RELEASE_NOT_CONFIRMED"), { code: "release_not_confirmed" });
-    const state: SecurityDepositState = authorization.disputeId ? "ADMIN_REJECTED_RELEASED" : "RELEASED_NO_DISPUTE";
+
+    const state: SecurityDepositState = authorization.disputeId
+      ? "ADMIN_REJECTED_RELEASED"
+      : "RELEASED_NO_DISPUTE";
     const result = await SecurityDepositAuthorization.updateOne(
       { _id: authorization._id, state: { $nin: TERMINAL_DEPOSIT_STATES } },
-      { $set: { state, providerStatus: intent.status, amountCapturable: 0, nextAction: null }, $unset: { leaseUntil: 1, lastErrorCode: 1 }, $inc: { version: 1 }, $push: { audit: { event: "provider_release_confirmed", at: new Date(), fromState: authorization.state, toState: state, idempotencyKey: authorization.releaseIdempotencyKey } } }
+      {
+        $set: {
+          state,
+          providerStatus: intent.status,
+          amountCapturable: 0,
+          amountRefunded,
+          providerRefundId,
+          refundedAt: capturedFallback ? new Date() : undefined,
+          nextAction: null,
+        },
+        $unset: { leaseUntil: 1, lastErrorCode: 1 },
+        $inc: { version: 1 },
+        $push: {
+          audit: {
+            event: capturedFallback ? "provider_refund_confirmed" : "provider_release_confirmed",
+            at: new Date(),
+            fromState: authorization.state,
+            toState: state,
+            amount: capturedFallback ? amountRefunded : undefined,
+            idempotencyKey: capturedFallback
+              ? authorization.refundIdempotencyKey
+              : authorization.releaseIdempotencyKey,
+          },
+        },
+      }
     );
     if (result.modifiedCount === 1) {
-      await Booking.updateOne({ _id: authorization.bookingId }, { $set: { depositStatus: "released", depositReleasedAt: new Date() } });
+      await Booking.updateOne(
+        { _id: authorization.bookingId },
+        { $set: { depositStatus: "released", depositReleasedAt: new Date() } }
+      );
       await notifyTerminalState(authorization._id as mongoose.Types.ObjectId, state);
     }
     return;
   }
+
   const amount = Number(authorization.approvedAmount || 0);
   if (amount <= 0 || amount > authorization.amountAuthorized) {
-    throw Object.assign(new Error("DEPOSIT_CAPTURE_AMOUNT_INVALID"), { code: "capture_amount_invalid" });
+    throw Object.assign(new Error("DEPOSIT_CAPTURE_AMOUNT_INVALID"), {
+      code: "capture_amount_invalid",
+    });
   }
-  if (intent.status === "requires_capture") {
-    if (amount > intent.amount_capturable) throw Object.assign(new Error("DEPOSIT_CAPTURE_AMOUNT_INVALID"), { code: "capture_amount_invalid" });
-    intent = await stripe.paymentIntents.capture(intent.id, { amount_to_capture: amount, metadata: { disputeId: String(authorization.disputeId || "") } }, { idempotencyKey: authorization.captureIdempotencyKey });
+
+  let amountRefunded = authorization.amountRefunded;
+  let providerRefundId = authorization.providerRefundId;
+  if (capturedFallback) {
+    if (intent.status !== "succeeded" || Number(intent.amount_received || 0) < authorization.amountAuthorized) {
+      throw Object.assign(new Error("DEPOSIT_FALLBACK_CAPTURE_NOT_CONFIRMED"), {
+        code: "fallback_capture_not_confirmed",
+      });
+    }
+    const refundRemainder = resolveFallbackRefundAmount(
+      amount,
+      authorization.amountAuthorized
+    );
+    if (refundRemainder > 0) {
+      const refundResult = await refundCapturedDeposit(
+        authorization,
+        intent,
+        refundRemainder
+      );
+      amountRefunded = refundResult.amountRefunded;
+      providerRefundId = refundResult.refundId;
+    }
+  } else {
+    if (intent.status === "requires_capture") {
+      if (amount > intent.amount_capturable) {
+        throw Object.assign(new Error("DEPOSIT_CAPTURE_AMOUNT_INVALID"), {
+          code: "capture_amount_invalid",
+        });
+      }
+      intent = await stripe.paymentIntents.capture(
+        intent.id,
+        {
+          amount_to_capture: amount,
+          metadata: { disputeId: String(authorization.disputeId || "") },
+        },
+        { idempotencyKey: authorization.captureIdempotencyKey }
+      );
+    }
+    if (intent.status !== "succeeded" || Number(intent.amount_received || 0) < amount) {
+      throw Object.assign(new Error("DEPOSIT_CAPTURE_NOT_CONFIRMED"), {
+        code: "capture_not_confirmed",
+      });
+    }
   }
-  if (intent.status !== "succeeded" || Number(intent.amount_received || 0) < amount) throw Object.assign(new Error("DEPOSIT_CAPTURE_NOT_CONFIRMED"), { code: "capture_not_confirmed" });
+
   const state = resolveCaptureTerminalState(amount, authorization.amountAuthorized);
   await recordCapturedSettlement(authorization, amount);
   const result = await SecurityDepositAuthorization.updateOne(
     { _id: authorization._id, state: { $nin: TERMINAL_DEPOSIT_STATES } },
-    { $set: { state, providerStatus: intent.status, amountCaptured: amount, amountCapturable: 0, nextAction: null }, $unset: { leaseUntil: 1, lastErrorCode: 1 }, $inc: { version: 1 }, $push: { audit: { event: "provider_capture_confirmed", at: new Date(), fromState: authorization.state, toState: state, amount, idempotencyKey: authorization.captureIdempotencyKey } } }
+    {
+      $set: {
+        state,
+        providerStatus: intent.status,
+        amountCaptured: capturedFallback ? authorization.amountAuthorized : amount,
+        amountCapturable: 0,
+        amountRefunded,
+        providerRefundId,
+        refundedAt: amountRefunded > 0 ? new Date() : undefined,
+        nextAction: null,
+      },
+      $unset: { leaseUntil: 1, lastErrorCode: 1 },
+      $inc: { version: 1 },
+      $push: {
+        audit: {
+          event: capturedFallback
+            ? "fallback_settlement_confirmed"
+            : "provider_capture_confirmed",
+          at: new Date(),
+          fromState: authorization.state,
+          toState: state,
+          amount,
+          idempotencyKey: capturedFallback
+            ? authorization.refundIdempotencyKey
+            : authorization.captureIdempotencyKey,
+        },
+      },
+    }
   );
   if (result.modifiedCount === 1) {
-    await Booking.updateOne({ _id: authorization.bookingId }, { $set: { depositStatus: amount === authorization.amountAuthorized ? "deducted" : "partially_refunded" } });
+    await Booking.updateOne(
+      { _id: authorization.bookingId },
+      {
+        $set: {
+          depositStatus: amount === authorization.amountAuthorized
+            ? "deducted"
+            : "partially_refunded",
+        },
+      }
+    );
     await notifyTerminalState(authorization._id as mongoose.Types.ObjectId, state);
   }
 };
@@ -246,7 +511,10 @@ export const reconcileTerminalDepositSideEffects = async () => {
     const key = "deposit-terminal-" + authorizationId.toString() + "-" + state;
     if (authorization.notificationKeys.includes(key)) continue;
     if (state === "ADMIN_APPROVED_CAPTURED" || state === "ADMIN_APPROVED_PARTIALLY_CAPTURED") {
-      await recordCapturedSettlement(authorization, authorization.amountCaptured);
+      await recordCapturedSettlement(
+        authorization,
+        Number(authorization.approvedAmount || authorization.amountCaptured)
+      );
       await Booking.updateOne({ _id: authorization.bookingId }, { $set: { depositStatus: state === "ADMIN_APPROVED_CAPTURED" ? "deducted" : "partially_refunded" } });
     } else if (state !== "EXPIRED") {
       await Booking.updateOne({ _id: authorization.bookingId }, { $set: { depositStatus: "released", depositReleasedAt: new Date() } });
@@ -286,7 +554,11 @@ export const reconcileDepositPaymentIntent = async (intent: Stripe.PaymentIntent
       : "EXPIRED";
     return SecurityDepositAuthorization.findOneAndUpdate({ _id: authorization._id, state: { $nin: TERMINAL_DEPOSIT_STATES } }, { $set: { state, providerStatus: intent.status, amountCapturable: 0, nextAction: null }, $unset: { leaseUntil: 1 }, $inc: { version: 1 } }, { new: true });
   }
-  if (intent.status === "succeeded" && authorization.nextAction === "capture") {
+  if (
+    intent.status === "succeeded" &&
+    authorization.nextAction === "capture" &&
+    authorization.fundingMode === "authorization_hold"
+  ) {
     const captured = Number(intent.amount_received || authorization.approvedAmount || 0);
     const state = resolveCaptureTerminalState(Math.min(captured, authorization.amountAuthorized), authorization.amountAuthorized);
     return SecurityDepositAuthorization.findOneAndUpdate({ _id: authorization._id, state: { $nin: TERMINAL_DEPOSIT_STATES } }, { $set: { state, providerStatus: intent.status, amountCaptured: captured, amountCapturable: 0, nextAction: null }, $unset: { leaseUntil: 1 }, $inc: { version: 1 } }, { new: true });

@@ -69,6 +69,31 @@ export const assertProjectedAuthorizationWindow = (
   return deadline;
 };
 
+export const resolveDepositFundingMode = (
+  providerStatus: string,
+  captureBefore: Date | null,
+  disputeDeadline: Date
+): "authorization_hold" | "captured_refundable" =>
+  providerStatus === "requires_capture" &&
+  captureBefore !== null &&
+  supportsDisputeDeadline(disputeDeadline, captureBefore)
+    ? "authorization_hold"
+    : "captured_refundable";
+
+export const resolveFallbackRefundAmount = (
+  approvedAmount: number | null,
+  authorizedAmount: number
+): number => {
+  if (!Number.isSafeInteger(authorizedAmount) || authorizedAmount <= 0) {
+    throw new Error("DEPOSIT_AUTHORIZED_AMOUNT_INVALID");
+  }
+  if (approvedAmount === null) return authorizedAmount;
+  if (!Number.isSafeInteger(approvedAmount) || approvedAmount < 0 || approvedAmount > authorizedAmount) {
+    throw new Error("DEPOSIT_APPROVED_AMOUNT_INVALID");
+  }
+  return authorizedAmount - approvedAmount;
+};
+
 export const resolveCaptureTerminalState = (
   captured: number,
   authorized: number
@@ -89,4 +114,6 @@ export const resolveCaptureTerminalState = (
 export const depositActionKeys = (bookingId: string) => ({
   release: "deposit-release-" + bookingId + "-v1",
   capture: "deposit-capture-" + bookingId + "-v1",
+  fallbackCapture: "deposit-fallback-capture-" + bookingId + "-v1",
+  refund: "deposit-refund-" + bookingId + "-v1",
 });

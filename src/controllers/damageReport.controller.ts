@@ -379,7 +379,7 @@ export const getSecurityDepositStatus = async (req: AuthRequest, res: Response, 
     const booking = await Booking.findOne(scope).select("_id").lean();
     if (!booking) return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
     const authorization = await SecurityDepositAuthorization.findOne({ bookingId: booking._id })
-      .select("state amountAuthorized amountCapturable amountCaptured currency captureBefore disputeDeadline nextActionAt attempts lastErrorCode version")
+      .select("state fundingMode fallbackReason amountAuthorized amountCapturable amountCaptured amountRefunded currency captureBefore disputeDeadline nextActionAt attempts lastErrorCode version refundedAt")
       .lean();
     if (!authorization) return sendResponse(res, { state: "NONE" }, req.t("damage:fetched"), STATUS_CODES.OK);
     return sendResponse(res, {
@@ -387,7 +387,11 @@ export const getSecurityDepositStatus = async (req: AuthRequest, res: Response, 
       amountAuthorized: authorization.amountAuthorized / 100,
       amountCapturable: authorization.amountCapturable / 100,
       amountCaptured: authorization.amountCaptured / 100,
+      amountRefunded: authorization.amountRefunded / 100,
       currency: authorization.currency.toUpperCase(),
+      fundingMode: authorization.fundingMode,
+      fallbackReason: authorization.fallbackReason,
+      refundedAt: authorization.refundedAt,
       captureBefore: authorization.captureBefore,
       disputeDeadline: authorization.disputeDeadline,
       nextActionAt: authorization.nextActionAt,

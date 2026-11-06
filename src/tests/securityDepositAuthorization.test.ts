@@ -9,6 +9,8 @@ const {
   assertProjectedAuthorizationWindow,
   depositActionKeys,
   resolveCaptureTerminalState,
+  resolveDepositFundingMode,
+  resolveFallbackRefundAmount,
   sanitizeProviderErrorCode,
   supportsDisputeDeadline,
 } = securityDepositService;
@@ -17,14 +19,14 @@ const source = (path: string) => readFileSync(require.resolve(path), "utf8");
 
 test("durable authorization schema persists provider truth, retries, leases, and bounded sweep index", () => {
   const paths = SecurityDepositAuthorization.schema.paths;
-  for (const name of ["providerPaymentIntentId", "amountAuthorized", "amountCapturable", "amountCaptured", "currency", "captureBefore", "disputeDeadline", "nextActionAt", "attempts", "lastErrorCode", "version", "releaseIdempotencyKey", "captureIdempotencyKey", "audit"]) assert.ok(paths[name], name);
+  for (const name of ["providerPaymentIntentId", "amountAuthorized", "amountCapturable", "amountCaptured", "amountRefunded", "currency", "fundingMode", "fallbackReason", "fallbackCapturedAt", "refundedAt", "providerRefundId", "captureBefore", "disputeDeadline", "nextActionAt", "attempts", "lastErrorCode", "version", "releaseIdempotencyKey", "captureIdempotencyKey", "fallbackCaptureIdempotencyKey", "refundIdempotencyKey", "audit"]) assert.ok(paths[name], name);
   const indexes = SecurityDepositAuthorization.schema.indexes();
   assert.ok(indexes.some(([fields]) => fields.bookingId === 1));
   assert.ok(indexes.some(([fields]) => fields.state === 1 && fields.nextActionAt === 1 && fields.leaseUntil === 1));
 });
 
 test("state machine covers hold, scheduled release, dispute, settlement, expiry, and recovery", () => {
-  for (const state of ["AUTHORIZED_HELD", "RELEASE_SCHEDULED", "DISPUTE_OPEN", "SETTLEMENT_SCHEDULED", "RELEASED_NO_DISPUTE", "ADMIN_REJECTED_RELEASED", "ADMIN_APPROVED_CAPTURED", "ADMIN_APPROVED_PARTIALLY_CAPTURED", "EXPIRED", "PROVIDER_ACTION_REQUIRED", "FAILED_RETRYABLE"]) {
+  for (const state of ["AUTHORIZED_HELD", "CAPTURED_REFUNDABLE", "RELEASE_SCHEDULED", "DISPUTE_OPEN", "SETTLEMENT_SCHEDULED", "RELEASED_NO_DISPUTE", "ADMIN_REJECTED_RELEASED", "ADMIN_APPROVED_CAPTURED", "ADMIN_APPROVED_PARTIALLY_CAPTURED", "EXPIRED", "PROVIDER_ACTION_REQUIRED", "FAILED_RETRYABLE"]) {
     assert.ok(SECURITY_DEPOSIT_STATES.includes(state as never), state);
   }
 });
@@ -45,17 +47,46 @@ test("unsupported long windows fail before any provider request", () => {
   }
 });
 
+test("authorization available remains a manual hold", () => {
+  const deadline = new Date("2026-11-08T00:00:00.000Z");
+  const captureBefore = new Date("2026-11-09T02:00:00.000Z");
+  assert.equal(resolveDepositFundingMode("requires_capture", captureBefore, deadline), "authorization_hold");
+});
+
+test("authorization unavailable uses auditable capture-then-refund fallback", () => {
+  const deadline = new Date("2026-11-10T00:00:00.000Z");
+  const captureBefore = new Date("2026-11-09T00:00:00.000Z");
+  assert.equal(resolveDepositFundingMode("requires_capture", captureBefore, deadline), "captured_refundable");
+  assert.equal(resolveDepositFundingMode("succeeded", null, deadline), "captured_refundable");
+  const service = source("../services/securityDepositAuthorization.service");
+  assert.match(service, /fallback_capture_confirmed/);
+  assert.match(service, /state: SecurityDepositState = authorizationSupported/);
+  assert.match(service, /fallbackReason: capturedFallback/);
+});
+
+test("full fallback release refunds the entire captured deposit", () => {
+  assert.equal(resolveFallbackRefundAmount(null, 5000), 5000);
+});
+
+test("partial damage settlement refunds only the captured remainder", () => {
+  assert.equal(resolveFallbackRefundAmount(1800, 5000), 3200);
+  assert.equal(resolveCaptureTerminalState(1800, 5000), "ADMIN_APPROVED_PARTIALLY_CAPTURED");
+});
+
 test("full and partial admin capture states enforce integer minor-unit bounds", () => {
   assert.equal(resolveCaptureTerminalState(5000, 5000), "ADMIN_APPROVED_CAPTURED");
   assert.equal(resolveCaptureTerminalState(2500, 5000), "ADMIN_APPROVED_PARTIALLY_CAPTURED");
   for (const invalid of [0, -1, 5001, 1.5]) assert.throws(() => resolveCaptureTerminalState(invalid, 5000));
+  for (const invalid of [-1, 5001, 1.5]) assert.throws(() => resolveFallbackRefundAmount(invalid, 5000));
 });
 
 test("release and capture retries use stable, outcome-specific idempotency keys", () => {
-  assert.deepEqual(depositActionKeys("booking123"), { release: "deposit-release-booking123-v1", capture: "deposit-capture-booking123-v1" });
+  assert.deepEqual(depositActionKeys("booking123"), { release: "deposit-release-booking123-v1", capture: "deposit-capture-booking123-v1", fallbackCapture: "deposit-fallback-capture-booking123-v1", refund: "deposit-refund-booking123-v1" });
   const service = source("../services/securityDepositAuthorization.service");
   assert.match(service, /idempotencyKey: authorization.releaseIdempotencyKey/);
   assert.match(service, /idempotencyKey: authorization.captureIdempotencyKey/);
+  assert.match(service, /idempotencyKey: authorization.refundIdempotencyKey/);
+  assert.match(service, /idempotencyKey: keys.fallbackCapture/);
   assert.match(service, /intent.status === "succeeded"/); // crash-after-provider-success recovery
 });
 
@@ -71,10 +102,11 @@ test("completion never refunds or immediately releases and uses authoritative re
 test("submission and deadline release are mutually exclusive at the half-open boundary", () => {
   const controller = source("../controllers/damageReport.controller");
   const service = source("../services/securityDepositAuthorization.service");
-  assert.ok(controller.includes("blockDepositReleaseForDispute(booking._id, report._id"));
+  assert.ok(controller.includes("blockDepositReleaseForDispute("));
+  assert.ok(controller.includes("reportId"));
   assert.ok(service.includes("disputeDeadline: { $gt: checkedAt }"));
   assert.ok(service.includes("nextActionAt: { $lte: now }"));
-  assert.ok(service.includes('state: { $in: ["AUTHORIZED_HELD", "RELEASE_SCHEDULED"] }'));
+  assert.ok(service.includes('state: { $in: ["AUTHORIZED_HELD", "CAPTURED_REFUNDABLE", "RELEASE_SCHEDULED"] }'));
 });
 
 test("decision execution supports approve full, partial, reject, retries, and immutable Story 2 decision", () => {
@@ -85,7 +117,8 @@ test("decision execution supports approve full, partial, reject, retries, and im
   assert.match(service, /amount_to_capture: amount/);
   assert.ok(service.includes("DEPOSIT_DECISION_CURRENCY_MISMATCH"));
   assert.ok(service.includes('nextAction = report.status === "approved" ? "capture" : "release"'));
-  assert.equal(service.includes("refunds.create"), false);
+  assert.ok(service.includes("refunds.create"));
+  assert.ok(service.includes("resolveFallbackRefundAmount"));
 });
 
 test("webhook signature, dedupe lease, out-of-order terminal guard, and duplicate notifications are explicit", () => {
@@ -105,6 +138,15 @@ test("worker is bounded, leased, retry-capped, and Redis-independent", () => {
   assert.match(service, /leaseUntil/);
   assert.ok(service.includes(".limit(DEPOSIT_SWEEPER_BATCH_SIZE)"));
   assert.equal(service.includes("redis"), false);
+  assert.ok(service.includes("state: { $nin: TERMINAL_DEPOSIT_STATES }"));
+});
+
+test("USD is the only decision and provider settlement currency", () => {
+  const decision = source("../services/damageDisputeDecision.service");
+  const model = source("../models/securityDepositAuthorization.model");
+  assert.match(decision, /input.currency !== "USD"/);
+  assert.ok(model.includes('enum: ["usd"]'));
+  assert.equal(decision.includes('currency: "SAR"'), false);
 });
 
 test("provider errors are sanitized and no card data or raw provider ids reach status responses", () => {

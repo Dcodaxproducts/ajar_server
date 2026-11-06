@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import cron from "node-cron";
 import { sweepSecurityDepositAuthorizations } from "../services/securityDepositAuthorization.service";
 
@@ -16,7 +15,8 @@ export const startSecurityDepositReleaseCron = () => {
   });
   securityDepositReleaseCron = cron.schedule(EVERY_MINUTE, () => {
     releaseExpiredSecurityDeposits().catch((error) => {
-      console.error("Security deposit reconciliation failed:", error);    });
+      console.error("Security deposit reconciliation failed:", error);
+    });
   });
   return securityDepositReleaseCron;
 };

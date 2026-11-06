@@ -266,6 +266,10 @@ export const stripeWebhook = async (req: Request, res: Response) => {
           }
         );
       }
+      await StripeWebhookEvent.updateOne(
+        { eventId: event.id },
+        { $set: { status: "processed", processedAt: new Date() } }
+      );
       return res.json({ received: true });
     }
 
@@ -319,16 +323,28 @@ export const stripeWebhook = async (req: Request, res: Response) => {
       if (paymentIntent.metadata?.paymentPurpose === "security_deposit") {
         await reconcileDepositPaymentIntent(paymentIntent);
       }
-      await StripeWebhookEvent.updateOne({ eventId: event.id }, { $set: { status: "processed", processedAt: new Date() } });      res.json({ received: true });
+      await StripeWebhookEvent.updateOne(
+        { eventId: event.id },
+        { $set: { status: "processed", processedAt: new Date() } }
+      );
+      res.json({ received: true });
     } else {
       await StripeWebhookEvent.updateOne({ eventId: event.id }, { $set: { status: "processed", processedAt: new Date() } });
       res.json({ received: true });
     }
   } catch (err) {
     if (err instanceof BookingAvailabilityConflictError) {
+      await StripeWebhookEvent.updateOne(
+        { eventId: event.id },
+        { $set: { status: "processed", processedAt: new Date() } }
+      );
       return res.json({ received: true });
     }
-    await StripeWebhookEvent.updateOne({ eventId: event.id, status: "processing" }, { $set: { leaseUntil: new Date() } });    console.error("Webhook Processing Error:", err);
+    await StripeWebhookEvent.updateOne(
+      { eventId: event.id, status: "processing" },
+      { $set: { leaseUntil: new Date() } }
+    );
+    console.error("Webhook Processing Error:", err);
     res.status(500).send("Webhook processing error");
   }
 };

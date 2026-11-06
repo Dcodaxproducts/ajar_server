@@ -22,7 +22,7 @@ export type ValidDamageDisputeDecision = {
   decision: DamageDisputeDecision;
   reason: string;
   approvedAmount: number;
-  currency: "SAR";
+  currency: "USD";
   evidenceReferences: string[];
   expectedVersion: number;
   idempotencyKey: string;
@@ -58,7 +58,7 @@ export const validateDamageDisputeDecision = (
   if (reason.length < 3 || reason.length > 2000) {
     return { ok: false, code: "DAMAGE_DISPUTE_INVALID_REASON" };
   }
-  if (input.currency !== "SAR") {
+  if (input.currency !== "USD") {
     return { ok: false, code: "DAMAGE_DISPUTE_INVALID_CURRENCY" };
   }
   const expectedVersion = Number(input.expectedVersion);
@@ -97,7 +97,7 @@ export const validateDamageDisputeDecision = (
       decision: input.decision as DamageDisputeDecision,
       reason,
       approvedAmount,
-      currency: "SAR",
+      currency: "USD",
       evidenceReferences,
       expectedVersion,
       idempotencyKey,

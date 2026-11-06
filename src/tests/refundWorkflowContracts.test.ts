@@ -37,13 +37,14 @@ test("field mutations are Admin-only and paged search is server-side", () => {
   assert.match(controller, /Math\.min\(200/);
 });
 
-test("deposit release uses an expiring ownership lease and dispute decisions defer payment settlement", () => {
-  const cron = source("../cron/securityDepositRelease.cron.ts");
+test("deposit release uses a bounded expiring authorization lease and decisions only schedule settlement", () => {
+  const worker = source("../services/securityDepositAuthorization.service.ts");
   const damage = source("../controllers/damageReport.controller.ts");
-  assert.match(cron, /depositReleaseLockToken: lockToken/);
-  assert.match(cron, /depositReleaseLockedAt: \{ \$lte: staleBefore \}/);
+  assert.ok(worker.includes("DEPOSIT_LEASE_MS = 2 * 60 * 1000"));
+  assert.ok(worker.includes("leaseUntil: { $lte: now }"));
+  assert.match(worker, /DEPOSIT_SWEEPER_BATCH_SIZE = 25/);
   assert.doesNotMatch(damage, /refundBookingSecurityDeposit|createTransaction|Payment\./);
-  assert.match(damage, /settlementExecutionStatus: "pending_story_3"/);
+  assert.match(damage, /scheduleDepositDecision/);
 });
 
 test("refund acceptance has durable processing state and deterministic Stripe key", () => {
