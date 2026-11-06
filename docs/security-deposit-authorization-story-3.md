@@ -66,7 +66,7 @@ The dispute interval is half-open. Submission requires checkedAt < disputeDeadli
 
 ## Jobs, webhooks, and recovery
 
-Set ENABLE_SECURITY_DEPOSIT_HOLD_WORKER=true only after preflight. The database is durable truth; Redis is only for deterministic notification jobs. The indexed sweeper batches 25, uses two-minute leases, caps retries at eight with backoff and jitter, and never holds a DB lock across Stripe calls.
+Set ENABLE_SECURITY_DEPOSIT_SETTLEMENT_WORKER=true only after preflight. The database is durable truth; Redis is only for deterministic notification jobs. The indexed sweeper batches 25, uses two-minute leases, caps retries at eight with backoff and jitter, and never holds a DB lock across Stripe calls.
 
 Action keys are stable per booking and purpose. Every retry retrieves provider state first, recovering provider-success/local-crash cases. Authorization mode uses amount_to_capture and final capture releases the uncaptured remainder. Fallback mode refunds authorized minus approved with a stable refund key. Captures, retained amounts, and refunds cannot exceed the USD deposit.
 
@@ -82,7 +82,7 @@ The signed webhook verifies before mutation, claims event IDs with recoverable l
 ## Migration and rollout preflight (not executed)
 
 1. Back up MongoDB and verify restore.
-2. Deploy with ENABLE_SECURITY_DEPOSIT_HOLD_WORKER=false. No new environment value is required for fallback.
+2. Deploy with ENABLE_SECURITY_DEPOSIT_SETTLEMENT_WORKER=false and ENABLE_SEPARATE_SECURITY_DEPOSIT=false. Both gates must stay off until the rollout preflight and compatible-client rehearsal pass.
 3. Build unique bookingId/providerPaymentIntentId indexes and the sweeper index in staging; resolve duplicates first.
 4. Existing captured/refundable deposits cannot be converted into authorizations. Keep them on the legacy reviewed path.
 5. For uncaptured intents, use a separately approved dry-run tool to verify ownership, currency, amount, status and actual capture_before before idempotent document creation. Mismatches require manual review.
