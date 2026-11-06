@@ -32,7 +32,8 @@ router.get("/mine/:bookingId", useAuth, userOnly, asyncHandler(getMyDamageReport
 router.get("/deposit/:bookingId", useAuth, asyncHandler(getSecurityDepositStatus));
 router.post("/:id/settlement/retry", useAuth, adminOnly, asyncHandler(retryDamageSettlement));
 
-// Read by IDrouter.get("/:id", useAuth, adminOnly, asyncHandler(getDamageReportById));
+// Read by ID
+router.get("/:id", useAuth, adminOnly, asyncHandler(getDamageReportById));
 router.post("/:id/decision", useAuth, adminOnly, asyncHandler(decideDamageReport));
 
 export default router;

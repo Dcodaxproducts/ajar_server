@@ -95,8 +95,9 @@ test("completion never refunds or immediately releases and uses authoritative re
   assert.match(booking, /scheduleSecurityDepositRelease/);
   assert.match(booking, /finalBooking.returnVerifiedAt/);
   const cron = source("../cron/securityDepositRelease.cron");
+  const startup = source("../cron/securityDepositReleaseStartup");
   assert.equal(cron.includes("refundBookingSecurityDeposit"), false);
-  assert.equal(cron.includes("ENABLE_SECURITY_DEPOSIT_HOLD_WORKER"), true);
+  assert.equal(startup.includes("ENABLE_SECURITY_DEPOSIT_SETTLEMENT_WORKER"), true);
 });
 
 test("submission and deadline release are mutually exclusive at the half-open boundary", () => {

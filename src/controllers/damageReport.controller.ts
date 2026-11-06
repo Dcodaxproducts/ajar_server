@@ -25,6 +25,7 @@ import {
   scheduleDepositDecision,
 } from "../services/securityDepositAuthorization.service";
 import { SecurityDepositAuthorization } from "../models/securityDepositAuthorization.model";
+import { settleLegacyDamageDecision } from "../services/legacySecurityDeposit.service";
 
 const DAMAGE_DISPUTE_ERRORS = {
   notFound: {
@@ -376,12 +377,35 @@ export const getSecurityDepositStatus = async (req: AuthRequest, res: Response, 
     const scope = req.user.role === "admin"
       ? { _id: bookingId }
       : { _id: bookingId, $or: [{ renter: req.user.id }, { leaser: req.user.id }] };
-    const booking = await Booking.findOne(scope).select("_id").lean();
+    const booking = await Booking.findOne(scope)
+      .select("_id priceDetails.securityDeposit depositStatus securityDepositPaymentMode damageDisputeId")
+      .lean();
     if (!booking) return sendResponse(res, null, req.t("damage:notFound"), STATUS_CODES.NOT_FOUND);
     const authorization = await SecurityDepositAuthorization.findOne({ bookingId: booking._id })
       .select("state fundingMode fallbackReason amountAuthorized amountCapturable amountCaptured amountRefunded currency captureBefore disputeDeadline nextActionAt attempts lastErrorCode version refundedAt")
       .lean();
-    if (!authorization) return sendResponse(res, { state: "NONE" }, req.t("damage:fetched"), STATUS_CODES.OK);
+    if (!authorization) {
+      const amount = Number(booking.priceDetails?.securityDeposit || 0);
+      if (amount <= 0) {
+        return sendResponse(res, { state: "NONE" }, req.t("damage:fetched"), STATUS_CODES.OK);
+      }
+      const report = booking.damageDisputeId
+        ? await DamageReport.findById(booking.damageDisputeId).select("status").lean()
+        : null;
+      const decisionRecorded = Boolean(
+        report && ["approved", "rejected"].includes(report.status)
+      );
+      return sendResponse(res, {
+        state: "LEGACY_" + String(booking.depositStatus || "held").toUpperCase(),
+        fundingMode: "legacy_combined",
+        amountAuthorized: amount,
+        amountCaptured: amount,
+        amountRefunded: booking.depositStatus === "released" ? amount : 0,
+        currency: "USD",
+        manualReviewRequired: booking.depositStatus === "disputed" && decisionRecorded,
+        canRetry: req.user.role === "admin" && booking.depositStatus === "disputed" && decisionRecorded,
+      }, req.t("damage:fetched"), STATUS_CODES.OK);
+    }
     return sendResponse(res, {
       state: authorization.state,
       amountAuthorized: authorization.amountAuthorized / 100,
@@ -416,7 +440,13 @@ export const retryDamageSettlement = async (req: AuthRequest, res: Response, nex
       { $set: { state: "SETTLEMENT_SCHEDULED", nextActionAt: new Date() }, $unset: { leaseUntil: 1, lastErrorCode: 1 }, $inc: { version: 1 } },
       { new: true }
     );
-    if (!retried) return sendResponse(res, { code: "DEPOSIT_ACTION_NOT_RETRYABLE" }, "DEPOSIT_ACTION_NOT_RETRYABLE", STATUS_CODES.CONFLICT);
+    if (!retried) {
+      const legacyState = await settleLegacyDamageDecision(report._id as mongoose.Types.ObjectId);
+      if (legacyState) {
+        return sendResponse(res, { state: "LEGACY_" + legacyState.toUpperCase() }, req.t("damage:updated"), STATUS_CODES.OK);
+      }
+      return sendResponse(res, { code: "DEPOSIT_ACTION_NOT_RETRYABLE" }, "DEPOSIT_ACTION_NOT_RETRYABLE", STATUS_CODES.CONFLICT);
+    }
     return sendResponse(res, { state: retried.state, version: retried.version }, req.t("damage:updated"), STATUS_CODES.OK);
   } catch (error) { next(error); }
 };

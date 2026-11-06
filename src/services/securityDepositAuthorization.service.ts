@@ -166,7 +166,8 @@ export const scheduleSecurityDepositRelease = async (bookingId: mongoose.Types.O
   const booking = await Booking.findById(bookingId).session(session || null);
   if (!booking) throw new Error("DEPOSIT_BOOKING_NOT_FOUND");
   const authorization = await SecurityDepositAuthorization.findOne({ bookingId }).session(session || null);
-  if (!authorization && Number(booking.priceDetails.securityDeposit || 0) > 0) throw new Error("DEPOSIT_AUTHORIZATION_NOT_FOUND");
+  // Legacy bookings intentionally have no separate authorization record and
+  // remain owned by the combined-payment settlement path.
   if (!authorization) return null;
   const deadline = calculateDamageDisputeDeadline(returnedAt, resolveDamageDisputeWindow(booking));
   const capturedFallback = authorization.fundingMode === "captured_refundable";
@@ -202,6 +203,10 @@ export const scheduleCancelledBookingDepositRelease = async (
 );
 
 export const blockDepositReleaseForDispute = async (bookingId: mongoose.Types.ObjectId | string, disputeId: mongoose.Types.ObjectId, checkedAt: Date, session: mongoose.ClientSession) => {
+  const existing = await SecurityDepositAuthorization.findOne({ bookingId })
+    .select("_id")
+    .session(session);
+  if (!existing) return null;
   const authorization = await SecurityDepositAuthorization.findOneAndUpdate(
     { bookingId, state: { $in: ["AUTHORIZED_HELD", "CAPTURED_REFUNDABLE", "RELEASE_SCHEDULED"] }, disputeDeadline: { $gt: checkedAt } },
     {
@@ -267,11 +272,38 @@ const notifyTerminalState = async (authorizationId: mongoose.Types.ObjectId, sta
 const recordCapturedSettlement = async (authorization: InstanceType<typeof SecurityDepositAuthorization>, amount: number) => {
   const booking = await Booking.findById(authorization.bookingId).select("leaser").lean();
   if (!booking?.leaser) throw new Error("DEPOSIT_LEASER_NOT_FOUND");
-  const payment = await Payment.findOneAndUpdate(
-    { paymentIntentId: authorization.providerPaymentIntentId },
-    { bookingId: authorization.bookingId, userId: authorization.renterId, amount: amount / 100, currency: authorization.currency, type: "damage", status: "captured", paymentIntentId: authorization.providerPaymentIntentId, capturedAt: new Date(), method: "stripe" },
-    { upsert: true, new: true }
-  );
+  let payment;
+  try {
+    payment = await Payment.findOneAndUpdate(
+      { paymentIntentId: authorization.providerPaymentIntentId },
+      {
+        $setOnInsert: {
+          bookingId: authorization.bookingId,
+          userId: authorization.renterId,
+          amount: amount / 100,
+          currency: authorization.currency,
+          type: "damage",
+          status: "captured",
+          paymentIntentId: authorization.providerPaymentIntentId,
+          capturedAt: new Date(),
+          method: "stripe",
+        },
+      },
+      { upsert: true, new: true, runValidators: true }
+    );
+  } catch (error) {
+    if ((error as { code?: number }).code !== 11000) throw error;
+    payment = await Payment.findOne({
+      paymentIntentId: authorization.providerPaymentIntentId,
+    });
+    if (!payment) throw error;
+    if (
+      payment.bookingId.toString() !== authorization.bookingId.toString() ||
+      payment.amount !== amount / 100
+    ) {
+      throw new Error("PAYMENT_INTENT_IDEMPOTENCY_CONFLICT");
+    }
+  }
   const leaser = booking.leaser as mongoose.Types.ObjectId | { _id?: mongoose.Types.ObjectId };
   const leaserId = leaser instanceof mongoose.Types.ObjectId ? leaser : leaser._id;
   if (!leaserId) throw new Error("DEPOSIT_LEASER_NOT_FOUND");
@@ -567,4 +599,62 @@ export const reconcileDepositPaymentIntent = async (intent: Stripe.PaymentIntent
     return SecurityDepositAuthorization.findOneAndUpdate({ _id: authorization._id }, { $set: { state: "PROVIDER_ACTION_REQUIRED", providerStatus: intent.status, lastErrorCode: "AUTHORIZATION_UNAVAILABLE", nextAction: null }, $unset: { leaseUntil: 1 }, $inc: { version: 1 } }, { new: true });
   }
   return SecurityDepositAuthorization.findOneAndUpdate({ _id: authorization._id }, { $set: { providerStatus: intent.status, amountCapturable: intent.amount_capturable } }, { new: true });
+};
+
+export const reconcileDepositRefund = async (refund: Stripe.Refund) => {
+  const paymentIntentId = typeof refund.payment_intent === "string"
+    ? refund.payment_intent
+    : refund.payment_intent?.id;
+  if (!paymentIntentId) return null;
+  const authorization = await SecurityDepositAuthorization.findOne({
+    providerPaymentIntentId: paymentIntentId,
+  });
+  if (!authorization || TERMINAL_DEPOSIT_STATES.includes(authorization.state)) {
+    return authorization;
+  }
+
+  if (refund.status === "succeeded") {
+    return SecurityDepositAuthorization.findOneAndUpdate(
+      { _id: authorization._id, state: { $nin: TERMINAL_DEPOSIT_STATES } },
+      {
+        $set: {
+          providerRefundId: refund.id,
+          refundedAt: new Date(),
+          nextActionAt: new Date(),
+        },
+        $max: { amountRefunded: refund.amount },
+      },
+      { new: true }
+    );
+  }
+
+  if (refund.status === "failed" || refund.status === "canceled") {
+    return SecurityDepositAuthorization.findOneAndUpdate(
+      { _id: authorization._id, state: { $nin: TERMINAL_DEPOSIT_STATES } },
+      {
+        $set: {
+          state: "FAILED_RETRYABLE",
+          providerRefundId: refund.id,
+          lastErrorCode: "refund_" + refund.status,
+          nextActionAt: new Date(),
+        },
+        $unset: { leaseUntil: 1 },
+        $inc: { version: 1 },
+      },
+      { new: true }
+    );
+  }
+
+  return SecurityDepositAuthorization.findOneAndUpdate(
+    { _id: authorization._id, state: { $nin: TERMINAL_DEPOSIT_STATES } },
+    {
+      $set: {
+        providerRefundId: refund.id,
+        lastErrorCode: "refund_pending",
+        nextActionAt: new Date(Date.now() + 5 * 60_000),
+      },
+      $unset: { leaseUntil: 1 },
+    },
+    { new: true }
+  );
 };

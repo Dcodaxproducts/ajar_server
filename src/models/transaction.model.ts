@@ -54,7 +54,10 @@ const TransactionSchema = new Schema<ITransaction>(
   { timestamps: true }
 );
 
-TransactionSchema.index({ paymentId: 1, userId: 1, source: 1 });
+TransactionSchema.index(
+  { paymentId: 1, userId: 1, source: 1 },
+  { unique: true, name: "uniq_financial_side_effect" }
+);
 
 export const Transaction = mongoose.model<ITransaction>(
   "Transaction",

@@ -19,7 +19,10 @@ import {
 } from "../utils/bookingStripePayments";
 import { createTransaction } from "../utils/transactionLedger";
 import { StripeWebhookEvent } from "../models/stripeWebhookEvent.model";
-import { reconcileDepositPaymentIntent } from "../services/securityDepositAuthorization.service";
+import {
+  reconcileDepositPaymentIntent,
+  reconcileDepositRefund,
+} from "../services/securityDepositAuthorization.service";
 
 const verifyCapturedPayment = async (payment: any) => {
   if (!payment?.paymentIntentId) return false;
@@ -252,16 +255,23 @@ export const stripeWebhook = async (req: Request, res: Response) => {
       await StripeWebhookEvent.updateOne({ eventId: event.id }, { $set: { status: "processed", processedAt: new Date() } });
       return res.json({ received: true });
     }
-    if (event.type === "refund.created" || event.type === "refund.updated") {
+    if (
+      event.type === "refund.created" ||
+      event.type === "refund.updated" ||
+      event.type === "refund.failed"
+    ) {
       const refund = event.data.object as any;
       const refundBookingId = refund.metadata?.bookingId;
+      await reconcileDepositRefund(refund);
       if (refundBookingId && refund.status === "succeeded") {
         await Payment.findOneAndUpdate(
           { bookingId: refundBookingId, paymentIntentId: refund.payment_intent },
           {
             $set: {
               depositRefundId: refund.id,
+              depositRefundedAmount: Number(refund.amount || 0) / 100,
               refundedAt: new Date(refund.created * 1000),
+              status: "partially_refunded",
             },
           }
         );

@@ -33,6 +33,7 @@ import {
   scheduleCancelledBookingDepositRelease,
   scheduleSecurityDepositRelease,
 } from "../services/securityDepositAuthorization.service";
+import { resolveSecurityDepositPaymentMode } from "../services/securityDepositRollout.service";
 import { Zone } from "../models/zone.model";
 import { IRentalDuration, RentalPolicy } from "../models/rentalPolicy.model";
 import { checkAndUpdateBookingExpiry } from "../utils/bookingExpiry";
@@ -75,7 +76,13 @@ const normalizeBookingDates = (checkInRaw: string, checkOutRaw: string) => {
 export const createBooking = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user as { id: string; role: string };
-    const { marketplaceListingId, dates, extensionDate, ...bookingData } = req.body;
+    const {
+      marketplaceListingId,
+      dates,
+      extensionDate,
+      clientCapabilities,
+      ...bookingData
+    } = req.body;
 
     const renter = await User.findById(user.id);
     if (!renter) {
@@ -126,6 +133,9 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       rentalPolicy?.securityDepositRules?.depositRequired
         ? rentalPolicy.securityDepositRules.depositAmount
         : 0;
+    const securityDepositPaymentMode = resolveSecurityDepositPaymentMode(
+      clientCapabilities ?? req.headers["x-ajar-capabilities"]
+    );
     const damageDisputeWindow = resolveDamageDisputeWindow({
       damageDisputeWindow:
         rentalPolicy?.securityDepositRules?.disputeWindow,
@@ -485,10 +495,13 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       depositStatus: securityDepositAmount > 0 ? "held" : "none",
       depositDisputeWindowDays,
       damageDisputeWindow,
+      securityDepositPaymentMode,
     });
 
     const paymentIntent = await createManualBookingPaymentIntent(newBooking);
-    const depositIntent = await createSecurityDepositPaymentIntent(newBooking);
+    const depositIntent = securityDepositPaymentMode === "separate_authorization"
+      ? await createSecurityDepositPaymentIntent(newBooking)
+      : null;
 
     return res.status(201).json({
       message: req.t("booking:created"),
@@ -507,6 +520,9 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         paymentIntentId: paymentIntent.id,
         depositClientSecret: depositIntent?.client_secret ?? null,
         depositPaymentIntentId: depositIntent?.id ?? null,
+      },
+      capabilities: {
+        separateSecurityDeposit: securityDepositPaymentMode === "separate_authorization",
       },
     });
 

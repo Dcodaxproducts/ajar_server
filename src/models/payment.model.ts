@@ -78,4 +78,25 @@ const PaymentSchema = new Schema<IPayment>(
   { timestamps: true }
 );
 
+PaymentSchema.index(
+  { paymentIntentId: 1 },
+  { unique: true, sparse: true, name: "uniq_payment_intent" }
+);
+PaymentSchema.index(
+  { refundId: 1 },
+  { unique: true, sparse: true, name: "uniq_booking_refund" }
+);
+PaymentSchema.index(
+  { depositRefundId: 1 },
+  { unique: true, sparse: true, name: "uniq_deposit_refund" }
+);
+PaymentSchema.index(
+  { transferId: 1 },
+  { unique: true, sparse: true, name: "uniq_transfer" }
+);
+PaymentSchema.index(
+  { payoutId: 1 },
+  { unique: true, sparse: true, name: "uniq_payout" }
+);
+
 export const Payment = mongoose.model<IPayment>("Payment", PaymentSchema);

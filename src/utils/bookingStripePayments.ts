@@ -8,6 +8,7 @@ import { buildDepositRefundIdempotencyKey } from "../services/damageDispute.serv
 import { lockAndCheckBookingAvailability } from "./dateValidator";
 import { buildBookingRefundIdempotencyKey } from "./refundIdempotency";
 import { registerSecurityDepositAuthorization } from "../services/securityDepositAuthorization.service";
+import { SecurityDepositAuthorization } from "../models/securityDepositAuthorization.model";
 const MIN_STRIPE_AMOUNT_CENTS = 50;
 
 export const getBookingStripeAmount = (booking: any): number => {
@@ -16,7 +17,10 @@ export const getBookingStripeAmount = (booking: any): number => {
   // added back here. The deposit is a separate authorization and is never
   // captured with the rental charge.
   const stripeFee = Number(booking?.priceDetails?.stripeFee || 0);
-  return Number((totalPrice + stripeFee).toFixed(2));
+  const legacyCombinedDeposit = booking?.securityDepositPaymentMode === "separate_authorization"
+    ? 0
+    : Number(booking?.priceDetails?.securityDeposit || 0);
+  return Number((totalPrice + stripeFee + legacyCombinedDeposit).toFixed(2));
 };
 
 const getBookingUserId = (user: any) => {
@@ -92,6 +96,18 @@ export const recordHeldBookingPayment = async (
     if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
       throw new Error("Missing renter ID");
     }
+    if (
+      booking.securityDepositPaymentMode === "separate_authorization" &&
+      Number(booking.priceDetails?.securityDeposit || 0) > 0
+    ) {
+      const confirmedDeposit = await SecurityDepositAuthorization.exists({
+        bookingId: booking._id,
+        state: { $in: ["AUTHORIZED_HELD", "CAPTURED_REFUNDABLE"] },
+      }).session(activeSession);
+      if (!confirmedDeposit) {
+        throw new Error("DEPOSIT_AUTHORIZATION_REQUIRED");
+      }
+    }
 
     const available = await lockAndCheckBookingAvailability(
       booking.marketplaceListingId as mongoose.Types.ObjectId,
@@ -102,20 +118,35 @@ export const recordHeldBookingPayment = async (
     );
     if (!available) throw new BookingAvailabilityConflictError();
 
-    return Payment.findOneAndUpdate(
-      { paymentIntentId: intent.id },
-      {
-        bookingId: booking._id,
-        userId,
-        amount: intent.amount / 100,
-        currency: intent.currency || "usd",
-        type: booking.previousBookingId ? "extension" : "booking",
-        status: "held",
-        paymentIntentId: intent.id,
-        method: "stripe",
-      },
-      { upsert: true, new: true, session: activeSession }
-    );
+    const paymentRecord = {
+      bookingId: booking._id,
+      userId,
+      amount: intent.amount / 100,
+      currency: intent.currency || "usd",
+      type: booking.previousBookingId ? "extension" as const : "booking" as const,
+      status: "held" as const,
+      paymentIntentId: intent.id,
+      method: "stripe",
+    };
+    try {
+      return await Payment.findOneAndUpdate(
+        { paymentIntentId: intent.id },
+        { $setOnInsert: paymentRecord },
+        { upsert: true, new: true, session: activeSession, runValidators: true }
+      );
+    } catch (error) {
+      if ((error as { code?: number }).code !== 11000) throw error;
+      const winner = await Payment.findOne({ paymentIntentId: intent.id })
+        .session(activeSession);
+      if (!winner) throw error;
+      if (
+        winner.bookingId.toString() !== booking._id.toString() ||
+        winner.amount !== paymentRecord.amount
+      ) {
+        throw new Error("PAYMENT_INTENT_IDEMPOTENCY_CONFLICT");
+      }
+      return winner;
+    }
   };
 
   if (session) return persistHold(session);

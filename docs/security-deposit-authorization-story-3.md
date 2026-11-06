@@ -1,5 +1,47 @@
 # Security-deposit authorization hold (Damage Dispute Story 3)
 
+## Production-safe capability gate
+
+Separate deposit authorization is off by default. The server uses it only when
+ENABLE_SEPARATE_SECURITY_DEPOSIT=true and the request advertises
+separate-security-deposit-v1 in clientCapabilities or X-Ajar-Capabilities.
+Each booking stores its immutable mode. Missing/old clients remain on
+legacy_combined; compatible clients use separate_authorization. An old client
+therefore never receives a second PaymentIntent it cannot confirm.
+
+## Rollout sequence
+
+1. Back up MongoDB and verify restore before index or release work.
+2. Preflight duplicate identities in payments (provider payment/refund/
+   transfer/payout IDs) and ledger_transactions (paymentId/userId/source).
+   Resolve duplicates from provider evidence; never delete blindly.
+3. Create and verify every unique index declared by Payment, Transaction, and
+   SecurityDepositAuthorization. Run the duplicate preflight again.
+4. Deploy Server with both gates absent/false. The release remains legacy-only.
+5. Deploy Admin, then compatible Mobile/Web clients. Leave the feature false.
+6. In Stripe test mode rehearse fallback capture/refund, hold full/partial
+   capture, rejection, pending-refund webhook recovery, duplicate events,
+   retries, and legacy completion/dispute settlement.
+7. Set only ENABLE_SECURITY_DEPOSIT_SETTLEMENT_WORKER=true. Verify one worker,
+   bounded batches, leases, and no retry spike.
+8. Set ENABLE_SEPARATE_SECURITY_DEPOSIT=true. Verify capable requests persist
+   separate_authorization and old clients persist legacy_combined.
+
+## Rollback
+
+- Before enablement, roll binaries back normally; all bookings are combined.
+- After enablement, first set ENABLE_SEPARATE_SECURITY_DEPOSIT=false. This stops
+  new separate bookings without changing in-flight booking modes. Keep the
+  settlement worker and current Server running until separate records are
+  terminal; rolling the binary back first can strand provider actions.
+- If the worker is unsafe, disable its canonical gate, preserve provider
+  records, fix/redeploy, and re-enable. Use Admin retry and stable idempotency
+  keys instead of manually replaying Stripe actions.
+- Keep unique financial indexes through rollback; they protect both paths.
+
+Legacy worker aliases are accepted only when they agree. Invalid or conflicting
+values fail closed during startup.
+
 ## Provider constraint
 
 Stripe card PaymentIntents with manual capture are not indefinite escrow. The authoritative expiry is latest_charge.payment_method_details.card.capture_before after confirmation. Ordinary online card authorizations are commonly about seven days; network, card, merchant-category and account eligibility can shorten or extend that value.

@@ -113,6 +113,10 @@ const SecurityDepositAuthorizationSchema = new Schema<ISecurityDepositAuthorizat
 
 SecurityDepositAuthorizationSchema.index({ bookingId: 1 }, { unique: true });
 SecurityDepositAuthorizationSchema.index({ providerPaymentIntentId: 1 }, { unique: true });
+SecurityDepositAuthorizationSchema.index(
+  { providerRefundId: 1 },
+  { unique: true, sparse: true }
+);
 SecurityDepositAuthorizationSchema.index({ state: 1, nextActionAt: 1, leaseUntil: 1 });
 SecurityDepositAuthorizationSchema.index({ disputeId: 1 }, { sparse: true });
 
